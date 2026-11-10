@@ -1,0 +1,409 @@
+{
+ "title": "Рейд-набор",
+ "game": "rust",
+ "icon": "🪓",
+ "description": "Свой сервер Rust + WebRCON. Впиши свой ник или SteamID64 в «Настройки → Серверные игры» — он подставляется в {nick}.",
+ "profile": {
+  "game": "rust",
+  "gifts": [
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" scrap 50"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "скрап",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rose",
+    "gift_id": "5655",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" syringe.medical 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "аптечки",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "GG",
+    "gift_id": "6064",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" ammo.rifle 64"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "патроны",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Finger Heart",
+    "gift_id": "5487",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" wood 1000"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "дерево",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rosa",
+    "gift_id": "8913",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "env.time 0"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "ночь",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Perfume",
+    "gift_id": "5658",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "weather.rain 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "ливень",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Doughnut",
+    "gift_id": "5879",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" metal.refined 50"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "МВК",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Hand Hearts",
+    "gift_id": "",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" rifle.ak 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "АК-47",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Corgi",
+    "gift_id": "6267",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" explosive.timed 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "C4",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Money Gun",
+    "gift_id": "7168",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" rocket.launcher 1",
+     "inventory.giveto \"{nick}\" ammo.rocket.basic 6"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "ракетница",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Galaxy",
+    "gift_id": "11046",
+    "repeat_by_count": false
+   }
+  ],
+  "likes": [
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" stones 1000"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "камень",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 500
+   }
+  ],
+  "subs": [
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" metal.refined 100"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "МВК",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "follows": [
+   {
+    "commands": [
+     "say {user} подписался!"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "привет в чат",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "welcome": [],
+  "chatcmds": [
+   {
+    "commands": [
+     "env.time 12"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "день",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!день",
+    "cooldown": 120
+   },
+   {
+    "commands": [
+     "weather.fog 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "туман",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!туман",
+    "cooldown": 60
+   }
+  ],
+  "goals": [
+   {
+    "commands": [
+     "inventory.giveto \"{nick}\" rifle.ak 1",
+     "inventory.giveto \"{nick}\" ammo.rifle 256"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "АК и патроны",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "likes",
+    "target": 5000
+   }
+  ],
+  "panel": [
+   {
+    "commands": [
+     "env.time 12"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "☀ День",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "weather.rain 0",
+     "weather.fog 0"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🌤 Ясно",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "server.save"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💾 Сохранить",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ]
+ }
+}

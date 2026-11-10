@@ -1,0 +1,181 @@
+{
+ "title": "Алмазный стрим (твой плагин)",
+ "game": "minecraft",
+ "icon": "💎",
+ "description": "Твоя заготовка: команды твоего плагина (giftrosa, adddiamonds…). Работает только на твоём сервере.",
+ "profile": {
+  "game": "minecraft",
+  "gifts": [
+   {
+    "name": "Роза",
+    "gift_id": "5655",
+    "commands": [
+     "giftrosa {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": true
+   },
+   {
+    "name": "Корги",
+    "gift_id": "6267",
+    "commands": [
+     "giftkorgi {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   },
+   {
+    "name": "GG",
+    "gift_id": "6064",
+    "commands": [
+     "giftgg {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": true
+   },
+   {
+    "name": "Крик",
+    "gift_id": "",
+    "commands": [
+     "giftkrik {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   },
+   {
+    "name": "Heart Me",
+    "gift_id": "7934",
+    "commands": [
+     "giftserdce {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   },
+   {
+    "name": "Череп",
+    "gift_id": "",
+    "commands": [
+     "giftcherep {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   },
+   {
+    "name": "Галактика",
+    "gift_id": "11046",
+    "commands": [
+     "giftmegaminus {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   },
+   {
+    "name": "Лев",
+    "gift_id": "6369",
+    "commands": [
+     "wheel {nick} {user}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   },
+   {
+    "name": "Пончик",
+    "gift_id": "5879",
+    "commands": [
+     "giftponchik {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   },
+   {
+    "name": "Лаки блок",
+    "gift_id": "",
+    "commands": [
+     "spawnlucky {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   },
+   {
+    "name": "Бомба",
+    "gift_id": "",
+    "commands": [
+     "spawnbomb {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "repeat_by_count": false
+   }
+  ],
+  "likes": [
+   {
+    "threshold": 100,
+    "commands": [
+     "like {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false
+   }
+  ],
+  "subs": [
+   {
+    "commands": [
+     "adddiamonds 50 {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false
+   }
+  ],
+  "follows": [
+   {
+    "commands": [
+     "adddiamonds 10 {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false
+   }
+  ],
+  "welcome": [],
+  "chatcmds": [],
+  "goals": [],
+  "panel": []
+ }
+}

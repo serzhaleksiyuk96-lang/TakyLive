@@ -1,0 +1,64 @@
+name: Сборка релиза
+
+# Ставишь метку версии (git tag v1.64 && git push --tags) — GitHub сам соберёт
+# TakyLive.exe, установщик и пакет обновления и выложит их в релиз.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Версия из метки
+        shell: bash
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          echo "TAKY_VERSION=$V" >> "$GITHUB_ENV"
+          grep -q "APP_VERSION = \"$V\"" app.py || { echo "::error::В app.py другая версия, а метка $GITHUB_REF_NAME"; exit 1; }
+
+      - name: Библиотеки
+        run: python -m pip install -U pyinstaller aiohttp TikTokLive "edge-tts>=7.3.1" imageio-ffmpeg
+
+      - name: Сборка TakyLive.exe
+        run: >
+          python -m PyInstaller --noconfirm --onedir --console --name TakyLive
+          --icon web\takylive.ico --collect-all TikTokLive --collect-all edge_tts --collect-all imageio_ffmpeg
+          --exclude-module numpy --exclude-module setuptools app.py
+
+      - name: Файлы программы рядом с exe
+        shell: pwsh
+        run: |
+          $d = "dist\TakyLive"
+          foreach ($x in "web","templates","media","mods") { Copy-Item $x "$d\$x" -Recurse -Force }
+          foreach ($f in Get-ChildItem -File -Include *.json,*.md -Path .\*) { Copy-Item $f.FullName $d -Force }
+          # программа сама узнает, откуда брать обновления
+          '{"repo": "' + $env:GITHUB_REPOSITORY + '"}' | Out-File -Encoding utf8NoBOM "$d\update_source.json"
+
+      - name: Пакет обновления
+        shell: pwsh
+        run: Compress-Archive -Path "dist\TakyLive\*" -DestinationPath "TakyLive-$env:TAKY_VERSION-update.zip"
+
+      - name: Установщик
+        shell: pwsh
+        run: '& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$env:TAKY_VERSION" installer.iss'
+
+      - name: Что нового
+        run: python tools/release_notes.py
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: TakyLive ${{ env.TAKY_VERSION }}
+          body_path: release_notes.md
+          files: |
+            Output/TakyLive-Setup-*.exe
+            TakyLive-*-update.zip

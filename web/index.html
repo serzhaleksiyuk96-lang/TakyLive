@@ -1,0 +1,1834 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TakyLive</title>
+<link rel="icon" type="image/svg+xml" href="/web/logo-small.svg">
+<link rel="icon" type="image/png" sizes="32x32" href="/web/favicon-32.png">
+<link rel="apple-touch-icon" href="/web/logo-256.png">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎮</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0c13;
+    --panel: rgba(22, 26, 38, 0.75);
+    --panel2: rgba(30, 35, 52, 0.85);
+    --panel-solid: #161a26;
+    --border: rgba(99, 108, 140, 0.18);
+    --border2: rgba(99, 108, 140, 0.35);
+    --text: #eef1f8; --text-dim: #97a0b8; --text-mut: #626c85;
+    --cyan: #22d3ee; --indigo: #6366f1;
+    --green: #34d399; --red: #f87171; --gold: #fbbf24; --purple: #a78bfa;
+    --grad: linear-gradient(135deg, var(--indigo), var(--cyan));
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    background-image:
+      radial-gradient(900px 500px at 15% -10%, rgba(99,102,241,0.14), transparent 60%),
+      radial-gradient(800px 500px at 95% 5%, rgba(34,211,238,0.10), transparent 60%);
+    background-attachment: fixed;
+    font-family: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 14px; line-height: 1.55;
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(99,108,140,0.35); border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(99,108,140,0.55); }
+
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 24px 20px 40px; }
+
+  /* ── Шапка ── */
+  .topbar {
+    display: flex; align-items: center; gap: 16px;
+    background: var(--panel); backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+    border-radius: 18px; padding: 16px 22px; margin-bottom: 20px;
+  }
+  .logo {
+    font-size: 17px; font-weight: 700; letter-spacing: -0.2px;
+    background: var(--grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .status-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red); transition: all .3s; }
+  .status-dot.on { background: var(--green); box-shadow: 0 0 12px rgba(52,211,153,0.8); }
+  .status-text { color: var(--text-dim); font-size: 13px; }
+  .spacer { flex: 1; }
+
+  /* ── Кнопки ── */
+  button {
+    background: var(--panel2); border: 1px solid var(--border2);
+    color: var(--text); padding: 9px 16px; border-radius: var(--radius);
+    cursor: pointer; font-size: 13px; font-family: inherit; font-weight: 500;
+    transition: all .18s ease;
+  }
+  button:hover { border-color: var(--indigo); background: rgba(99,102,241,0.12); transform: translateY(-1px); }
+  button:active { transform: translateY(0) scale(.98); }
+  button.primary {
+    background: var(--grad); color: #fff; border: none; font-weight: 600;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.35);
+  }
+  button.primary:hover { box-shadow: 0 6px 22px rgba(99,102,241,0.5); transform: translateY(-1px); }
+  button.green {
+    background: linear-gradient(135deg, #10b981, #34d399); color: #04281c;
+    border: none; font-weight: 600; box-shadow: 0 4px 14px rgba(52,211,153,0.3);
+  }
+  button.green:hover { box-shadow: 0 6px 20px rgba(52,211,153,0.45); transform: translateY(-1px); }
+  button.danger { background: transparent; border-color: rgba(248,113,113,0.5); color: var(--red); }
+  button.danger:hover { background: rgba(248,113,113,0.12); border-color: var(--red); }
+  button.small { padding: 6px 12px; font-size: 12px; }
+  button.icon { padding: 6px 9px; }
+
+  /* ── Поля ввода ── */
+  input, select {
+    background: rgba(10,12,19,0.6); border: 1px solid var(--border2);
+    color: var(--text); padding: 9px 12px; border-radius: var(--radius);
+    font-size: 13px; font-family: inherit; width: 100%;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus {
+    outline: none; border-color: var(--indigo);
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
+  }
+  input.mono { font-family: "JetBrains Mono", "Consolas", monospace; }
+  input[type=checkbox] { width: auto; accent-color: var(--indigo); }
+  input[type=range] { accent-color: var(--cyan); padding: 0; border: none; background: transparent; }
+
+  /* ── Верхние вкладки ── */
+  .tabs {
+    display: inline-flex; gap: 4px; margin-bottom: 18px; flex-wrap: wrap;
+    background: var(--panel); backdrop-filter: blur(10px);
+    border: 1px solid var(--border); border-radius: 14px; padding: 5px;
+  }
+  .tab {
+    padding: 9px 18px; border-radius: 10px; cursor: pointer;
+    font-size: 13px; font-weight: 500; color: var(--text-dim);
+    transition: all .18s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active {
+    background: var(--grad); color: #fff;
+    box-shadow: 0 3px 12px rgba(99,102,241,0.35);
+  }
+
+  /* ── Профили ── */
+  .profile-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .profile-chip {
+    padding: 8px 16px; border-radius: 999px; cursor: pointer;
+    background: var(--panel2); border: 1px solid var(--border2);
+    font-size: 13px; font-weight: 500; color: var(--text-dim);
+    display: flex; align-items: center; gap: 8px; transition: all .18s;
+  }
+  .profile-chip:hover { border-color: var(--purple); color: var(--text); }
+  .profile-chip.active {
+    background: linear-gradient(135deg, #8b5cf6, #a78bfa); color: #fff;
+    border-color: transparent; box-shadow: 0 3px 14px rgba(139,92,246,0.4);
+  }
+  .profile-chip .x { opacity: .6; font-size: 15px; }
+  .profile-chip .x:hover { opacity: 1; }
+
+  /* ── Секции событий ── */
+  .section-tabs {
+    display: flex; gap: 5px; margin-bottom: 14px;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; padding: 5px; backdrop-filter: blur(10px);
+  }
+  .section-tab {
+    flex: 1; text-align: center; padding: 10px 6px; border-radius: 10px;
+    cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-dim);
+    transition: all .18s;
+  }
+  .section-tab:hover { color: var(--text); background: rgba(99,102,241,0.08); }
+  .section-tab.active { background: var(--panel2); color: var(--cyan); box-shadow: inset 0 0 0 1px var(--border2); }
+
+  /* ── Карточки триггеров ── */
+  .card {
+    background: var(--panel); backdrop-filter: blur(14px);
+    border: 1px solid var(--border); border-radius: 16px;
+    margin-bottom: 14px; overflow: hidden;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+    transition: border-color .2s, box-shadow .2s, opacity .2s, transform .15s;
+  }
+  .card:hover { border-color: var(--border2); box-shadow: 0 8px 32px rgba(0,0,0,0.35); }
+  .card.disabled { opacity: 0.5; }
+  .card.disabled .card-body { filter: grayscale(0.5); }
+
+  .card-bar { display: flex; align-items: center; gap: 12px; padding: 14px 18px; user-select: none; }
+  .card-title-wrap { flex: 1; display: flex; align-items: center; gap: 10px; cursor: pointer; min-width: 0; }
+  .card-title {
+    font-size: 15px; font-weight: 600; color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .chevron { color: var(--text-mut); font-size: 10px; flex: none; transition: transform .2s; }
+  .off-badge {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .6px; font-weight: 600;
+    background: rgba(248,113,113,.14); color: var(--red);
+    padding: 3px 8px; border-radius: 6px; flex: none;
+  }
+
+  /* ── Тумблер ── */
+  .toggle {
+    width: 44px; height: 25px; border-radius: 999px; flex: none;
+    background: rgba(10,12,19,0.7); border: 1px solid var(--border2);
+    padding: 0; position: relative; cursor: pointer; transition: all .2s;
+  }
+  .toggle .knob {
+    position: absolute; top: 2px; left: 2px;
+    width: 19px; height: 19px; border-radius: 50%;
+    background: var(--text-mut); transition: all .25s cubic-bezier(.4,1.4,.5,1);
+  }
+  .toggle.on { background: var(--grad); border-color: transparent; box-shadow: 0 0 14px rgba(99,102,241,.5); }
+  .toggle.on .knob { left: 22px; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+  .toggle:hover { border-color: var(--indigo); }
+
+  .card-body { padding: 0 18px 18px; }
+  .card.collapsed .card-body { display: none; }
+
+  .title-row { margin-bottom: 12px; }
+  .title-row label { display: block; font-size: 11px; color: var(--text-mut); margin-bottom: 5px; font-weight: 500; }
+
+  .card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .card-head .meta { flex: 1; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .card-head .meta input { width: auto; flex: 1; min-width: 120px; }
+  .card-head .meta .gift-id { width: 90px; flex: none; }
+
+  /* ── Цепочка команд ── */
+  .chain { display: flex; flex-direction: column; gap: 8px; }
+  .cmd-row { display: flex; align-items: center; gap: 8px; }
+  .cmd-num {
+    width: 24px; height: 24px; flex: none; border-radius: 8px;
+    background: var(--grad); opacity: .85;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+  }
+  .cmd-row input.cmd { flex: 1; }
+  .cmd-row input.delay { width: 70px; flex: none; }
+  .delay-label { font-size: 11px; color: var(--text-mut); flex: none; }
+
+  .add-cmd {
+    margin-top: 10px; width: 100%; border-style: dashed;
+    color: var(--cyan); border-color: var(--border2); background: transparent;
+  }
+  .add-cmd:hover { border-color: var(--cyan); background: rgba(34,211,238,0.07); }
+
+  .card-foot { display: flex; gap: 12px; margin-top: 14px; align-items: center; flex-wrap: wrap; }
+  .card-foot .spacer { flex: 1; }
+  .chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
+  .chk input { width: auto; }
+
+  /* ── Настройки ── */
+  .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: 500; }
+  .field { margin-bottom: 4px; }
+  .full { grid-column: 1 / -1; }
+  .card > h3 { padding: 0; }
+  h3 { font-size: 15px; margin-bottom: 12px; color: var(--text); font-weight: 600; }
+
+  /* Карточки на вкладках настроек/лога/оверлеев имеют внутренний padding */
+  #view-settings .card, #view-log .card, #view-overlays .card { padding: 18px 20px; }
+
+  /* ── Лог ── */
+  .log-box {
+    background: rgba(5,7,12,0.8); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px; height: 280px;
+    overflow-y: auto; font-family: "JetBrains Mono", "Consolas", monospace; font-size: 12px;
+  }
+  .log-line { padding: 2px 0; color: var(--text-dim); }
+  .log-line .lt { color: var(--text-mut); }
+  .log-line.ПОДАРОК .lk { color: var(--gold); }
+  .log-line.КОМАНДА .lk { color: var(--cyan); }
+  .log-line.ЛАЙКИ .lk { color: var(--red); }
+  .log-line.СИСТЕМА .lk { color: var(--green); }
+  .log-line.ПРИВЕТСТВИЕ .lk { color: var(--purple); }
+  .log-line.ОШИБКА .lk, .log-line.ОШИБКА { color: var(--red); }
+  .log-line .lk { font-weight: 600; }
+
+  .hint { font-size: 12px; color: var(--text-mut); margin-top: 8px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .hidden { display: none; }
+  .vars-help { font-size: 12px; color: var(--text-mut); margin: 12px 0; }
+  .sc-types { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 0; }
+  .vars-table { width: 100%; border-collapse: collapse; }
+  .vars-table td { padding: 4px 8px 4px 0; vertical-align: top; font-size: 12px; }
+  .vars-table td:first-child { width: 200px; white-space: nowrap; }
+  .vars-help code.ex {
+    display: inline-block; margin: 3px 0; background: rgba(10,12,19,0.7);
+    color: var(--text-dim); font-size: 11px;
+  }
+  .vars-help code {
+    background: var(--panel2); padding: 2px 8px; border-radius: 6px;
+    color: var(--cyan); font-family: "JetBrains Mono", monospace;
+  }
+
+  /* ── Оверлеи (список) ── */
+  .overlay-item {
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 16px; margin-bottom: 12px;
+    transition: border-color .18s;
+  }
+  .overlay-item:hover { border-color: var(--border2); }
+  .ov-info { margin-bottom: 10px; }
+  .ov-name { font-size: 15px; font-weight: 600; color: var(--text); }
+  .ov-desc { font-size: 12px; color: var(--text-mut); margin-top: 2px; }
+
+  /* ── Замеченные подарки ── */
+  .seen-gift {
+    display: flex; align-items: center; gap: 12px;
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 14px; margin-bottom: 8px;
+    transition: border-color .18s;
+  }
+  .seen-gift:hover { border-color: var(--indigo); }
+  .sg-info { flex: 1; }
+  .sg-name { font-size: 14px; font-weight: 600; color: var(--cyan); }
+  .sg-meta { font-size: 12px; color: var(--text-mut); margin-left: 10px; }
+
+  /* ── Медиа-блок ── */
+  .media-block {
+    margin-top: 14px; padding: 14px 16px;
+    background: rgba(10,12,19,0.5); border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+  .media-title { font-size: 13px; color: var(--purple); font-weight: 600; margin-bottom: 12px; }
+  .media-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .media-field label { display: block; font-size: 11px; color: var(--text-dim); margin-bottom: 5px; font-weight: 500; }
+  .media-field select { width: 100%; }
+  .media-field input[type=range] { width: 100%; }
+  .media-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+
+  .caption-row { margin-bottom: 12px; }
+  .caption-row label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 5px; font-weight: 500; }
+  .caption-row input { width: 100%; }
+
+  .gift-lib-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 8px; max-height: 380px; overflow-y: auto; padding-right: 4px;
+  }
+  .gift-lib-item {
+    background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 6px; text-align: center; cursor: pointer;
+    transition: all .15s;
+  }
+  .gift-lib-item:hover {
+    border-color: var(--cyan); transform: translateY(-2px);
+    box-shadow: 0 4px 14px rgba(34,211,238,0.2);
+  }
+  .gift-lib-item img, .gl-ph {
+    width: 44px; height: 44px; object-fit: contain; margin: 0 auto 6px; display: block;
+  }
+  .gl-ph {
+    border-radius: 50%; background: var(--grad); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 19px; font-weight: 700;
+  }
+  .gl-name {
+    font-size: 11px; color: var(--text); line-height: 1.25;
+    overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    min-height: 27px;
+  }
+  .gl-price { font-size: 11px; color: var(--gold); font-weight: 600; margin-top: 3px; }
+
+  /* ── Оверлеи: живое превью ── */
+  .overlay-item.ov-live { display: flex; gap: 16px; align-items: center; }
+  .ov-slot { width: 236px; flex: none; display: flex; justify-content: center; }
+  .ov-body { flex: 1; min-width: 0; }
+  .ov-prev {
+    flex: none; border-radius: 10px; overflow: hidden;
+    border: 1px solid var(--border2); position: relative;
+    /* клеточка = прозрачный фон, как в OBS */
+    background-color: #171a22;
+    background-image:
+      linear-gradient(45deg, #1e222c 25%, transparent 25%, transparent 75%, #1e222c 75%),
+      linear-gradient(45deg, #1e222c 25%, transparent 25%, transparent 75%, #1e222c 75%);
+    background-size: 14px 14px;
+    background-position: 0 0, 7px 7px;
+  }
+  .ov-prev iframe { border: 0; display: block; pointer-events: none; }
+  .ov-prev.novis {
+    width: 168px; height: 74px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 4px;
+    font-size: 22px; color: var(--text-mut);
+  }
+  .ov-prev.novis span { font-size: 11px; }
+  .ov-dot { font-size: 11px; color: var(--green); margin-left: 6px; font-weight: 500; }
+
+  @supports selector(:has(*)) {   /* старый браузер — останутся обычные галочки */
+  /* ── Галочки → кнопки-переключатели (во всей программе) ──
+     Сам чекбокс остаётся внутри и прячется — весь код с .checked работает как раньше */
+  label.chk:has(> input[type=checkbox]) {
+    display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+    padding: 7px 13px; border-radius: 10px; font-size: 12px; font-weight: 500;
+    background: rgba(10,12,19,0.55); border: 1px solid var(--border2); color: var(--text-mut);
+    transition: all .18s ease;
+  }
+  label.chk:has(> input[type=checkbox])::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%; flex: none;
+    background: #3a4155; transition: all .18s ease;
+  }
+  label.chk:has(> input[type=checkbox]):hover { border-color: var(--indigo); color: var(--text-dim); }
+  label.chk:has(> input[type=checkbox]:checked) {
+    color: #fff; background: rgba(34,211,238,0.14); border-color: var(--cyan);
+    box-shadow: 0 0 12px rgba(34,211,238,0.28);
+  }
+  label.chk:has(> input[type=checkbox]:checked)::before {
+    background: var(--cyan); box-shadow: 0 0 8px rgba(34,211,238,0.9);
+  }
+  label.chk > input[type=checkbox] {
+    position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+  }
+
+  }
+
+  /* ── Главная вкладка: фильтры, создание, метки типов ── */
+  .ev-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .ev-filters { display: flex; gap: 6px; flex-wrap: wrap; flex: 1; }
+  .ev-chip {
+    padding: 6px 12px; border-radius: 999px; cursor: pointer; font-size: 12px; font-weight: 500;
+    background: var(--panel2); border: 1px solid var(--border2); color: var(--text-dim);
+    transition: all .15s;
+  }
+  .ev-chip:hover { color: var(--text); border-color: var(--indigo); }
+  .ev-chip.active { color: #fff; background: var(--grad); border-color: transparent; }
+  .ev-chip b { font-weight: 500; opacity: .75; margin-left: 4px; }
+  .ev-saved { font-size: 12px; color: var(--green); white-space: nowrap; transition: color .2s; }
+  .ev-saved.pending { color: var(--text-mut); }
+  .ev-add { width: 100%; padding: 12px; margin-bottom: 12px; font-size: 14px; }
+  .ev-add-bottom {
+    width: 100%; margin-top: 4px; padding: 11px; border-style: dashed;
+    color: var(--cyan); background: transparent;
+  }
+  .type-ico {
+    width: 30px; height: 30px; border-radius: 8px; flex: none; font-size: 15px;
+    display: flex; align-items: center; justify-content: center; background: var(--panel2);
+  }
+  .card-sum { color: var(--text); }
+  .card-sum i { font-style: normal; color: var(--cyan); }
+  .t-badge { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 6px; flex: none; }
+  .t-gifts    { background: rgba(251,191,36,.15);  color: var(--gold); }
+  .t-likes    { background: rgba(248,113,113,.15); color: var(--red); }
+  .t-subs     { background: rgba(167,139,250,.15); color: var(--purple); }
+  .t-follows  { background: rgba(52,211,153,.15);  color: var(--green); }
+  .t-welcome  { background: rgba(236,72,153,.15);  color: #f472b6; }
+  .t-chatcmds { background: rgba(34,211,238,.15);  color: var(--cyan); }
+  .t-goals    { background: rgba(251,146,60,.15);  color: #fb923c; }
+  .t-panel    { background: rgba(99,102,241,.18);  color: #a5b4fc; }
+  .card .card-bar .chevron { order: 9; }
+
+  /* ── Окно «Что будет запускать событие?» ── */
+  #typeModal {
+    position: fixed; inset: 0; z-index: 100; padding: 24px;
+    background: rgba(5,7,12,0.75); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #typeModal.hidden { display: none; }
+  #typeBox {
+    background: var(--panel-solid); border: 1px solid var(--border2); border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6); width: 100%; max-width: 760px; padding: 20px 22px;
+  }
+  .type-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  @media (max-width: 700px) { .type-grid { grid-template-columns: repeat(2, 1fr); } }
+  .type-tile {
+    background: var(--panel2); border: 1.5px solid var(--border); border-radius: 14px;
+    padding: 16px 8px; text-align: center; cursor: pointer; transition: all .15s;
+  }
+  .type-tile:hover { border-color: var(--cyan); transform: translateY(-2px);
+                     box-shadow: 0 6px 18px rgba(34,211,238,0.2); }
+  .type-tile .te { font-size: 28px; }
+  .type-tile .tn { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 6px; }
+  .type-tile .td { font-size: 11px; color: var(--text-mut); margin-top: 3px; }
+
+  /* ── Игра вкладки, каталог команд, инструкции ── */
+  .game-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
+              padding: 10px 14px; background: var(--panel); border: 1px solid var(--border);
+              border-radius: 14px; }
+  .gb-label { font-size: 13px; font-weight: 600; color: var(--text); }
+  .gb-status { font-size: 12px; }
+  .gs-on { color: var(--green); }
+  .gs-off { color: var(--gold); }
+  .gs-hint { color: var(--text-mut); }
+  .add-row { display: flex; gap: 8px; }
+  .add-row .add-cmd { flex: 1; }
+  .add-row .add-cmd.lib { flex: none; width: auto; padding-left: 16px; padding-right: 16px; }
+  .mdl { position: fixed; inset: 0; z-index: 100; padding: 24px; display: flex;
+         align-items: center; justify-content: center;
+         background: rgba(5,7,12,0.75); backdrop-filter: blur(4px); }
+  .mdl.hidden { display: none; }
+  .mdl-box { background: var(--panel-solid); border: 1px solid var(--border2); border-radius: 18px;
+             box-shadow: 0 20px 60px rgba(0,0,0,0.6); width: 100%; max-width: 820px; max-height: 85vh;
+             overflow-y: auto; padding: 20px 22px; }
+  .cmd-group { font-size: 13px; font-weight: 600; color: var(--cyan); margin: 14px 0 8px; }
+  .cmd-group:first-child { margin-top: 0; }
+  .cmd-list .ci { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 10px;
+                  cursor: pointer; border: 1px solid transparent; transition: all .12s; }
+  .cmd-list .ci:hover { background: rgba(99,102,241,0.12); border-color: var(--indigo); }
+  .ci .cn { font-size: 13px; color: var(--text); width: 190px; flex: none; }
+  .ci .cc { font-family: "JetBrains Mono", Consolas, monospace; font-size: 12px; color: var(--cyan);
+            background: rgba(10,12,19,0.6); padding: 3px 8px; border-radius: 6px; flex: none; }
+  .ci .cd { font-size: 11px; color: var(--text-mut); }
+  .ci .ci-try { margin-left: auto; flex: none; padding: 4px 10px; }
+  .gicon { border-radius: 4px; object-fit: cover; flex: none; vertical-align: middle; }
+  .gseg { display: inline-flex; align-items: center; gap: 6px; }
+  .type-tile .te .gicon { border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,0.4); }
+  .type-tile .te { height: 52px; display: flex; align-items: center; justify-content: center; }
+  .gicon-e { font-size: inherit; }
+  #ntTitle .gicon { vertical-align: -4px; border-radius: 6px; }
+  /* ── Вкладка «Серверы» ── */
+  .srv-top { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+  .srv-java { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .srv-bar { display: inline-block; width: 140px; height: 7px; border-radius: 4px; background: rgba(255,255,255,0.1);
+             overflow: hidden; vertical-align: middle; }
+  .srv-bar i { display: block; height: 100%; background: var(--grad); transition: width .3s; }
+  .srv-layout { display: grid; grid-template-columns: 340px 1fr; gap: 12px; min-height: 520px; }
+  @media (max-width: 900px) { .srv-layout { grid-template-columns: 1fr; } }
+  .srv-list { display: flex; flex-direction: column; gap: 8px; }
+  .srv-empty { padding: 20px; text-align: center; color: var(--text-mut); font-size: 13px; line-height: 1.6;
+               border: 1px dashed var(--border2); border-radius: 14px; }
+  .srv-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 11px 13px;
+              cursor: pointer; transition: border-color .15s; }
+  .srv-card:hover { border-color: var(--indigo); }
+  .srv-card.sel { border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(34,211,238,0.35); }
+  .srv-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .srv-st { font-size: 11px; font-weight: 500; color: var(--text-mut); margin-left: 4px; }
+  .srv-meta { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+  .srv-err { font-size: 12px; color: var(--red); margin-top: 4px; }
+  .srv-btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center; }
+  .srv-linked { font-size: 12px; color: var(--green); }
+  .srv-console { display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--border);
+                 border-radius: 14px; padding: 10px; min-width: 0; }
+  .srv-con-head { font-size: 13px; color: var(--text-dim); margin: 2px 4px 8px; }
+  .srv-log { flex: 1; min-height: 360px; max-height: 60vh; overflow-y: auto; background: #07090f; border-radius: 10px;
+             padding: 10px 12px; font-family: "JetBrains Mono", Consolas, monospace; font-size: 12px; line-height: 1.5;
+             color: #c9cede; white-space: pre-wrap; word-break: break-word; }
+  .srv-log .c-cmd { color: var(--cyan); } .srv-log .c-err { color: #f87171; } .srv-log .c-warn { color: #fbbf24; }
+  .srv-log .c-ok { color: #4ade80; } .srv-log .c-sys { color: #a78bfa; }
+  .srv-quick { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+  .srv-chip { font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer; background: var(--panel2);
+              border: 1px solid var(--border2); color: var(--text-dim); }
+  .srv-chip:hover { border-color: var(--cyan); color: var(--text); }
+  .srv-input { display: flex; gap: 8px; }
+  .srv-input input { flex: 1; }
+  .srv-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+  .srv-games { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+  .srv-game { display: flex; align-items: center; gap: 8px; padding: 7px 12px 7px 7px; border-radius: 12px;
+              cursor: pointer; background: var(--panel2); border: 1.5px solid var(--border); font-size: 13px;
+              color: var(--text-dim); }
+  .srv-game img { width: 28px; height: 28px; border-radius: 7px; object-fit: cover; }
+  .srv-game.active { border-color: var(--cyan); color: var(--text); box-shadow: 0 0 10px rgba(34,211,238,0.25); }
+  .srv-gico { width: 18px; height: 18px; border-radius: 4px; vertical-align: -3px; margin-right: 2px; }
+  .srv-core-desc { font-size: 12px; color: var(--cyan); margin-top: 2px; }
+  .srv-core { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 5px; margin-right: 4px; }
+  .srv-core.k-plugins { background: rgba(99,102,241,0.2); color: #a5b4fc; }
+  .srv-core.k-mods { background: rgba(52,211,153,0.15); color: var(--green); }
+  .srv-core.k-hybrid { background: rgba(251,191,36,0.15); color: var(--gold); }
+  .srv-core.k-plain { background: rgba(255,255,255,0.08); color: var(--text-dim); }
+  .srv-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-dim); }
+  .srv-form .srv-wide { grid-column: 1 / -1; }
+  .srv-checks { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .srv-checks a { color: var(--cyan); }
+  /* ── Стартовый экран ── */
+  .st-hero { text-align: center; padding: 18px 0 8px; }
+  .st-title { font-size: 26px; font-weight: 700; color: var(--text); }
+  .st-sub { font-size: 14px; color: var(--text-dim); margin-top: 6px; }
+  .st-head { font-size: 14px; font-weight: 600; color: var(--text-dim); margin: 22px 2px 10px; }
+  .st-tabs { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .st-tab { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; cursor: pointer;
+            background: var(--panel); border: 1.5px solid var(--border); transition: border-color .15s, transform .15s; }
+  .st-tab:hover { border-color: var(--cyan); transform: translateY(-1px); }
+  .st-tab .gicon { border-radius: 10px; }
+  .st-tab-name { font-size: 15px; font-weight: 600; color: var(--text); }
+  .st-tab-meta { font-size: 12px; color: var(--text-mut); margin-top: 2px; }
+  .st-tab .st-del { margin-left: auto; opacity: .5; }
+  .st-tab:hover .st-del { opacity: 1; }
+  .st-tab.live { border-color: rgba(248,113,113,0.7); }
+  .st-games { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .st-game { text-align: center; padding: 16px 8px 14px; border-radius: 16px; cursor: pointer; background: var(--panel);
+             border: 1.5px solid var(--border); transition: border-color .15s, transform .15s; }
+  .st-game:hover { border-color: var(--cyan); transform: translateY(-2px); }
+  .st-game .gicon { border-radius: 14px; box-shadow: 0 6px 18px rgba(0,0,0,0.45); }
+  .st-game-name { font-size: 14px; font-weight: 600; color: var(--text); margin-top: 8px; }
+  .st-game-cnt { font-size: 11px; color: var(--text-mut); margin-top: 2px; }
+  .gb-cur { display: inline-flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; color: var(--text); }
+  .gb-cur .gicon { border-radius: 6px; }
+  .gb-change { opacity: .7; }
+  .gb-change:hover { opacity: 1; }
+  .ev-empty { text-align: center; padding: 40px 10px; color: var(--text-dim); }
+  /* ── Выбор картинки ── */
+  .ip-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .ip-tab { padding: 7px 14px; border-radius: 10px; cursor: pointer; font-size: 13px; color: var(--text-dim);
+            background: var(--panel2); border: 1px solid var(--border2); }
+  .ip-tab.active { color: #fff; background: var(--grad); border-color: transparent; }
+  .ip-sug { margin-bottom: 12px; padding: 10px; border-radius: 12px; background: rgba(34,211,238,0.06);
+            border: 1px solid rgba(34,211,238,0.3); }
+  .ip-sub { font-size: 12px; color: var(--cyan); margin-bottom: 8px; }
+  .ip-bar input { width: 100%; }
+  .ip-cats { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+  .ip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px;
+             max-height: 46vh; overflow-y: auto; }
+  .ip-sug .ip-grid { max-height: none; }
+  .ip-tile { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px; border-radius: 10px;
+             cursor: pointer; background: var(--panel2); border: 1.5px solid var(--border); }
+  .ip-tile:hover { border-color: var(--cyan); }
+  .ip-tile.sel { border-color: var(--gold); box-shadow: 0 0 10px rgba(251,191,36,0.3); }
+  .ip-tile img { width: 64px; height: 64px; object-fit: contain; image-rendering: auto; }
+  .ip-tile span { font-size: 10px; color: var(--text-dim); text-align: center; line-height: 1.2; max-width: 100%;
+                  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ip-auto { width: 64px; height: 64px; display: flex; align-items: center; justify-content: center; border-radius: 10px;
+             background: rgba(255,255,255,0.06); color: var(--text-mut); font-size: 13px; }
+  .ic-name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ip-credit { margin-top: 10px; } .ip-credit a { color: var(--cyan); }
+  .tts-ctl { display: flex; gap: 4px; margin-right: 10px; padding: 3px; border-radius: 12px;
+             background: rgba(255,255,255,0.04); border: 1px solid var(--border); }
+  .tts-ctl .icon { width: 34px; height: 34px; font-size: 15px; }
+  .tts-ctl .icon.off { opacity: .45; }
+  .vc-head { font-size: 13px; font-weight: 600; color: var(--text-dim); margin: 16px 0 8px; }
+  .vc-row { display: grid; grid-template-columns: 130px 130px 1fr auto auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .vc-row select, .vc-row input { width: 100%; }
+  .vv-bar { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; flex-wrap: wrap; }
+  .vv-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; margin-bottom: 6px;
+            background: var(--panel2); border: 1px solid var(--border); font-size: 13px; }
+  .vv-row .vv-nick { font-weight: 600; color: var(--text); }
+  .vv-row .vv-meta { color: var(--text-mut); font-size: 12px; }
+  .vv-row .vv-label { margin-left: auto; color: var(--cyan); white-space: nowrap; }
+  .vv-row .vv-voice { max-width: 220px; }
+  .vv-row .vv-pin { opacity: .35; } .vv-row .vv-pin.on { opacity: 1; }
+  .vv-row.pinned { border-color: rgba(251,191,36,0.5); }
+  .vv-add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; }
+  .vv-add-act { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+  .vv-add .sx-in { width: 100%; max-width: none; box-sizing: border-box; }
+  .role-row { display: grid; grid-template-columns: 230px 1fr; gap: 10px; align-items: center; margin-bottom: 6px; font-size: 13px; }
+  .app-logo { width: 30px; height: 30px; vertical-align: -8px; margin-right: 9px; border-radius: 8px; }
+  .st-logo { width: 76px; height: 76px; display: block; margin: 0 auto 12px; filter: drop-shadow(0 8px 20px rgba(34,211,238,0.25)); }
+  .lib-reg { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; padding: 10px 12px;
+             border-radius: 12px; background: rgba(34,211,238,0.06); border: 1px solid rgba(34,211,238,0.3); }
+  .lib-reg-t { font-size: 13px; font-weight: 600; color: var(--text); }
+  .lib-reg select { max-width: 220px; }
+  .lib-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+  .gift-lib-item { position: relative; }
+  .gl-reg { position: absolute; top: 4px; right: 4px; font-size: 9px; font-weight: 700; color: #0a0c13; background: var(--cyan);
+            border-radius: 4px; padding: 1px 4px; letter-spacing: .3px; }
+  /* ── Медиа: блок в карточке ── */
+  .ms-slot { display: flex; align-items: center; gap: 14px; padding: 10px; border-radius: 12px;
+             background: rgba(255,255,255,0.03); border: 1px solid var(--border); }
+  .ms-prev { position: relative; width: 128px; height: 72px; flex: none; border-radius: 10px; overflow: hidden; cursor: pointer;
+             background: #05070c; border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; }
+  .ms-prev.snd { width: 72px; }
+  .ms-prev img { width: 100%; height: 100%; object-fit: cover; }
+  .ms-prev.empty { border-style: dashed; opacity: .75; }
+  .ms-prev:hover { border-color: var(--cyan); }
+  .ms-ph { font-size: 26px; opacity: .8; }
+  .ms-play { position: absolute; inset: auto 6px 6px auto; font-style: normal; font-size: 11px; color: #fff;
+             background: rgba(0,0,0,0.6); border-radius: 6px; padding: 2px 6px; }
+  .ms-info { flex: 1; min-width: 0; }
+  .ms-name { font-size: 14px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ms-meta { font-size: 12px; color: var(--text-mut); margin-top: 3px; }
+  .ms-ctl { display: flex; gap: 16px; margin-top: 8px; font-size: 12px; color: var(--text-dim); flex-wrap: wrap; }
+  .ms-ctl label { display: flex; align-items: center; gap: 6px; }
+  .ms-ctl input[type=range] { width: 120px; }
+  .ms-sec { width: 64px !important; padding: 4px 6px !important; }
+  .ms-btns { display: flex; gap: 6px; flex: none; }
+  /* ── Окно медиа ── */
+  .mp-box { max-width: 980px; width: 94vw; position: relative; }
+  .mp-top { display: flex; gap: 10px; margin-bottom: 10px; }
+  .mp-top input { flex: 1; }
+  .mp-drop { font-size: 12px; color: var(--text-mut); padding: 9px 12px; border: 1.5px dashed var(--border2); border-radius: 10px; margin-bottom: 12px; text-align: center; }
+  .mp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 12px; max-height: 58vh; overflow-y: auto; padding: 2px; }
+  .mp-card { position: relative; border-radius: 12px; background: var(--panel2); border: 1.5px solid var(--border); padding: 8px; cursor: pointer;
+             transition: border-color .15s, transform .15s; }
+  .mp-card:hover { border-color: var(--cyan); transform: translateY(-2px); }
+  .mp-card.sel { border-color: var(--gold); box-shadow: 0 0 12px rgba(251,191,36,0.3); }
+  .mp-thumb { position: relative; height: 104px; border-radius: 8px; overflow: hidden; background: #05070c;
+              display: flex; align-items: center; justify-content: center; font-size: 30px; }
+  .mp-thumb img, .mp-thumb video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .mp-thumb video { opacity: 0; transition: opacity .2s; }
+  .mp-play { position: absolute; left: 8px; bottom: 8px; font-style: normal; font-size: 11px; color: #fff; background: rgba(0,0,0,0.55);
+             border-radius: 6px; padding: 2px 6px; }
+  .mp-dur { position: absolute; right: 6px; bottom: 6px; font-size: 11px; color: #fff; background: rgba(0,0,0,0.7); border-radius: 6px; padding: 2px 6px; }
+  .mp-note { font-size: 34px; }
+  .mp-listen { position: absolute; left: 50%; top: 50%; transform: translate(-50%, 30%); width: 34px; height: 34px; border-radius: 50%;
+               padding: 0; font-size: 13px; }
+  .mp-name { font-size: 12px; font-weight: 600; color: var(--text); margin-top: 7px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mp-meta { font-size: 11px; color: var(--text-mut); margin-top: 2px; }
+  .mp-del { position: absolute; top: 12px; right: 12px; width: 26px; height: 26px; padding: 0; border-radius: 8px; font-size: 12px;
+            opacity: 0; transition: opacity .15s; background: rgba(0,0,0,0.6); border: 1px solid rgba(248,113,113,0.6); }
+  .mp-card:hover .mp-del { opacity: 1; }
+  .mp-fix { margin-top: 6px; width: 100%; font-size: 11px; padding: 4px; background: rgba(251,191,36,0.12); border: 1px solid rgba(251,191,36,0.5); color: var(--gold); }
+  .mp-err { font-size: 11px; color: var(--red); margin-top: 4px; }
+  .mp-proc { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 11px; color: var(--gold); }
+  .mp-spin { font-size: 24px; animation: mpSpin 1.4s linear infinite; }
+  @keyframes mpSpin { to { transform: rotate(360deg); } }
+  .mp-bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; margin-top: 6px; }
+  .mp-bar i { display: block; height: 100%; background: var(--grad); }
+  .mp-card.none .mp-thumb span { font-size: 26px; color: var(--text-mut); }
+  .mp-dropcover { display: none; position: absolute; inset: 0; border-radius: inherit; background: rgba(34,211,238,0.14);
+                  border: 2px dashed var(--cyan); align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: var(--text); }
+  #mediaPickModal.dragging .mp-dropcover { display: flex; }
+  .ver-badge { font-size: 11px; font-weight: 600; color: var(--cyan); margin-left: 8px; padding: 2px 8px;
+               border-radius: 999px; border: 1px solid rgba(34,211,238,0.4); background: rgba(34,211,238,0.08);
+               cursor: pointer; vertical-align: middle; }
+  .ver-badge:hover { background: rgba(34,211,238,0.18); }
+  .ver-badge.upd { color: #1a1a1a; background: var(--gold); border-color: var(--gold); animation: updPulse 2s ease-in-out infinite; }
+  @keyframes updPulse { 0%,100% { box-shadow: 0 0 0 0 rgba(251,191,36,0.6); } 50% { box-shadow: 0 0 0 6px rgba(251,191,36,0); } }
+  .upd-box { padding: 12px 14px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--border); margin-bottom: 14px; font-size: 13px; }
+  .upd-box.avail { border-color: rgba(251,191,36,0.6); background: rgba(251,191,36,0.06); }
+  .upd-notes { margin: 10px 0; font-size: 12px; color: var(--text-dim); line-height: 1.55; max-height: 180px; overflow-y: auto; }
+  .upd-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); overflow: hidden; margin: 10px 0 6px; }
+  .upd-bar i { display: block; height: 100%; background: var(--grad); transition: width .3s; }
+  .upd-err { color: var(--red); margin-top: 6px; }
+  .mig-box { margin: 18px 0 4px; padding: 14px 16px; border-radius: 14px; background: rgba(99,102,241,0.08);
+             border: 1px solid rgba(99,102,241,0.45); }
+  .mig-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
+  .mig-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .mig-row .mono { font-size: 12px; } .mig-row input { flex: 1; min-width: 260px; }
+  .cl-ver { font-size: 14px; font-weight: 600; color: var(--text); margin: 14px 0 4px; }
+  .cl-ver:first-child { margin-top: 0; }
+  .cl-ver span { font-size: 12px; font-weight: 400; color: var(--text-mut); margin-left: 6px; }
+  .cl-list { margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+  .live-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px;
+                 padding: 10px 14px; border-radius: 12px; font-size: 13px; color: var(--text);
+                 background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.45); }
+  .live-banner.hidden { display: none; }
+  .profile-chip.live { box-shadow: 0 0 0 1px rgba(248,113,113,0.7), 0 0 10px rgba(248,113,113,0.35); }
+  .gl-ru { font-size: 11px; color: var(--cyan); margin-top: 1px; }
+  .warn-badge { font-size: 10px; font-weight: 700; color: #1a1a1a; background: var(--gold); padding: 2px 7px;
+                border-radius: 6px; flex: none; }
+  .warn-line { font-size: 12px; color: var(--gold); background: rgba(251,191,36,0.08);
+               border: 1px solid rgba(251,191,36,0.35); border-radius: 8px; padding: 7px 10px; margin: 8px 0 2px; }
+  .pb-empty { padding: 10px 4px; text-align: center; width: 100%; }
+  .ev-top { flex-wrap: wrap; }
+  .ev-saved { flex: none; margin-left: auto; }
+  .ov-live .ov-body .row button { white-space: nowrap; flex: none; }
+  .tpl { display: flex; align-items: center; gap: 14px; padding: 12px 14px; margin-bottom: 8px;
+         background: var(--panel2); border: 1px solid var(--border); border-radius: 14px; }
+  .tpl:hover { border-color: var(--indigo); }
+  .tpl-ico { font-size: 30px; flex: none; width: 44px; text-align: center; }
+  .tpl-body { flex: 1; min-width: 0; }
+  .tpl-title { font-size: 15px; font-weight: 600; color: var(--text); }
+  .tpl-game { font-size: 11px; font-weight: 500; color: var(--cyan); margin-left: 6px; }
+  .tpl-desc { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
+  .tpl-counts { font-size: 11px; color: var(--text-mut); margin-top: 4px; }
+  .nt-name { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-dim);
+             margin-left: auto; }
+  .nt-name input { width: 240px; }
+  .nt-empty { border-style: dashed; }
+  .nt-sub { font-size: 13px; font-weight: 600; color: var(--cyan); margin: 14px 0 8px; }
+  .gh-body { font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+  .gh-body ol { padding-left: 20px; }
+  .gh-body li { margin-bottom: 10px; }
+  .gh-body b { color: var(--text); }
+  .gh-body code { background: rgba(10,12,19,0.7); color: var(--cyan); padding: 1px 6px; border-radius: 5px; }
+  .gh-warn { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: 12px;
+             background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.35); color: var(--gold); }
+
+  /* ── Настройки: меню слева, строки справа ── */
+  .sx { display: flex; background: var(--panel); backdrop-filter: blur(14px);
+        border: 1px solid var(--border); border-radius: 16px; overflow: hidden;
+        box-shadow: 0 4px 24px rgba(0,0,0,0.25); min-height: 420px; }
+  .sx-nav { width: 200px; flex: none; padding: 14px 10px; border-right: 1px solid var(--border);
+            background: rgba(10,12,19,0.35); }
+  .sx-it { padding: 10px 12px; border-radius: 10px; font-size: 13px; color: var(--text-dim);
+           cursor: pointer; display: flex; align-items: center; gap: 8px; margin-bottom: 3px;
+           transition: all .15s; }
+  .sx-it:hover { color: var(--text); background: rgba(99,102,241,0.08); }
+  .sx-it.active { color: #fff; background: rgba(99,102,241,0.18); box-shadow: inset 3px 0 0 var(--cyan); }
+  .sx-dot { width: 7px; height: 7px; border-radius: 50%; margin-left: auto; background: transparent; }
+  .sx-dot.on { background: var(--green); box-shadow: 0 0 6px rgba(52,211,153,0.8); }
+  .sx-dot.warn { background: var(--gold); }
+  .sx-main { flex: 1; min-width: 0; padding: 16px 22px 20px; }
+  .sx-head { display: flex; align-items: center; gap: 10px; }
+  .sx-head b { font-size: 16px; font-weight: 600; color: var(--text); }
+  .sx-head .ev-saved { margin-left: auto; }
+  .sx-sub { font-size: 12px; color: var(--text-mut); margin: 3px 0 10px; }
+  .sx-sec.hidden { display: none; }
+  .sx-row { display: flex; align-items: center; gap: 12px; padding: 12px 0;
+            border-top: 1px solid var(--border); }
+  .sx-l { flex: 1; min-width: 0; }
+  .sx-l .t { font-size: 13px; color: var(--text); font-weight: 500; }
+  .sx-l .d { font-size: 11px; color: var(--text-mut); margin-top: 2px; }
+  .sx-in { width: 260px; flex: none; }
+  .sx-in.sx-short { width: 110px; }
+  .sx-range { width: 220px; flex: none; }
+  .sx-ok { font-size: 12px; flex: none; max-width: 300px; text-align: right; }
+  .sx-note { font-size: 12px; color: var(--text-mut); margin-top: 12px; padding: 10px 12px;
+             background: rgba(10,12,19,0.45); border-radius: 10px; border: 1px solid var(--border); }
+  .sx-seg { display: inline-flex; background: rgba(10,12,19,0.6); border: 1px solid var(--border2);
+            border-radius: 10px; padding: 3px; flex: none; }
+  .sx-seg-b { padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 500;
+              color: var(--text-mut); cursor: pointer; transition: all .15s; }
+  .sx-seg-b.active { color: #fff; background: var(--grad); }
+  #sxMain[data-tr="servertap"] .tr-rc, #sxMain[data-tr="rcon"] .tr-st { display: none; }
+  .sg-block { display: none; }
+  .sg-block.on { display: block; }
+  @media (max-width: 760px) { .sx { flex-direction: column; } .sx-nav { width: auto; display: flex; flex-wrap: wrap; }
+                              .sx-row { flex-wrap: wrap; } .sx-in { width: 100%; } }
+
+  .fish-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .fish-tag { padding: 5px 11px; border-radius: 999px; font-size: 12px; cursor: pointer;
+              background: var(--panel2); border: 1px solid var(--border2); color: var(--text-dim); }
+  .fish-tag.active { color: #fff; background: var(--grad); border-color: transparent; }
+  .fish-more { width: 100%; margin-top: 10px; border-style: dashed; color: var(--cyan); background: transparent; }
+  .fish-more.hidden { display: none; }
+  /* ── Выбор голоса озвучки ── */
+  .vp { margin-bottom: 4px; }
+  .vp-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .vp-tab {
+    padding: 9px 14px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 500;
+    background: var(--panel2); border: 1px solid var(--border2); color: var(--text-dim);
+    transition: all .15s;
+  }
+  .vp-tab:hover { color: var(--text); border-color: var(--indigo); }
+  .vp-tab.active { color: #fff; background: var(--grad); border-color: transparent;
+                   box-shadow: 0 3px 12px rgba(99,102,241,0.35); }
+  .vp-tag { font-size: 10px; padding: 2px 6px; border-radius: 5px; margin-left: 4px;
+            background: rgba(52,211,153,0.15); color: var(--green); }
+  .vp-tag.vp-cloud { background: rgba(251,191,36,0.15); color: var(--gold); }
+  .vp-tab.active .vp-tag { background: rgba(255,255,255,0.2); color: #fff; }
+  .vp-current { font-size: 12px; color: var(--text-dim); margin-bottom: 10px; }
+  .vp-current b { color: var(--cyan); }
+  .vp-fish { background: rgba(10,12,19,0.45); border: 1px solid var(--border);
+             border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+  .vp-link { color: var(--cyan); font-size: 11px; margin-left: 6px; text-decoration: none; }
+  .vp-search { display: flex; gap: 8px; margin-top: 10px; }
+  .vp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+  .vp-card {
+    background: var(--panel2); border: 1.5px solid var(--border); border-radius: 14px;
+    padding: 12px 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px;
+    transition: border-color .15s, transform .15s;
+  }
+  .vp-card:hover { border-color: var(--border2); transform: translateY(-1px); }
+  .vp-card.sel { border-color: var(--cyan); box-shadow: 0 0 14px rgba(34,211,238,0.25); }
+  .vp-top { display: flex; align-items: center; gap: 10px; }
+  .vp-ava { width: 34px; height: 34px; border-radius: 10px; flex: none; object-fit: cover;
+            background: var(--grad); color: #fff; font-weight: 700; font-size: 15px;
+            display: flex; align-items: center; justify-content: center; }
+  .vp-name { font-size: 14px; font-weight: 600; color: var(--text);
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .vp-desc { font-size: 12px; color: var(--text-dim); line-height: 1.35; min-height: 32px;
+             overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .vp-bot { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+  .vp-lang { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 5px;
+             background: rgba(99,108,140,0.2); color: var(--text-dim); text-transform: uppercase; }
+  .vp-sel { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 5px;
+            background: rgba(52,211,153,0.18); color: var(--green); }
+  .vp-meta { font-size: 11px; color: var(--text-mut); }
+  .vp-play {
+    margin-left: auto; width: 30px; height: 30px; border-radius: 50%; padding: 0; flex: none;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+  }
+  .vp-play.on { background: var(--grad); color: #fff; border-color: transparent; }
+
+  /* ── Панель: дашборд с плитками ── */
+  .dash { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+  @media (max-width: 900px) { .dash { grid-template-columns: 1fr; } }
+  .dash-tile {
+    background: var(--panel); backdrop-filter: blur(14px);
+    border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.25);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .dash-tile.tile-timer { border-color: rgba(34,211,238,0.3); }
+  .dt-head { display: flex; align-items: center; gap: 10px; }
+  .dt-name { font-size: 14px; font-weight: 600; }
+  .dt-head .ph-badge { margin-left: auto; }
+  .dt-status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); }
+  .dt-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-mut); flex: none; }
+  .dt-dot.on { background: var(--green); box-shadow: 0 0 10px rgba(52,211,153,0.7); }
+  .dt-btns { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: auto; }
+  .dash-tile .ph-digits { font-size: 46px; }
+  .cfg-open { border-color: var(--indigo) !important; background: rgba(99,102,241,0.15) !important; }
+
+  /* ── Карточка подарка в две колонки ── */
+  .card-cols { display: flex; gap: 14px; align-items: flex-start; }
+  .col-act { flex: 1; min-width: 0; }
+  .col-gift {
+    width: 210px; flex: none; text-align: center;
+    background: rgba(10,12,19,0.45); border: 1px solid var(--border);
+    border-radius: 12px; padding: 14px 12px;
+  }
+  .col-gift .cg-pic { margin-bottom: 10px; display: flex; justify-content: center; }
+  .col-gift .cg-pic img, .col-gift .cg-pic .gl-ph { width: 72px !important; height: 72px !important; }
+  .col-gift .cg-name { text-align: center; margin-bottom: 8px; }
+  .col-gift .lib-pick-btn { width: 100%; margin-bottom: 8px; }
+  .cg-row { display: flex; gap: 6px; }
+  .cg-row input { text-align: center; }
+  .cg-mult {
+    display: flex; align-items: center; gap: 4px; flex: none;
+    font-size: 13px; color: var(--gold);
+  }
+  .cg-mult input { width: 52px; text-align: center; }
+  @media (max-width: 860px) {
+    .card-cols { flex-direction: column; }
+    .col-gift { width: 100%; display: flex; align-items: center;
+                gap: 10px; text-align: left; }
+    .col-gift .cg-pic { margin: 0; }
+    .col-gift .cg-name { text-align: left; margin: 0; flex: 1; }
+    .col-gift .lib-pick-btn { width: auto; margin: 0; }
+  }
+
+  #giftLibModal {
+    position: fixed; inset: 0; z-index: 100;
+    background: rgba(5, 7, 12, 0.75); backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  #giftLibModal.hidden { display: none; }
+  #giftLibBox {
+    background: var(--panel-solid); border: 1px solid var(--border2);
+    border-radius: 18px; box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    width: 100%; max-width: 900px; max-height: 85vh;
+    display: flex; flex-direction: column; padding: 18px 20px;
+  }
+  #giftLibBox .gift-lib-grid { max-height: none; flex: 1; }
+  .lib-pick-btn { padding: 9px 12px; white-space: nowrap; }
+
+  /* ── Панель стримера ── */
+  .panel-hero { border-color: rgba(34,211,238,0.35); }
+  .ph-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .ph-head h3 { margin: 0; }
+  .ph-head .hint { margin: 0; }
+  .ph-head .spacer, .ph-head .chk { margin-left: auto; }
+  .ph-badge {
+    margin-left: auto; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+    padding: 4px 10px; border-radius: 999px; font-weight: 600;
+    background: rgba(148,163,184,0.12); color: var(--text-mut);
+  }
+  .ph-badge.on { background: rgba(52,211,153,0.15); color: var(--green); box-shadow: 0 0 12px rgba(52,211,153,0.25); }
+  .ph-timer-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 16px; }
+  .ph-digits {
+    font-family: "JetBrains Mono", "Consolas", monospace;
+    font-size: 64px; font-weight: 700; line-height: 1;
+    background: var(--grad);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 18px rgba(34,211,238,0.35));
+  }
+  .ph-digits.off { background: none; color: var(--text-mut); filter: none; }
+  .ph-controls { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+  .rnd-item {
+    display: grid; grid-template-columns: 1.4fr 1fr 1fr auto;
+    gap: 8px; align-items: center;
+    background: rgba(10,12,19,0.45); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 12px; margin-bottom: 8px;
+    transition: border-color .15s;
+  }
+  .rnd-item:hover { border-color: var(--border2); }
+  .rnd-item .rn-num {
+    position: absolute; margin-left: -26px;
+  }
+  @media (max-width: 800px) { .rnd-item { grid-template-columns: 1fr; } }
+
+  .pb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 12px; }
+  .pb-btn {
+    background: linear-gradient(135deg, #8b5cf6, #6366f1);
+    border: none; color: #fff; font-weight: 700; font-size: 15px;
+    padding: 22px 12px; border-radius: 14px; cursor: pointer;
+    box-shadow: 0 4px 18px rgba(139,92,246,0.35);
+    transition: all .18s;
+  }
+  .pb-btn:hover { transform: translateY(-2px) scale(1.02); box-shadow: 0 8px 26px rgba(139,92,246,0.5); }
+  .pb-btn:active { transform: scale(.97); }
+  /* показ полей под выбранную игру — в конце, чтобы перекрыть .srv-form label */
+  #srvModal .mdl-box[data-game="minecraft"] .st-only { display: none; }
+  #srvModal .mdl-box:not([data-game="minecraft"]) .mc-only { display: none !important; }
+  #srvModal .mdl-box:not([data-game="rust"]) .g-rust { display: none; }
+  #srvModal .mdl-box:not([data-game="valheim"]) .g-valheim { display: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Шапка -->
+  <div class="topbar">
+    <div class="logo"><img class="app-logo" src="/web/logo.svg" alt="">TakyLive <span class="ver-badge" id="appVersion"
+         onclick="openChangelog()" title="Что нового">v__VERSION__</span></div>
+    <div class="status-dot" id="dot"></div>
+    <div class="status-text" id="statusText">Не подключено</div>
+    <div class="spacer"></div>
+    <div class="tts-ctl" title="Озвучка чата">
+      <button class="icon" id="ttsMuteBtn" onclick="ttsToggle()" title="Озвучка вкл/выкл">🔊</button>
+      <button class="icon" onclick="ttsSkip()" title="Пропустить то, что звучит сейчас">⏭</button>
+      <button class="icon" onclick="ttsStop()" title="Остановить и очистить очередь озвучки">⏹</button>
+    </div>
+    <button class="green" id="btnConnect" onclick="toggleConnect()">▶ Подключиться</button>
+  </div>
+
+  <!-- Вкладки верхнего уровня -->
+  <div class="tabs">
+    <div class="tab" data-view="start" onclick="switchView('start')">🏠 Начало</div>
+    <div class="tab active" data-view="events" onclick="switchView('events')">🎁 Подарки и события</div>
+    <div class="tab" data-view="settings" onclick="switchView('settings')">⚙ Настройки</div>
+    <div class="tab" data-view="log" onclick="switchView('log')">📋 Лог событий</div>
+    <div class="tab" data-view="panel" onclick="switchView('panel')">🎛 Панель</div>
+    <div class="tab" data-view="overlays" onclick="switchView('overlays')">📺 Оверлеи OBS</div>
+    <div class="tab" data-view="servers" onclick="switchView('servers')">🖥 Серверы</div>
+  </div>
+
+  <!-- ════════════ ВКЛАДКА: СОБЫТИЯ ════════════ -->
+  <div id="view-events">
+    <!-- Профили (вкладки стримов) -->
+    <div class="profile-bar" id="profileBar"></div>
+
+    <div class="row" style="margin-bottom:16px; flex-wrap:wrap">
+      <button class="small" onclick="addProfile()">+ Новая вкладка</button>
+      <button class="small" onclick="exportProfile()">⬇ Экспорт вкладки (с медиа)</button>
+      <button class="small" onclick="document.getElementById('importFile').click()">⬆ Импорт вкладки</button>
+      <input type="file" id="importFile" class="hidden" accept=".zip,.json" onchange="importProfile(event)">
+      <input type="file" id="mediaUpload" class="hidden" accept="video/*,image/*,audio/*,.gif" onchange="if(this.files[0])uploadMediaFile(this.files[0])">
+      <div class="spacer"></div>
+      <button class="small" onclick="renameProfile()">✎ Переименовать</button>
+    </div>
+
+    <!-- Все события одним списком: фильтры по типу + автосохранение -->
+    <div class="live-banner hidden" id="liveBanner"></div>
+    <div class="game-bar">
+      <span class="gb-label">🎮 Игра вкладки</span>
+      <span class="gb-cur" id="gameCur"></span>
+      <button class="small gb-change" onclick="openGamePick()" title="Если при создании выбрал не ту игру">сменить</button>
+      <span class="gb-status" id="gameStatus"></span>
+      <div class="spacer"></div>
+      <button class="small" onclick="openGameHelp()">📖 Как подключить</button>
+    </div>
+    <div class="ev-top">
+      <div class="ev-filters" id="evFilters"></div>
+      <span class="ev-saved" id="saveHint">✓ Сохранено</span>
+    </div>
+    <button class="primary ev-add" onclick="openTypePicker()">+ Создать событие</button>
+
+    <div class="vars-help">
+      <div class="row" style="margin-bottom:6px">
+        <b style="color:var(--text)">Переменные в командах</b>
+        <button class="small" onclick="toggleVarsHelp(this)">Показать все</button>
+      </div>
+      <code>{nick}</code> твой ник · <code>{user}</code> кто подарил ·
+      <code>{count}</code> количество
+      <div id="varsFull" class="hidden" style="margin-top:10px">
+        <table class="vars-table">
+          <tr><td><code>{nick}</code> <code>{playername}</code></td><td>твой ник в Minecraft (из настроек)</td></tr>
+          <tr><td><code>{user}</code> <code>{nickname}</code></td><td>имя зрителя, как видно на стриме</td></tr>
+          <tr><td><code>{uniqueid}</code></td><td>@юзернейм зрителя в TikTok</td></tr>
+          <tr><td><code>{count}</code> <code>{giftcount}</code></td><td>сколько подарков прислали разом</td></tr>
+          <tr><td><code>{giftname}</code></td><td>название подарка</td></tr>
+          <tr><td><code>{coins}</code></td><td>на сколько монет подарили</td></tr>
+          <tr><td><code>{comment}</code></td><td>текст сообщения (для чат-команд и приветствий)</td></tr>
+          <tr><td><code>{index}</code></td><td>номер повтора: 1, 2, 3… (при ⚡ активациях)</td></tr>
+          <tr><td><code>{repetition}</code></td><td>всего повторов (значение ⚡ активаций)</td></tr>
+          <tr><td colspan="2" style="padding-top:10px"><b style="color:var(--cyan)">Случайные значения и математика</b></td></tr>
+          <tr><td><code>{random:-3 3}</code></td><td>случайное число от -3 до 3</td></tr>
+          <tr><td><code>{random:20 -3 3}</code></td><td>20 плюс случайное от -3 до 3 → от 17 до 23</td></tr>
+          <tr><td><code>{random:['a','b','c']}</code></td><td>случайный вариант из списка</td></tr>
+          <tr><td><code>{mult:2 3}</code></td><td>умножение → 6</td></tr>
+          <tr><td><code>{plus:2 3}</code></td><td>сложение → 5</td></tr>
+        </table>
+        <div class="hint" style="margin-top:10px">
+          Переменные можно вкладывать друг в друга. Примеры:<br>
+          <code class="ex">execute at {playername} run summon zombie ~{random:-3 3} ~ ~{random:-3 3}</code>
+          — зомби рядом со случайной точки<br>
+          <code class="ex">effect give {playername} night_vision {mult:15 {repetition}} 1</code>
+          — ночное зрение на 15 секунд за каждый повтор<br>
+          <code class="ex">give {playername} {random:['diamond','gold_ingot','emerald']} {count}</code>
+          — случайный ресурс по числу подарков
+        </div>
+      </div>
+    </div>
+
+    <!-- Список карточек действий -->
+    <div id="cardsList"></div>
+
+    <button class="ev-add-bottom" onclick="openTypePicker()">+ Создать событие</button>
+  </div>
+
+  <!-- ════════════ СТАРТОВЫЙ ЭКРАН ════════════ -->
+  <div id="view-start" class="hidden">
+    <div class="st-hero">
+      <img class="st-logo" src="/web/logo.svg" alt="TakyLive">
+      <div class="st-title">Что стримим сегодня?</div>
+      <div class="st-sub">Открой свою вкладку или создай новую под игру — с готовым шаблоном или с нуля.</div>
+    </div>
+    <div id="stMigrate"></div>
+    <div id="stContinue"></div>
+    <div class="st-head">✨ Новая вкладка — выбери игру</div>
+    <div class="st-games" id="stGames"></div>
+  </div>
+
+  <!-- ════════════ ВКЛАДКА: СЕРВЕРЫ ════════════ -->
+  <div id="view-servers" class="hidden">
+    <div class="srv-top">
+      <div class="srv-java" id="srvJava"></div>
+      <div class="spacer"></div>
+      <button class="primary" onclick="srvOpenCreate()">+ Новый сервер</button>
+    </div>
+    <div class="srv-layout">
+      <div class="srv-list" id="srvList"></div>
+      <div class="srv-console">
+        <div class="srv-con-head" id="srvConHead">Выбери сервер слева</div>
+        <div class="srv-log" id="srvLog"></div>
+        <div class="srv-quick" id="srvQuick"></div>
+        <div class="srv-input">
+          <input id="srvCmd" class="mono" placeholder="команда сервера, например time set day — Enter отправит"
+                 onkeydown="if(event.key==='Enter')srvSend()">
+          <button class="primary" onclick="srvSend()">Отправить</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════ ВКЛАДКА: НАСТРОЙКИ ════════════ -->
+  <div id="view-settings" class="hidden">
+    <div class="sx">
+      <nav class="sx-nav" id="sxNav">
+        <div class="sx-it active" data-s="tiktok" onclick="sxGo('tiktok')">🎵 TikTok<span class="sx-dot" id="sxDot_tiktok"></span></div>
+        <div class="sx-it" data-s="mc" onclick="sxGo('mc')">🎮 Minecraft<span class="sx-dot" id="sxDot_mc"></span></div>
+        <div class="sx-it" data-s="servers" onclick="sxGo('servers')">🖥 Серверные игры<span class="sx-dot" id="sxDot_servers"></span></div>
+        <div class="sx-it" data-s="tts" onclick="sxGo('tts')">🔊 Озвучка<span class="sx-dot" id="sxDot_tts"></span></div>
+        <div class="sx-it" data-s="voice" onclick="sxGo('voice')">🗣 Голос<span class="sx-dot" id="sxDot_voice"></span></div>
+        <div class="sx-it" data-s="filter" onclick="sxGo('filter')">🛡 Кого озвучивать<span class="sx-dot" id="sxDot_filter"></span></div>
+        <div class="sx-it" data-s="guard" onclick="sxGo('guard')">🧹 Защита от спама<span class="sx-dot" id="sxDot_guard"></span></div>
+        <div class="sx-it" data-s="vvoices" onclick="sxGo('vvoices')">🎭 Голоса зрителей<span class="sx-dot" id="sxDot_vvoices"></span></div>
+      </nav>
+      <div class="sx-main" id="sxMain" data-tr="servertap">
+        <div class="sx-head"><b id="sxTitle">🎵 TikTok</b><span class="ev-saved" id="cfgSaveHint">✓ Сохранено</span></div>
+        <div class="sx-sub" id="sxSub"></div>
+
+        <section class="sx-sec" data-s="tiktok">
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Твой ник в TikTok</div><div class="d">без @ — как в ссылке на твой профиль</div></div>
+          <input id="cfg_tiktok" class="sx-in" placeholder="TakymiVG">
+        </div>
+        </section>
+
+        <section class="sx-sec hidden" data-s="mc">
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Способ подключения</div><div class="d">как программа отправляет команды на сервер</div></div>
+          <div class="sx-seg" id="sxTransport">
+            <span class="sx-seg-b" data-v="servertap" onclick="setTransport('servertap')">ServerTap</span>
+            <span class="sx-seg-b" data-v="rcon" onclick="setTransport('rcon')">RCON</span>
+          </div><input type="hidden" id="cfg_transport" value="servertap">
+        </div>
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">IP сервера</div><div class="d">адрес из панели хостинга, без порта</div></div>
+          <input id="cfg_host" class="sx-in" placeholder="IP из панели хостинга">
+        </div>
+        <div class="sx-row tr-st">
+          <div class="sx-l"><div class="t">Порт ServerTap</div><div class="d">открой его в разделе «Сеть» хостинга</div></div>
+          <input id="cfg_port" class="sx-in sx-short" placeholder="4567">
+        </div>
+        <div class="sx-row tr-st">
+          <div class="sx-l"><div class="t">Ключ ServerTap</div><div class="d">key из plugins/ServerTap/config.yml</div></div>
+          <input id="cfg_pass" class="sx-in" type="password" placeholder="если включена авторизация">
+        </div>
+        <div class="sx-row tr-st">
+          <div class="sx-l"><div class="t">Защищённое соединение</div><div class="d">включай, если в ServerTap включён TLS</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tls"> HTTPS</label>
+        </div>
+        <div class="sx-row tr-rc">
+          <div class="sx-l"><div class="t">Порт RCON</div><div class="d">server.properties → rcon.port (обычно 25575)</div></div>
+          <input id="cfg_rcon_port" class="sx-in sx-short" placeholder="25575">
+        </div>
+        <div class="sx-row tr-rc">
+          <div class="sx-l"><div class="t">Пароль RCON</div><div class="d">server.properties → rcon.password</div></div>
+          <input id="cfg_rcon_pass" class="sx-in" type="password" placeholder="пароль RCON">
+        </div>
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Твой ник в Minecraft</div><div class="d">подставляется в {nick} и {playername}</div></div>
+          <input id="cfg_nick" class="sx-in" placeholder="TakymiVG">
+        </div>
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Проверка связи</div><div class="d">пинг сервера выбранным способом</div></div>
+          <span class="sx-ok" id="rconHint"></span><button class="small" onclick="testRcon()">Проверить</button>
+        </div>
+        <div class="sx-note tr-st">⚠ Нужен плагин <b>ServerTap</b> в папке plugins. В <code>plugins/ServerTap/config.yml</code>:
+          useKeyAuth: true · key: придумай_ключ</div>
+        <div class="sx-note tr-rc">⚠ В <code>server.properties</code>: enable-rcon=true · rcon.port=25575 ·
+          rcon.password=придумай_пароль. Перезапусти сервер и открой порт RCON в разделе «Сеть» хостинга.</div>
+        </section>
+
+        <section class="sx-sec hidden" data-s="servers">
+          <div class="sx-row"><div class="sx-l"><div class="t">Игра</div><div class="d">настройки сервера для каждой игры свои</div></div>
+            <div class="sx-seg" id="sgSeg">
+              <span class="sx-seg-b gseg" data-g="ark" onclick="sgShow('ark')"><img class="gicon" src="/media/games/ark.png" alt="" width="16" height="16" data-e="🦖" onerror="gameIconFail(this)">ARK</span>
+              <span class="sx-seg-b gseg" data-g="rust" onclick="sgShow('rust')"><img class="gicon" src="/media/games/rust.png" alt="" width="16" height="16" data-e="🪓" onerror="gameIconFail(this)">Rust</span>
+              <span class="sx-seg-b gseg" data-g="palworld" onclick="sgShow('palworld')"><img class="gicon" src="/media/games/palworld.png" alt="" width="16" height="16" data-e="🐾" onerror="gameIconFail(this)">Palworld</span>
+              <span class="sx-seg-b gseg" data-g="zomboid" onclick="sgShow('zomboid')">🧟 Zomboid</span>
+              <span class="sx-seg-b gseg" data-g="7dtd" onclick="sgShow('7dtd')">🩸 7 Days</span>
+            </div>
+          </div>
+        <div class="sg-block" data-g="ark">
+          <div class="sx-row "><div class="sx-l"><div class="t">IP сервера</div><div class="d">из панели хостинга, без порта</div></div>
+            <input id="cfg_ark_host" class="sx-in" placeholder="IP сервера ARK">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Порт RCON</div><div class="d">RCONPort (обычно 27020)</div></div>
+            <input id="cfg_ark_port" class="sx-in sx-short" placeholder="27020">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Пароль</div><div class="d">ServerAdminPassword</div></div>
+            <input id="cfg_ark_pass" class="sx-in" type="password" placeholder="пароль админа">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Твой ID игрока</div><div class="d">число из импланта (Specimen Implant) — подставляется в {nick}</div></div>
+            <input id="cfg_ark_player" class="sx-in" placeholder="например 123456789">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Проверка связи</div><div class="d"></div></div>
+            <span class="sx-ok" id="sgPing_ark"></span><button class="small" onclick="pingGame('ark')">Проверить</button>
+          </div>
+          <div class="sx-note">⚠ В <code>GameUserSettings.ini</code> → [ServerSettings]: RCONEnabled=True · RCONPort=27020 · ServerAdminPassword=придумай_пароль. Открой порт RCON на хостинге и перезапусти сервер.</div>
+        </div>
+        <div class="sg-block" data-g="rust">
+          <div class="sx-row "><div class="sx-l"><div class="t">IP сервера</div><div class="d">из панели хостинга, без порта</div></div>
+            <input id="cfg_rust_host" class="sx-in" placeholder="IP сервера Rust">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Порт RCON</div><div class="d">rcon.port (обычно 28016)</div></div>
+            <input id="cfg_rust_port" class="sx-in sx-short" placeholder="28016">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Пароль</div><div class="d">rcon.password</div></div>
+            <input id="cfg_rust_pass" class="sx-in" type="password" placeholder="пароль RCON">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Твой ник или SteamID64</div><div class="d">подставляется в {nick}</div></div>
+            <input id="cfg_rust_player" class="sx-in" placeholder="ник в игре">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Проверка связи</div><div class="d"></div></div>
+            <span class="sx-ok" id="sgPing_rust"></span><button class="small" onclick="pingGame('rust')">Проверить</button>
+          </div>
+          <div class="sx-note">⚠ Запусти сервер с параметрами <code>+rcon.web 1 +rcon.port 28016 +rcon.password придумай_пароль</code>.</div>
+        </div>
+        <div class="sg-block" data-g="palworld">
+          <div class="sx-row "><div class="sx-l"><div class="t">IP сервера</div><div class="d">из панели хостинга, без порта</div></div>
+            <input id="cfg_palworld_host" class="sx-in" placeholder="IP сервера Palworld">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Порт RCON</div><div class="d">RCONPort (обычно 25575)</div></div>
+            <input id="cfg_palworld_port" class="sx-in sx-short" placeholder="25575">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Порт REST API</div><div class="d">RESTAPIPort (обычно 8212) — для объявлений</div></div>
+            <input id="cfg_palworld_rest" class="sx-in sx-short" placeholder="8212">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Пароль</div><div class="d">AdminPassword</div></div>
+            <input id="cfg_palworld_pass" class="sx-in" type="password" placeholder="пароль админа">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Проверка связи</div><div class="d"></div></div>
+            <span class="sx-ok" id="sgPing_palworld"></span><button class="small" onclick="pingGame('palworld')">Проверить</button>
+          </div>
+          <div class="sx-note">⚠ В <code>PalWorldSettings.ini</code>: RCONEnabled=True · RCONPort=25575 · RESTAPIEnabled=True · RESTAPIPort=8212 · AdminPassword=придумай_пароль.</div>
+        </div>
+        <div class="sg-block" data-g="zomboid">
+          <div class="sx-row "><div class="sx-l"><div class="t">IP сервера</div><div class="d">для своего сервера в программе — 127.0.0.1</div></div>
+            <input id="cfg_zomboid_host" class="sx-in" placeholder="IP сервера Project Zomboid">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Порт</div><div class="d">RCONPort (обычно 27015)</div></div>
+            <input id="cfg_zomboid_port" class="sx-in sx-short" placeholder="27015">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Пароль</div><div class="d">RCONPassword</div></div>
+            <input id="cfg_zomboid_pass" class="sx-in" type="password" placeholder="пароль">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Твой ник</div><div class="d">подставляется в {nick}</div></div>
+            <input id="cfg_zomboid_player" class="sx-in" placeholder="ник в игре">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Проверка связи</div><div class="d"></div></div>
+            <span class="sx-ok" id="sgPing_zomboid"></span><button class="small" onclick="pingGame('zomboid')">Проверить</button>
+          </div>
+          <div class="sx-note">💡 Проще всего — свой сервер: «🖥 Серверы» → Project Zomboid → «🔌 Подарки сюда» заполнит всё само.</div>
+        </div>
+        <div class="sg-block" data-g="7dtd">
+          <div class="sx-row "><div class="sx-l"><div class="t">IP сервера</div><div class="d">для своего сервера в программе — 127.0.0.1</div></div>
+            <input id="cfg_7dtd_host" class="sx-in" placeholder="IP сервера 7 Days to Die">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Порт</div><div class="d">TelnetPort (обычно 8081)</div></div>
+            <input id="cfg_7dtd_port" class="sx-in sx-short" placeholder="8081">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Пароль</div><div class="d">TelnetPassword</div></div>
+            <input id="cfg_7dtd_pass" class="sx-in" type="password" placeholder="пароль">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Твой ник</div><div class="d">по нему программа находит твой ID</div></div>
+            <input id="cfg_7dtd_player" class="sx-in" placeholder="ник в игре">
+          </div>
+          <div class="sx-row "><div class="sx-l"><div class="t">Проверка связи</div><div class="d"></div></div>
+            <span class="sx-ok" id="sgPing_7dtd"></span><button class="small" onclick="pingGame('7dtd')">Проверить</button>
+          </div>
+          <div class="sx-note">💡 Проще всего — свой сервер: «🖥 Серверы» → 7 Days to Die → «🔌 Подарки сюда» заполнит всё само.</div>
+        </div>
+        </section>
+
+        <section class="sx-sec hidden" data-s="tts">
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Озвучивать чат</div><div class="d">читать вслух сообщения зрителей</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tts_on"> Озвучка</label>
+        </div>
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Громкость: <span id="tts_vol_label">100</span>%</div><div class="d">громкость голоса из программы</div></div>
+          <input type="range" id="cfg_tts_vol" class="sx-range" min="0" max="100" value="100"
+                 oninput="document.getElementById('tts_vol_label').textContent=this.value">
+        </div>
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Читать имя зрителя</div><div class="d">«Такуми. Привет всем» вместо просто «Привет всем»</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tts_name" checked> Имя</label>
+        </div>
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Играть звук из программы</div><div class="d">как TikFinity — OBS возьмёт звук с рабочего стола</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tts_local" checked> Из программы</label>
+        </div>
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Проверка</div><div class="d">послушать голос или найти причину, если молчит</div></div>
+          <span class="sx-ok" id="ttsHint"></span><button class="small" onclick="testTTS()">🔊 Голос</button><button class="small" onclick="diagTTS()">🩺 Диагностика</button>
+        </div>
+        <div id="ttsDiag" style="margin-top:10px"></div>
+        <div class="sx-note">Оверлей «🔊 Озвучка чата» нужен, только если хочешь звук отдельным источником в OBS — тогда выключи «Из программы».</div>
+        </section>
+
+        <section class="sx-sec hidden" data-s="voice">
+      <input type="hidden" id="cfg_tts_voice" value="ru-RU-DmitryNeural">
+      <div class="vp">
+        <div class="vp-tabs" id="vpTabs">
+          <div class="vp-tab" data-p="gt" onclick="vpSetProvider('gt')">⚡ Google <span class="vp-tag">бесплатно</span></div>
+          <div class="vp-tab" data-p="edge" onclick="vpSetProvider('edge')">🎙 Microsoft Edge <span class="vp-tag">бесплатно</span></div>
+          <div class="vp-tab" data-p="fish" onclick="vpSetProvider('fish')">🐟 Fish Audio <span class="vp-tag vp-cloud">облачный</span></div>
+        </div>
+        <div class="vp-current" id="vpCurrent"></div>
+
+        <div id="vpFish" class="vp-fish hidden">
+          <div class="settings-grid">
+            <div class="field">
+              <label>API-ключ Fish Audio
+                <a href="https://fish.audio/app/api-keys" target="_blank" class="vp-link">получить ключ ↗</a></label>
+              <input type="password" id="cfg_fish_key" placeholder="вставь ключ сюда" onchange="fishSaveCfg()">
+            </div>
+            <div class="field">
+              <label>Модель</label>
+              <select id="cfg_fish_model" onchange="fishSaveCfg()">
+                <option value="s2.1-pro-free">S2.1 Pro Free — бесплатная</option>
+                <option value="s2.1-pro">S2.1 Pro — платная, лучше качество</option>
+                <option value="s1">S1 — устаревшая, отключат 31.12.2026</option>
+              </select>
+            </div>
+          </div>
+          <div class="vp-search">
+            <input id="fishQuery" placeholder="Поиск по 2 млн голосов: имя, персонаж, стиль…"
+                   onkeydown="if(event.key==='Enter')fishSearch()">
+            <select id="fishLang" style="width:auto" onchange="fishSearch()">
+              <option value="ru">русские</option>
+              <option value="">все языки</option>
+              <option value="en">английские</option>
+              <option value="ja">японские</option>
+              <option value="zh">китайские</option>
+              <option value="de">немецкие</option>
+              <option value="es">испанские</option>
+              <option value="fr">французские</option>
+            </select>
+            <select id="fishSort" style="width:auto" onchange="fishSearch()">
+              <option value="task_count">🔥 популярные</option>
+              <option value="created_at">🆕 новые</option>
+            </select>
+            <button class="primary" onclick="fishSearch()">🔍 Найти</button>
+          </div>
+          <div class="fish-tags" id="fishTags"></div>
+        </div>
+
+        <div class="vp-grid" id="vpGrid"></div>
+        <button class="fish-more hidden" id="fishMore" onclick="fishMore()">Показать ещё голоса</button>
+        <div class="hint" id="vpHint"></div>
+      </div>
+        </section>
+
+        <section class="sx-sec hidden" data-s="filter">
+        <div class="sx-row ">
+          <div class="sx-l"><div class="t">Кого озвучивать</div><div class="d">чтобы не читать спам — только своих</div></div>
+          <select id="cfg_tts_filter" class="sx-in" onchange="ttsFilterUI()">
+            <option value="all">Всех зрителей</option>
+            <option value="list">Только ники из списка</option>
+            <option value="gifters">Только донатеров (от N монет)</option>
+            <option value="likers">Только по лайкам (от N лайков)</option>
+            <option value="followers">Только подписчиков</option>
+          </select>
+        </div>
+        <div class="sx-row " id="tts_f_coins" style="display:none">
+          <div class="sx-l"><div class="t">Минимум монет за стрим</div><div class="d">сколько надо подарить, чтобы тебя читали</div></div>
+          <input type="number" id="cfg_tts_coins" class="sx-in sx-short" min="1" value="1">
+        </div>
+        <div class="sx-row " id="tts_f_likes" style="display:none">
+          <div class="sx-l"><div class="t">Минимум лайков за стрим</div><div class="d">сколько надо налайкать</div></div>
+          <input type="number" id="cfg_tts_likes" class="sx-in sx-short" min="1" value="100">
+        </div>
+        <div class="sx-row " id="tts_f_list" style="display:none">
+          <div class="sx-l"><div class="t">Ники</div><div class="d">через запятую, без @</div></div>
+          <input id="cfg_tts_list" class="sx-in" placeholder="Takymi, drug123">
+        </div>
+        <div class="sx-note" id="tts_f_hint" style="display:none">💡 Донаты, лайки и подписки считаются с момента запуска программы.</div>
+        </section>
+        <section class="sx-sec hidden" data-s="guard">
+        <div class="sx-row "><div class="sx-l"><div class="t">Защита включена</div><div class="d">мат, растяжки «аааааа», флуд и повторы не попадут в озвучку</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tts_guard"> Вкл</label>
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Мат и оскорбления</div><div class="d">ловит и хитрости: «x у й», «п1зд», «хууууй»</div></div>
+          <select id="cfg_tts_profanity" class="sx-in"><option value="beep">Заменять на «пип»</option>
+            <option value="skip">Не читать такое сообщение</option><option value="off">Читать как есть</option></select>
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Свои запрещённые слова</div><div class="d">через запятую — ловятся и в начале слова</div></div>
+          <input id="cfg_tts_bad_words" class="sx-in" placeholder="кринж, скам">
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Пропускать мусор</div><div class="d">растяжки «нооооогггг», одни смайлы, ссылки, «лол лол лол»</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tts_skip_junk"> Вкл</label>
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Пауза для одного зрителя</div><div class="d">секунд между его сообщениями — спамер не займёт всю озвучку</div></div>
+          <input type="number" id="cfg_tts_cooldown" class="sx-in sx-short" min="0" value="8">
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Не повторять одинаковое</div><div class="d">одно и то же сообщение подряд читается один раз</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tts_dupes"> Вкл</label>
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Очередь не больше</div><div class="d">если в очереди уже столько — новые пропускаются, озвучка не отстаёт от чата</div></div>
+          <input type="number" id="cfg_tts_maxq" class="sx-in sx-short" min="0" value="5">
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Чёрный список</div><div class="d">ники через запятую — их не озвучивать никогда</div></div>
+          <input id="cfg_tts_block" class="sx-in" placeholder="spammer123, bot_xyz">
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">🧪 Проверить фразу</div><div class="d" id="guardVerdict">впиши сообщение — покажу, что с ним сделает защита</div></div>
+          <input id="guardTest" class="sx-in" placeholder="аааааа нооооогггг" oninput="guardCheck()">
+        </div>
+        <div class="sx-note" id="guardStats">Отфильтровано за этот запуск: пока ничего.</div>
+        </section>
+
+        <section class="sx-sec hidden" data-s="vvoices">
+        <div class="sx-row "><div class="sx-l"><div class="t">Зрители выбирают голос</div><div class="d">пишут команду в чат — и дальше их сообщения читаются этим голосом</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_voice_on"> Вкл</label>
+        </div>
+        <div class="vc-head">Команды голосов</div>
+        <div id="vcList"></div>
+        <button class="small" onclick="vcAdd()">+ Добавить команду</button>
+        <div class="sx-row "><div class="sx-l"><div class="t">Вернуть обычный голос</div><div class="d">команда для зрителя</div></div>
+          <input id="cfg_voice_reset" class="sx-in sx-short" placeholder="!сброс">
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Подтверждать голосом</div><div class="d">«Аня, теперь у тебя голос: Девочка» — новым голосом</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_voice_confirm"> Вкл</label>
+        </div>
+        <div class="vc-head">⭐ Особенные зрители — голос вручную</div>
+        <div class="vv-add">
+          <input id="vvNewNick" class="sx-in" list="vvRecent" placeholder="ник зрителя — или выбери из тех, кто писал">
+          <datalist id="vvRecent"></datalist>
+          <select id="vvNewVoice" class="sx-in"></select>
+          <input id="vvNewLabel" class="sx-in" placeholder="подпись, например «Модер»">
+          <div class="vv-add-act">
+            <label class="chk" title="Зритель не сможет сменить голос командой, «Очистить всех» его не тронет">
+              <input type="checkbox" id="vvNewPin" checked> 📌 закрепить</label>
+            <button class="small primary" onclick="vvAddSpecial()">+ Назначить</button>
+          </div>
+        </div>
+        <div class="hint" id="vvAddHint"></div>
+
+        <div class="vc-head">👑 Голоса по ролям</div>
+        <div id="roleList"></div>
+        <div class="hint">Порядок: личный голос зрителя → голос роли → обычный голос. Роли присылает сам TikTok.</div>
+
+        <div class="vv-bar">
+          <div class="vc-head" style="margin:0">Зрители с голосами <span id="vvCount"></span></div>
+          <div class="spacer"></div>
+          <input id="vvSearch" class="sx-in" placeholder="поиск по нику" oninput="vvRender()" style="max-width:200px">
+          <button class="small danger" onclick="vvClear()">🧹 Очистить всех</button>
+        </div>
+        <div id="vvList"></div>
+        <div class="sx-note">💡 Голос привязан к аккаунту TikTok, а не к нику — сменит ник, голос останется. Хранится в viewer_voices.json.</div>
+        </section>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════ ВКЛАДКА: ЛОГ ════════════ -->
+  <div id="view-log" class="hidden">
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <h3 style="margin:0">🎁 Замеченные подарки</h3>
+        <div class="spacer"></div>
+        <span class="hint">Список подарков которые дарили в эфире</span>
+      </div>
+      <div id="seenGifts">
+        <div class="hint">Пока подарков не было. Включись в эфир — они появятся здесь с точным названием и ID, и их можно будет добавить одной кнопкой.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:12px">
+        <h3 style="margin:0">📋 События в реальном времени</h3>
+        <div class="spacer"></div>
+        <button class="small" onclick="window.location='/api/stream_report'">📊 Скачать итоги стрима</button>
+        <button class="small" onclick="simulateMenu()">🧪 Симулировать событие</button>
+      </div>
+      <div class="log-box" id="logBox"></div>
+    </div>
+  </div>
+
+  <!-- ════════════ ВКЛАДКА: ПАНЕЛЬ СТРИМЕРА ════════════ -->
+  <div id="view-panel" class="hidden">
+
+    <div class="dash">
+      <div class="dash-tile tile-timer">
+        <div class="dt-head">
+          <span class="dt-name">⏱ Таймер-челлендж</span>
+          <span class="ph-badge" id="timerBadge">остановлен</span>
+        </div>
+        <div class="ph-digits" id="timerDisplay">00:00</div>
+        <div class="dt-btns">
+          <button class="green" onclick="timerCtl('start')">▶ Старт</button>
+          <button onclick="timerCtl('pause')">⏸</button>
+          <button onclick="timerCtl('add')">+1 мин</button>
+          <button class="danger" onclick="timerCtl('reset')">⟲</button>
+          <div class="spacer"></div>
+          <button class="small" onclick="togglePanelCfg('tmSettings',this)">⚙ Настроить</button>
+        </div>
+      </div>
+
+      <div class="dash-tile">
+        <div class="dt-head">
+          <span class="dt-name">🎰 Случайные события</span>
+        </div>
+        <div class="dt-status"><span class="dt-dot" id="rndDot"></span><span id="rndStatus">выключены</span></div>
+        <div class="dt-btns">
+          <button class="small" onclick="testRnd(this)">🎲 Тест</button>
+          <button class="small" onclick="togglePanelCfg('rndSettings',this)">⚙ Настроить</button>
+        </div>
+      </div>
+
+      <div class="dash-tile">
+        <div class="dt-head">
+          <span class="dt-name">🎁 Витрина подарков</span>
+        </div>
+        <div class="dt-status"><span class="dt-dot on"></span><span id="scStatus">сетка 7×3</span></div>
+        <div class="dt-btns">
+          <button class="small" onclick="openOv('ov9')">👁 Открыть</button>
+          <button class="small" onclick="togglePanelCfg('scSettings',this)">⚙ Настроить</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="tmSettings">
+      <h3>⏱ Настройки таймера</h3>
+      <div class="settings-grid">
+        <div class="field">
+          <label>Стартовое время (минут)</label>
+          <input type="number" id="tm_start" min="1" value="30">
+        </div>
+        <div class="field">
+          <label>+секунд за каждую монету подарка</label>
+          <input type="number" id="tm_percoin" min="0" step="0.5" value="5">
+        </div>
+        <div class="field full">
+          <label>Команда когда время выйдет (без /)</label>
+          <input class="mono" id="tm_endcmd" placeholder="например: kill @p">
+        </div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="rndSettings">
+      <div class="ph-head">
+        <h3>🎰 Случайные события</h3>
+        <label class="chk"><input type="checkbox" id="rnd_on" onchange="updPanelStatus()"> включены</label>
+      </div>
+      <div class="hint" style="margin-bottom:12px">
+        Срабатывает случайное событие из списка: видео/звук на оверлее + команда — одновременно.
+      </div>
+      <div class="settings-grid" style="margin-bottom:12px">
+        <div class="field">
+          <label>По таймеру: раз в сколько секунд</label>
+          <input type="number" id="rnd_interval" min="10" value="300" oninput="updPanelStatus()">
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end;padding-bottom:6px">
+          <label class="chk"><input type="checkbox" id="rnd_gift"> 🎁 Также при любом подарке</label>
+        </div>
+      </div>
+      <div id="rndItems"></div>
+      <div class="row" style="margin-top:10px">
+        <button class="small" onclick="addRndItem()">+ Добавить событие</button>
+        <div class="spacer"></div>
+        <span class="ev-saved" data-panelsave>✓ Сохранено</span>
+        <span class="hint" id="panelHint"></span>
+      </div>
+    </div>
+
+    <div class="card hidden" id="scSettings">
+      <h3>🎁 Настройки витрины</h3>
+      <div class="settings-grid">
+        <div class="field">
+          <label>Анимация когда подарков много</label>
+          <select id="sc_anim" onchange="updPanelStatus()">
+            <option value="grid">Сетка с перелистыванием</option>
+            <option value="auto">Авто — по ситуации</option>
+            <option value="none">Без анимации (показать все)</option>
+            <option value="scroll">Бесконечная прокрутка</option>
+            <option value="marquee">Бегущая строка (для ленты внизу)</option>
+          </select>
+        </div>
+        <div class="field" id="fld_trans_grid">
+          <label>Появление карточек</label>
+          <select id="sc_trans_grid">
+            <option value="fade">Затухание — спокойно</option>
+            <option value="pulse">Пульсация — все вместе</option>
+            <option value="wave">Волна — по очереди снизу</option>
+            <option value="flip">Переворот — крутятся</option>
+            <option value="zoom">Зум — вылетают из центра</option>
+            <option value="domino">Домино — падают по очереди</option>
+            <option value="carousel">Карусель — въезжают сбоку</option>
+            <option value="spiral">Спираль — закручиваются</option>
+            <option value="bounce">Прыжок — падают с отскоком</option>
+            <option value="diagonal">Диагональ — каскадом</option>
+            <option value="flash">Вспышка — яркий старт</option>
+            <option value="blur">Размытие — проявляются</option>
+          </select>
+        </div>
+        <div class="field" id="fld_motion">
+          <label>Движение (прокрутка и бегущая строка)</label>
+          <select id="sc_motion">
+            <option value="smooth">Плавно — едет без остановки</option>
+            <option value="step">По шагам — сдвиг на одну карточку и пауза</option>
+          </select>
+        </div>
+        <div class="field" id="fld_effect">
+          <label>Эффект карточек — работает всегда</label>
+          <select id="sc_effect">
+            <option value="none">Без эффекта</option>
+            <option value="glow">Бегущая подсветка</option>
+            <option value="breathe">Дыхание</option>
+            <option value="float">Парение</option>
+            <option value="wobble">Покачивание</option>
+            <option value="shine">Блик — пробегает свет</option>
+            <option value="neon">Неон — мерцает рамка</option>
+            <option value="rainbow">Радуга — переливается</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Скорость: секунд на карточку/страницу</label>
+          <input type="number" id="sc_speed" min="1" step="0.5" value="5">
+        </div>
+        <div class="field">
+          <label>Карточек в ряд (для сетки)</label>
+          <input type="number" id="sc_per" min="1" max="12" value="7" oninput="updPanelStatus()">
+        </div>
+        <div class="field">
+          <label>Максимум рядов (для сетки)</label>
+          <input type="number" id="sc_rows" min="1" max="6" value="3" oninput="updPanelStatus()">
+        </div>
+        <div class="field">
+          <label>Значок подарка поверх картинки</label>
+          <select id="sc_badge">
+            <option value="br">Справа снизу</option>
+            <option value="bl">Слева снизу</option>
+            <option value="tr">Справа сверху</option>
+            <option value="tl">Слева сверху</option>
+            <option value="none">Не показывать</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Размер значка: <span id="sc_bsize_lbl">38</span>% от картинки</label>
+          <input type="range" id="sc_bsize" min="15" max="70" step="1" value="38"
+                 oninput="document.getElementById('sc_bsize_lbl').textContent=this.value">
+        </div>
+        <div class="field">
+          <label>Размер картинок: <span id="sc_icon_lbl">88</span> px</label>
+          <input type="range" id="sc_icon" min="40" max="180" step="4" value="88"
+                 oninput="document.getElementById('sc_icon_lbl').textContent=this.value">
+        </div>
+      </div>
+      <div class="field full" style="margin-top:12px">
+        <label>Что показывать в витрине</label>
+        <div class="sc-types">
+          <label class="chk"><input type="checkbox" id="sct_gifts" onchange="updPanelStatus()"> 🎁 Подарки</label>
+          <label class="chk"><input type="checkbox" id="sct_likes" onchange="updPanelStatus()"> ❤ Лайки</label>
+          <label class="chk"><input type="checkbox" id="sct_subs" onchange="updPanelStatus()"> ⭐ Подписки</label>
+          <label class="chk"><input type="checkbox" id="sct_follows" onchange="updPanelStatus()"> ➕ Фолловы</label>
+          <label class="chk"><input type="checkbox" id="sct_chatcmds" onchange="updPanelStatus()"> 💬 Чат-команды</label>
+        </div>
+      </div>
+      <label class="chk" style="margin-top:10px">
+        <input type="checkbox" id="sc_online" checked> 🌐 Брать иконки подарков с серверов TikTok
+      </label>
+      <div class="row" style="margin-top:12px">
+        <div class="spacer"></div>
+        <span class="ev-saved" data-panelsave>✓ Сохранено</span>
+      </div>
+      <div class="hint" style="margin-top:8px">Свои картинки из папки <b>media/gifts/</b> всегда в приоритете. Иконка каждого подарка задаётся на его карточке в «Подарки и события».</div>
+    </div>
+
+    <div class="card">
+      <div class="ph-head">
+        <h3>🎛 Кнопки стримера</h3>
+        <span class="hint">настройка: «Подарки и события» → «🎛 Панель»</span>
+      </div>
+      <div id="panelButtons" class="pb-grid"></div>
+    </div>
+  </div>
+
+  <!-- ════════════ ВКЛАДКА: ОВЕРЛЕИ ════════════ -->
+  <div id="view-overlays" class="hidden">
+    <div class="card">
+      <h3>📺 Оверлеи для OBS</h3>
+      <p class="hint" style="margin-bottom:16px">
+        Добавь эти ссылки в OBS как <b>Источник → Браузер (Browser Source)</b>.
+        Ставь фон прозрачным. Программа должна быть запущена.
+      </p>
+
+      <div id="overlayList"></div>
+
+      <div class="hint" style="margin-top:16px">
+        💡 Чтобы проверить как выглядят — нажми «Открыть», потом на вкладке
+        «Лог событий» нажми «Симулировать событие».
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="srvModal" class="mdl hidden" onclick="if(event.target===this)srvCloseCreate()">
+  <div class="mdl-box" style="max-width:600px">
+    <div class="row" style="margin-bottom:12px">
+      <h3 style="margin:0">🖥 Новый сервер</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="srvCloseCreate()">✕</button>
+    </div>
+    <div class="srv-games" id="srvGames"></div>
+    <div class="srv-form">
+      <label>Название <input id="srvName" placeholder="Например: Стрим"></label>
+      <label>Порт <input id="srvPort" type="number" min="1024" max="65535" value="25565"></label>
+      <label class="st-only">Игроков максимум <input id="srvPlayers" type="number" min="1" max="100" value="10"></label>
+      <label class="st-only g-rust">Размер карты <select id="srvWorldSize">
+        <option value="1500">Маленькая — грузится быстро</option><option value="2000" selected>Средняя</option>
+        <option value="3000">Большая</option><option value="4000">Огромная — долго генерируется</option></select></label>
+      <label class="st-only g-rust">Сид карты <input id="srvRustSeed" placeholder="пусто — случайный"></label>
+      <label class="st-only g-valheim">Имя мира <input id="srvWorld" placeholder="Stream"></label>
+      <label class="st-only g-valheim">Пароль для входа <input id="srvVhPass" placeholder="от 5 символов, пусто — придумаю"></label>
+      <label class="srv-wide mc-only">Ядро <select id="srvCore" onchange="srvCoreChanged()"></select>
+        <span class="srv-core-desc" id="srvCoreDesc"></span></label>
+      <div class="srv-wide gh-warn hidden mc-only" id="srvHybridWarn" style="margin:0">⚠ Гибриды бывают капризными: часть
+        плагинов не видит блоки и предметы из модов (например, защита территорий). Если что-то сломалось — проверь
+        на чистом NeoForge/Fabric или Paper, где ошибка.</div>
+      <label class="mc-only">Версия <select id="srvVersion"></select></label>
+      <label class="mc-only">Память: <b id="srvRamL">3</b> ГБ
+        <input id="srvRam" type="range" min="1" max="12" value="3"
+               oninput="document.getElementById('srvRamL').textContent=this.value"></label>
+      <label class="mc-only">Режим <select id="srvMode">
+        <option value="survival">Выживание</option><option value="creative">Творческий</option>
+        <option value="adventure">Приключение</option></select></label>
+      <label class="mc-only">Сложность <select id="srvDiff">
+        <option value="normal">Нормальная</option><option value="hard">Сложная</option>
+        <option value="easy">Лёгкая</option><option value="peaceful">Мирная</option></select></label>
+      <label class="srv-wide mc-only">Сид мира (необязательно) <input id="srvSeed" placeholder="пусто — случайный мир"></label>
+    </div>
+    <div class="srv-checks mc-only">
+      <label class="chk"><input type="checkbox" id="srvCracked"> Пускать без лицензии (online-mode=false)</label>
+      <label class="chk"><input type="checkbox" id="srvEula"> Принимаю
+        <a href="https://aka.ms/MinecraftEULA" target="_blank" rel="noopener">EULA Minecraft</a></label>
+    </div>
+    <div class="hint mc-only" style="margin:8px 0">Без лицензии зайти сможет кто угодно под любым ником — включай только для
+      себя и друзей. Ноутбуку со стримом, игрой и OBS обычно хватает 3–4 ГБ для сервера.</div>
+    <div class="gh-warn st-only" id="srvSteamInfo" style="margin:10px 0"></div>
+    <div class="row"><span class="hint" id="srvCreateHint" style="color:var(--red)"></span><div class="spacer"></div>
+      <button class="primary" onclick="srvCreate()">Создать сервер</button></div>
+  </div>
+</div>
+
+<div id="mediaPickModal" class="mdl hidden" onclick="if(event.target===this)closeMediaPick()">
+  <div class="mdl-box mp-box">
+    <div class="row" style="margin-bottom:10px">
+      <h3 style="margin:0" id="mpTitle">Медиа</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="closeMediaPick()">✕</button>
+    </div>
+    <div class="ip-tabs" id="mpTabs"></div>
+    <div id="mpBody"></div>
+    <input type="file" id="mpFile" multiple accept="video/*,image/*,audio/*,.mkv,.mov,.webm,.gif"
+           style="display:none" onchange="mpUploadFiles(this.files); this.value=''">
+    <div class="mp-dropcover">⬇ Отпусти — загружу</div>
+  </div>
+</div>
+
+<div id="iconPickModal" class="mdl hidden" onclick="if(event.target===this)closeIconPick()">
+  <div class="mdl-box" style="max-width:820px">
+    <div class="row" style="margin-bottom:10px">
+      <h3 style="margin:0" id="ipTitle">Картинка</h3>
+      <div class="spacer"></div>
+      <button class="small" onclick="ipAutoAll()" title="Подобрать картинки по названиям всех событий вкладки">🪄 Подобрать ко всем карточкам</button>
+      <button class="icon danger" onclick="closeIconPick()">✕</button>
+    </div>
+    <div class="ip-tabs" id="ipTabs">
+      <span class="ip-tab active" data-t="vault" onclick="IP.tab='vault'; ipRender()">🌐 ccLeaf Vault</span>
+      <span class="ip-tab" data-t="local" onclick="IP.tab='local'; ipRender()">📁 Мои картинки</span>
+    </div>
+    <div id="ipBody"></div>
+    <div class="hint ip-credit">Картинки — <a href="https://ccvaults.com" target="_blank" rel="noopener">ccLeaf Vault</a>,
+      бесплатная библиотека Minecraft для контент-мейкеров. Выбранная картинка один раз скачивается в media/vault.</div>
+  </div>
+</div>
+
+<div id="gamePickModal" class="mdl hidden" onclick="if(event.target===this)closeGamePick()">
+  <div class="mdl-box" style="max-width:560px">
+    <div class="row" style="margin-bottom:6px">
+      <h3 style="margin:0">Сменить игру вкладки</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="closeGamePick()">✕</button>
+    </div>
+    <div class="hint" style="margin-bottom:12px">События останутся, но команды в них написаны под старую игру — их придётся поправить.</div>
+    <div class="type-grid" id="gamePickBody"></div>
+  </div>
+</div>
+
+<div id="changelogModal" class="mdl hidden" onclick="if(event.target===this)closeChangelog()">
+  <div class="mdl-box" style="max-width:640px">
+    <div class="row" style="margin-bottom:12px">
+      <h3 style="margin:0">Что нового</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="closeChangelog()">✕</button>
+    </div>
+    <div id="updBox"></div>
+    <div id="changelogBody"></div>
+  </div>
+</div>
+
+<div id="newTabModal" class="mdl hidden" onclick="if(event.target===this)closeNewTab()">
+  <div class="mdl-box">
+    <div class="row" style="margin-bottom:14px">
+      <h3 style="margin:0" id="ntTitle">Новая вкладка</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="closeNewTab()">✕</button>
+    </div>
+    <div id="ntBody"></div>
+  </div>
+</div>
+
+<div id="cmdModal" class="mdl hidden" onclick="if(event.target===this)closeCmdPicker()">
+  <div class="mdl-box">
+    <div class="row" style="margin-bottom:12px">
+      <h3 style="margin:0">📖 Команды игры</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="closeCmdPicker()">✕</button>
+    </div>
+    <div id="cmdList" class="cmd-list"></div>
+  </div>
+</div>
+
+<div id="gameHelpModal" class="mdl hidden" onclick="if(event.target===this)closeGameHelp()">
+  <div class="mdl-box">
+    <div class="row" style="margin-bottom:12px">
+      <h3 style="margin:0" id="ghTitle">Как подключить</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="closeGameHelp()">✕</button>
+    </div>
+    <div id="ghBody" class="gh-body"></div>
+  </div>
+</div>
+
+<div id="typeModal" class="hidden" onclick="if(event.target===this)closeTypePicker()">
+  <div id="typeBox">
+    <div class="row" style="margin-bottom:14px">
+      <h3 style="margin:0">Что будет запускать событие?</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="closeTypePicker()">✕</button>
+    </div>
+    <div class="type-grid" id="typeGrid"></div>
+  </div>
+</div>
+
+<div id="giftLibModal" class="hidden" onclick="if(event.target===this)closeGiftLib()">
+  <div id="giftLibBox"></div>
+</div>
+
+<script src="/web/editor.js?v=__VERSION__"></script>
+<script src="/web/servers.js?v=__VERSION__"></script>
+<script src="/web/iconpick.js?v=__VERSION__"></script>
+<script src="/web/viewers.js?v=__VERSION__"></script>
+<script src="/web/update.js?v=__VERSION__"></script>
+<script src="/web/mediapick.js?v=__VERSION__"></script>
+</body>
+</html>

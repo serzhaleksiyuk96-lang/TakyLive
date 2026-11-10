@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Озвучка чата</title>
+<style>
+  body { background:transparent; margin:0; font-family:"Segoe UI",Roboto,sans-serif; }
+  #unlock {
+    display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:linear-gradient(135deg,#6366f1,#22d3ee); color:#fff; border:none;
+    font-size:16px; font-weight:600; padding:14px 28px; border-radius:14px;
+    cursor:pointer; box-shadow:0 6px 24px rgba(99,102,241,.5);
+  }
+</style>
+</head>
+<body>
+<button id="unlock">🔊 Включить звук</button>
+<script>
+// Невидимый оверлей: проигрывает озвучку сообщений по очереди.
+// В OBS звук играет сам. В обычном браузере при блокировке автозвука
+// появится кнопка «Включить звук» — нажми её один раз.
+let lastSeq = -1;
+let playing = false;
+const queue = [];
+const unlockBtn = document.getElementById("unlock");
+
+unlockBtn.addEventListener("click", () => {
+  unlockBtn.style.display = "none";
+  playing = false;
+  playNext();
+});
+
+async function poll() {
+  try {
+    const r = await fetch("/api/tts_queue?since=" + Math.max(0, lastSeq), {cache:"no-store"});
+    const d = await r.json();
+    if (lastSeq < 0) { lastSeq = d.seq; epoch = d.epoch; skip = d.skip; return; }  // историю не играем
+    if (d.epoch !== undefined && d.epoch !== epoch) {      // ⏹ в программе: стоп и пустая очередь
+      epoch = d.epoch; skip = d.skip; queue.length = 0; stopCurrent();
+    } else if (d.skip !== undefined && d.skip !== skip) {  // ⏭ — пропустить текущее
+      skip = d.skip; if (current) { stopCurrent(); queue.shift(); }   // следующее запустит строка ниже — один раз
+    }
+    lastSeq = d.seq;
+    d.new_tts.forEach(t => queue.push(t));
+    if (!playing) playNext();
+  } catch(e) {}
+}
+
+let epoch = 0, skip = 0, current = null;
+function stopCurrent() {
+  if (current) { try { current.pause(); } catch (e) {} current.onended = current.onerror = null; current = null; }
+  playing = false;
+}
+
+function playNext() {
+  if (queue.length === 0) { playing = false; return; }
+  playing = true;
+  const item = queue[0];
+  const audio = new Audio("/media/" + item.file);
+  current = audio;
+  audio.volume = Math.max(0, Math.min(1, (item.volume ?? 100) / 100));
+  audio.onended = () => { queue.shift(); setTimeout(playNext, 250); };
+  audio.onerror = () => { queue.shift(); setTimeout(playNext, 250); };
+  audio.play().catch(err => {
+    if (err && err.name === "NotAllowedError") {
+      unlockBtn.style.display = "block";
+      playing = false;
+    } else {
+      queue.shift();
+      setTimeout(playNext, 250);
+    }
+  });
+}
+
+setInterval(poll, 600);
+poll();
+</script>
+</body>
+</html>

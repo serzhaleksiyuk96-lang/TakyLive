@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Цели стрима</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; overflow:hidden; font-family:"Segoe UI",Roboto,sans-serif; }
+  #panel { position:fixed; top:14px; left:14px; width:300px; display:flex; flex-direction:column; gap:10px; }
+  .goal {
+    background:rgba(13,17,23,0.9); backdrop-filter:blur(10px);
+    border:2px solid #fbbf24; border-radius:14px; padding:12px 14px;
+    box-shadow:0 0 18px rgba(251,191,36,0.3);
+  }
+  .goal.done { border-color:#34d399; box-shadow:0 0 18px rgba(52,211,153,0.4); }
+  .g-title { color:#fff; font-size:14px; font-weight:600; margin-bottom:8px; }
+  .g-bar { height:16px; background:rgba(255,255,255,0.08); border-radius:8px; overflow:hidden; }
+  .g-fill {
+    height:100%; border-radius:8px; transition:width .6s ease;
+    background:linear-gradient(90deg,#f59e0b,#fbbf24);
+  }
+  .goal.done .g-fill { background:linear-gradient(90deg,#10b981,#34d399); }
+  .g-nums { color:#cbd5e1; font-size:12px; margin-top:5px; text-align:right; font-weight:600; }
+  .g-icon { margin-right:4px; }
+</style>
+</head>
+<body>
+<div id="panel"></div>
+<script>
+const ICONS = {likes:"❤", coins:"💎", follows:"➕", subs:"⭐", gifts:"🎁"};
+let prev = null;
+async function poll() {
+  try {
+    const r = await fetch("/api/overlay", {cache:"no-store"});
+    const d = await r.json();
+    render(d.goals || []);
+  } catch(e) {}
+}
+function render(goals) {
+  const snap = JSON.stringify(goals);
+  if (snap === prev) return;
+  prev = snap;
+  const box = document.getElementById("panel");
+  box.innerHTML = goals.map(g => {
+    const pct = Math.min(100, Math.round(g.current / g.target * 100));
+    return `
+    <div class="goal ${g.reached?'done':''}">
+      <div class="g-title"><span class="g-icon">${ICONS[g.metric]||"🎯"}</span>${escapeHtml(g.title)} ${g.reached?"✅":""}</div>
+      <div class="g-bar"><div class="g-fill" style="width:${pct}%"></div></div>
+      <div class="g-nums">${g.current} / ${g.target}</div>
+    </div>`;
+  }).join("");
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+const DEMO = new URLSearchParams(location.search).get("demo");
+if (DEMO) {
+  render([
+    {title:"1000 лайков",  metric:"likes",   target:1000, current:640,  reached:false},
+    {title:"50 фолловеров",metric:"follows", target:50,   current:50,   reached:true},
+  ]);
+} else {
+setInterval(poll, 1500);
+poll();
+}
+</script>
+</body>
+</html>

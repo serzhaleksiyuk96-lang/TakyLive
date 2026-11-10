@@ -1,0 +1,516 @@
+{
+ "title": "Хаос в Лос-Сантосе",
+ "game": "gta5",
+ "icon": "🚗",
+ "description": "Нужен мод TikTokBridge (кнопка «📖 Как подключить»). Только сюжетный режим. Дешёвые подарки — мелкие пакости, дорогие — армагеддон.",
+ "profile": {
+  "game": "gta5",
+  "gifts": [
+   {
+    "commands": [
+     "random_vehicle"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "машина",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rose",
+    "gift_id": "5655",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "explode"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "взрыв",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "GG",
+    "gift_id": "6064",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "ragdoll 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "упасть",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Ice Cream Cone",
+    "gift_id": "5827",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "heal"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "лечение",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Finger Heart",
+    "gift_id": "5487",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "animal a_c_chimp"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "обезьяна",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rosa",
+    "gift_id": "8913",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "peds 5"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "толпа",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Perfume",
+    "gift_id": "5658",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "enemies 3 weapon_pistol"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "враги",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Doughnut",
+    "gift_id": "5879",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "wanted 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "розыск 3★",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Hand Hearts",
+    "gift_id": "",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "bodyguards 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "охрана",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Corgi",
+    "gift_id": "6267",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "vehicle_in rhino"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "танк",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Money Gun",
+    "gift_id": "7168",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "slowmo 5",
+     "rain_cars 10"
+    ],
+    "delays": [
+     0,
+     0.5
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "дождь из машин",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Galaxy",
+    "gift_id": "11046",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "notify ~r~{user}~s~ устроил АРМАГЕДДОН!",
+     "wanted 5",
+     "enemies 10 weapon_rpg",
+     "rain_cars 15"
+    ],
+    "delays": [
+     0,
+     0.5,
+     0.5,
+     1
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "армагеддон",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Lion",
+    "gift_id": "6369",
+    "repeat_by_count": false
+   }
+  ],
+  "likes": [
+   {
+    "commands": [
+     "launch 25"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "подбросить",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 300
+   },
+   {
+    "commands": [
+     "weather THUNDER"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "гроза",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 1000
+   }
+  ],
+  "subs": [
+   {
+    "commands": [
+     "weapon weapon_rpg 10"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "РПГ",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "follows": [
+   {
+    "commands": [
+     "notify {user} подписался!",
+     "heal"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "лечение",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "welcome": [],
+  "chatcmds": [
+   {
+    "commands": [
+     "animal a_c_chimp"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "обезьяна",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!обезьяна",
+    "cooldown": 30
+   },
+   {
+    "commands": [
+     "time 0"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "ночь",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!ночь",
+    "cooldown": 120
+   },
+   {
+    "commands": [
+     "weather RAIN"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "дождь",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!дождь",
+    "cooldown": 60
+   }
+  ],
+  "goals": [
+   {
+    "commands": [
+     "rain_cars 15"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "дождь из машин",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "likes",
+    "target": 5000
+   },
+   {
+    "commands": [
+     "bodyguards 5"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "армия охраны",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "follows",
+    "target": 50
+   }
+  ],
+  "panel": [
+   {
+    "commands": [
+     "clear_wanted"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🚓 Снять розыск",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "heal"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "❤ Вылечить",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "time 12",
+     "weather CLEAR"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "☀ День",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ]
+ }
+}

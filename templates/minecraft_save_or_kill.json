@@ -1,0 +1,730 @@
+{
+ "title": "Спаси или убей",
+ "game": "minecraft",
+ "icon": "🔥",
+ "description": "Две команды зрителей: ❤ подарки спасают стримера, 💀 — мешают. Зрители соревнуются, имя дарителя крупно на экране. Общая цель «1000 монет» видна на оверлее целей. Играй на отдельном мире — тут ТНТ и иссушитель. Ванильные команды, Minecraft 1.19+.",
+ "profile": {
+  "game": "minecraft",
+  "gifts": [
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: лечение\",\"color\":\"green\"}",
+     "effect give {nick} regeneration 5 2",
+     "execute at {nick} run particle minecraft:heart ~ ~1 ~ 1 1 1 0.3 8"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "❤ лечение",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rose",
+    "gift_id": "5655",
+    "repeat_by_count": true,
+    "icon_file": "vault/60. Interface/1.$ Effects/Instant_Health.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: золотое яблоко\",\"color\":\"green\"}",
+     "give {nick} golden_apple 1"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "❤ золотое яблоко",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Finger Heart",
+    "gift_id": "5487",
+    "repeat_by_count": false,
+    "icon_file": "vault/10. Items/18. Consumables/Golden_Apple.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: 5 алмазов!\",\"color\":\"aqua\"}",
+     "give {nick} diamond 5",
+     "execute as @a at @s run playsound minecraft:entity.player.levelup master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "❤ 5 алмазов",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Doughnut",
+    "gift_id": "5879",
+    "repeat_by_count": false,
+    "icon_file": "vault/10. Items/11. Materials/Diamond.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: железная броня\",\"color\":\"green\"}",
+     "give {nick} iron_helmet 1",
+     "give {nick} iron_chestplate 1",
+     "give {nick} iron_leggings 1",
+     "give {nick} iron_boots 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "❤ броня",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Paper Crane",
+    "gift_id": "5659",
+    "repeat_by_count": false,
+    "icon_file": "vault/10. Items/8. Armor/Iron_Chestplate.png"
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"даёт БЕССМЕРТИЕ на 30 секунд\",\"color\":\"green\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"green\"}",
+     "effect give {nick} resistance 30 4",
+     "effect give {nick} regeneration 30 2",
+     "execute at {nick} run particle minecraft:totem_of_undying ~ ~1 ~ 1 1 1 0.3 150",
+     "execute as @a at @s run playsound minecraft:ui.toast.challenge_complete master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "❤ бессмертие",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Hand Hearts",
+    "gift_id": "",
+    "repeat_by_count": false,
+    "icon_file": "vault/10. Items/18. Consumables/Totem_Of_Undying.png"
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"дарит незеритовый меч и тотем\",\"color\":\"gold\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"gold\"}",
+     "give {nick} netherite_sword 1",
+     "give {nick} totem_of_undying 1",
+     "execute at {nick} run particle minecraft:totem_of_undying ~ ~1 ~ 1 1 1 0.3 200",
+     "execute as @a at @s run playsound minecraft:ui.toast.challenge_complete master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "❤ меч и тотем",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Money Gun",
+    "gift_id": "7168",
+    "repeat_by_count": false,
+    "icon_file": "vault/10. Items/1. Swords/Netherite_Sword.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: ЗОМБИ!\",\"color\":\"red\"}",
+     "execute at {nick} run summon zombie ~3 ~ ~3"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 зомби",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Zombie_Adult.webp",
+    "name": "GG",
+    "gift_id": "6064",
+    "repeat_by_count": true
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: ТНТ!\",\"color\":\"red\"}",
+     "execute at {nick} run summon tnt ~ ~2 ~"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 тнт",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/20. Blocks/22. Redstone/Tnt.png",
+    "name": "Ice Cream Cone",
+    "gift_id": "5827",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: крипер!\",\"color\":\"red\"}",
+     "execute at {nick} run summon creeper ~3 ~ ~3"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 крипер",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Creeper.webp",
+    "name": "Rosa",
+    "gift_id": "8913",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: фантомы!\",\"color\":\"red\"}",
+     "execute at {nick} run summon phantom ~ ~8 ~"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 3,
+    "title": "💀 фантомы",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Perfume",
+    "gift_id": "5658",
+    "repeat_by_count": false,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Phantom.webp"
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"выпустил РАЗОРИТЕЛЯ\",\"color\":\"red\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"red\"}",
+     "execute at {nick} run summon ravager ~5 ~ ~5",
+     "execute as @a at @s run playsound minecraft:entity.ender_dragon.growl master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 разоритель",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Ravager.webp",
+    "name": "Corgi",
+    "gift_id": "6267",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"призвал ВАРДЕНА\",\"color\":\"dark_red\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"dark_red\"}",
+     "execute at {nick} run summon warden ~6 ~ ~6",
+     "effect give {nick} darkness 10 0",
+     "execute as @a at @s run playsound minecraft:entity.warden.emerge master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 варден",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Warden.webp",
+    "name": "Galaxy",
+    "gift_id": "11046",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"призвал ИССУШИТЕЛЯ\",\"color\":\"dark_purple\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"dark_purple\"}",
+     "execute at {nick} run summon wither ~ ~10 ~",
+     "weather thunder",
+     "execute as @a at @s run playsound minecraft:entity.wither.spawn master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 иссушитель",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/4. Boss/Wither.webp",
+    "name": "Lion",
+    "gift_id": "6369",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: курица!\",\"color\":\"yellow\"}",
+     "execute at {nick} run summon chicken ~ ~1 ~"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🐔 курица",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "TikTok",
+    "gift_id": "5269",
+    "repeat_by_count": true,
+    "icon_file": "vault/15.$ Mobs/6. MC Legends/Chicken.webp"
+   }
+  ],
+  "likes": [
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"Чат набрал 300 лайков — салют!\",\"color\":\"aqua\"}",
+     "execute at {nick} run summon firework_rocket ~ ~1 ~",
+     "execute as @a at @s run playsound minecraft:entity.player.levelup master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🎆 салют",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 300,
+    "icon_file": "vault/10. Items/18. Consumables/Firework_Rocket.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"1000 лайков — ГРОЗА!\",\"color\":\"dark_aqua\"}",
+     "weather thunder"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "⛈ гроза",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 1000,
+    "icon_file": "vault/20. Blocks/16. Copper/Lightning_Rod.png"
+   }
+  ],
+  "subs": [
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"НОВЫЙ ПОДПИСЧИК — 10 алмазов\",\"color\":\"gold\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"gold\"}",
+     "give {nick} diamond 10",
+     "execute at {nick} run particle minecraft:totem_of_undying ~ ~1 ~ 1 1 1 0.3 150",
+     "execute as @a at @s run playsound minecraft:ui.toast.challenge_complete master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💎 10 алмазов",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/10. Items/11. Materials/Diamond.png"
+   }
+  ],
+  "follows": [
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user} подписался — спасибо!\",\"color\":\"gold\"}",
+     "give {nick} cookie 1"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🍪 печенька",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/10. Items/10. Food/Cookie.png"
+   }
+  ],
+  "welcome": [],
+  "chatcmds": [
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user} передаёт привет!\",\"color\":\"aqua\"}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "👋 привет",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!привет",
+    "cooldown": 15
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: курица!\",\"color\":\"yellow\"}",
+     "execute at {nick} run summon chicken ~ ~1 ~"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🐔 курица",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!курица",
+    "cooldown": 30,
+    "icon_file": "vault/15.$ Mobs/6. MC Legends/Chicken.webp"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user} вызвал молнию!\",\"color\":\"yellow\"}",
+     "execute at {nick} run summon lightning_bolt ~4 ~ ~4"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "⚡ молния",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!молния",
+    "cooldown": 180,
+    "icon_file": "vault/20. Blocks/16. Copper/Lightning_Rod.png"
+   }
+  ],
+  "goals": [
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"набрал 3000 лайков — 16 алмазов!\",\"color\":\"aqua\"}",
+     "title @a title {\"text\":\"ЧАТ\",\"color\":\"aqua\"}",
+     "give {nick} diamond 16"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "16 алмазов",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "likes",
+    "target": 3000
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"собрали 1000 монет — ЭЛИТРЫ!\",\"color\":\"gold\"}",
+     "title @a title {\"text\":\"ВЫ\",\"color\":\"gold\"}",
+     "give {nick} elytra 1",
+     "execute as @a at @s run playsound minecraft:ui.toast.challenge_complete master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "элитры",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "coins",
+    "target": 1000
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"30 новых подписчиков — алмазный меч!\",\"color\":\"gold\"}",
+     "give {nick} diamond_sword 1"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "алмазный меч",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "follows",
+    "target": 30
+   }
+  ],
+  "panel": [
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"спасибо команде «спаси»!\",\"color\":\"green\"}",
+     "title @a title {\"text\":\"ВЫЖИЛ\",\"color\":\"green\"}",
+     "execute as @a at @s run playsound minecraft:ui.toast.challenge_complete master @s ~ ~ ~ 1 1",
+     "execute at {nick} run particle minecraft:totem_of_undying ~ ~1 ~ 1 1 1 0.3 200"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🏆 Я выжил!",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"команда «убей» победила!\",\"color\":\"red\"}",
+     "title @a title {\"text\":\"ПОГИБ\",\"color\":\"red\"}",
+     "execute as @a at @s run playsound minecraft:entity.wither.death master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 Я погиб",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "execute at {nick} run kill @e[type=zombie,distance=..60]",
+     "execute at {nick} run kill @e[type=creeper,distance=..60]",
+     "execute at {nick} run kill @e[type=phantom,distance=..60]",
+     "execute at {nick} run kill @e[type=ravager,distance=..60]",
+     "execute at {nick} run kill @e[type=tnt,distance=..60]",
+     "execute at {nick} run kill @e[type=warden,distance=..60]",
+     "execute at {nick} run kill @e[type=wither,distance=..60]"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧹 Убрать мобов",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "time set day",
+     "weather clear"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "☀ День и ясно",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ]
+ }
+}

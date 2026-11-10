@@ -1,0 +1,811 @@
+{
+ "title": "Страдания стримера",
+ "game": "minecraft",
+ "icon": "😈",
+ "description": "Каждый подарок делает больно — чем дороже, тем страшнее: от зомби и тошноты до полёта со 100 блоков и очистки инвентаря. Ник дарителя — на экране. Играй на отдельном мире. Ванильные команды, Minecraft 1.19+.",
+ "profile": {
+  "game": "minecraft",
+  "gifts": [
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: зомби!\",\"color\":\"red\"}",
+     "execute at {nick} run summon zombie ~2 ~ ~2"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 зомби",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Zombie_Adult.webp",
+    "name": "Rose",
+    "gift_id": "5655",
+    "repeat_by_count": true
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: ТНТ под ноги!\",\"color\":\"red\"}",
+     "execute at {nick} run summon tnt ~ ~1 ~"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 тнт под ноги",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/20. Blocks/22. Redstone/Tnt.png",
+    "name": "GG",
+    "gift_id": "6064",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: подбросил!\",\"color\":\"red\"}",
+     "effect give {nick} levitation 3 1"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 подбросить",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Ice Cream Cone",
+    "gift_id": "5827",
+    "repeat_by_count": false,
+    "icon_file": "vault/60. Interface/1.$ Effects/Levitation.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: ослепил!\",\"color\":\"red\"}",
+     "effect give {nick} blindness 8 0"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 слепота",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Heart Me",
+    "gift_id": "7934",
+    "repeat_by_count": false,
+    "icon_file": "vault/60. Interface/1.$ Effects/Blindness.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: тошнота!\",\"color\":\"red\"}",
+     "effect give {nick} nausea 15 0"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 тошнота",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "TikTok",
+    "gift_id": "5269",
+    "repeat_by_count": false,
+    "icon_file": "vault/60. Interface/1.$ Effects/Nausea.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: в паутину!\",\"color\":\"red\"}",
+     "execute at {nick} run setblock ~ ~ ~ cobweb keep",
+     "execute at {nick} run setblock ~ ~1 ~ cobweb keep"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 паутина",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Finger Heart",
+    "gift_id": "5487",
+    "repeat_by_count": false,
+    "icon_file": "vault/10. Items/21. Decoration/Cobweb.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: крипер!\",\"color\":\"red\"}",
+     "execute at {nick} run summon creeper ~3 ~ ~3"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 крипер",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Creeper.webp",
+    "name": "Rosa",
+    "gift_id": "8913",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: замедление!\",\"color\":\"red\"}",
+     "effect give {nick} slowness 20 2",
+     "effect give {nick} mining_fatigue 20 2"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 замедление",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Perfume",
+    "gift_id": "5658",
+    "repeat_by_count": false,
+    "icon_file": "vault/60. Interface/1.$ Effects/Slowness.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: голод!\",\"color\":\"red\"}",
+     "effect give {nick} hunger 30 49"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 голод",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Doughnut",
+    "gift_id": "5879",
+    "repeat_by_count": false,
+    "icon_file": "vault/60. Interface/1.$ Effects/Hunger.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: наковальня сверху!\",\"color\":\"red\"}",
+     "execute at {nick} run setblock ~ ~12 ~ anvil keep"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 наковальня",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Hat and Mustache",
+    "gift_id": "6427",
+    "repeat_by_count": false,
+    "icon_file": "vault/20. Blocks/33. Workplaces/Anvil.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: ведьма!\",\"color\":\"red\"}",
+     "execute at {nick} run summon witch ~4 ~ ~4"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 ведьма",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Witch.webp",
+    "name": "Paper Crane",
+    "gift_id": "5659",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: молнии!\",\"color\":\"red\"}",
+     "execute at {nick} run summon lightning_bolt ~ ~ ~"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 3,
+    "title": "💀 молнии",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Hand Hearts",
+    "gift_id": "",
+    "repeat_by_count": false,
+    "icon_file": "vault/20. Blocks/16. Copper/Lightning_Rod.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user} отобрал предмет из руки!\",\"color\":\"red\"}",
+     "item replace entity {nick} weapon.mainhand with air",
+     "execute as @a at @s run playsound minecraft:entity.item.break master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 отобрать предмет",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Sunglasses",
+    "gift_id": "5509",
+    "repeat_by_count": false,
+    "icon_file": "vault/20. Blocks/39. Admin/Barrier.png"
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"выпустил РАЗОРИТЕЛЯ\",\"color\":\"red\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"red\"}",
+     "execute at {nick} run summon ravager ~5 ~ ~5",
+     "execute as @a at @s run playsound minecraft:entity.ender_dragon.growl master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 разоритель",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Ravager.webp",
+    "name": "Corgi",
+    "gift_id": "6267",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"отправил в полёт со 100 блоков\",\"color\":\"red\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"red\"}",
+     "execute at {nick} run tp {nick} ~ ~100 ~"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 полёт со 100 блоков",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Money Gun",
+    "gift_id": "7168",
+    "repeat_by_count": false,
+    "icon_file": "vault/10. Items/34. Uncategorized/Feather.png"
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"призвал ОРДУ ЗОМБИ\",\"color\":\"red\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"red\"}",
+     "execute at {nick} run summon zombie ~4 ~ ~4",
+     "execute at {nick} run summon zombie ~-4 ~ ~4",
+     "execute at {nick} run summon zombie ~4 ~ ~-4",
+     "execute at {nick} run summon zombie ~-4 ~ ~-4"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 2,
+    "title": "💀 орда зомби",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Zombie_Adult.webp",
+    "name": "Swan",
+    "gift_id": "5897",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"призвал ВАРДЕНА\",\"color\":\"dark_red\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"dark_red\"}",
+     "execute at {nick} run summon warden ~6 ~ ~6",
+     "effect give {nick} darkness 10 0",
+     "execute as @a at @s run playsound minecraft:entity.warden.emerge master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 варден",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Warden.webp",
+    "name": "Galaxy",
+    "gift_id": "11046",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"СТЁР ИНВЕНТАРЬ и призвал ИССУШИТЕЛЯ\",\"color\":\"dark_purple\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"dark_purple\"}",
+     "clear {nick}",
+     "execute at {nick} run summon wither ~ ~10 ~",
+     "weather thunder",
+     "execute as @a at @s run playsound minecraft:entity.wither.spawn master @s ~ ~ ~ 1 1"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 конец всему",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/15.$ Mobs/4. Boss/Wither.webp",
+    "name": "Lion",
+    "gift_id": "6369",
+    "repeat_by_count": false
+   }
+  ],
+  "likes": [
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"300 лайков: скелет!\",\"color\":\"red\"}",
+     "execute at {nick} run summon skeleton ~4 ~ ~4"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 скелет",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 300,
+    "icon_file": "vault/15.$ Mobs/3. Hostile/Skeleton_Aiming.webp"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"1000 лайков: ночь и гроза!\",\"color\":\"dark_aqua\"}",
+     "time set midnight",
+     "weather thunder"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 ночь и гроза",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 1000,
+    "icon_file": "vault/20. Blocks/16. Copper/Lightning_Rod.png"
+   }
+  ],
+  "subs": [
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"ТНТ-ДОЖДЬ\",\"color\":\"red\"}",
+     "title @a title {\"text\":\"{user}\",\"color\":\"red\"}",
+     "execute at {nick} run summon tnt ~3 ~5 ~",
+     "execute at {nick} run summon tnt ~-3 ~5 ~",
+     "execute at {nick} run summon tnt ~ ~5 ~3",
+     "execute at {nick} run summon tnt ~ ~5 ~-3",
+     "execute at {nick} run summon tnt ~ ~6 ~"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 тнт-дождь",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/20. Blocks/22. Redstone/Tnt.png"
+   }
+  ],
+  "follows": [
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user} подписался: тошнота!\",\"color\":\"red\"}",
+     "effect give {nick} nausea 5 0"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 тошнота",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "icon_file": "vault/60. Interface/1.$ Effects/Nausea.png"
+   }
+  ],
+  "welcome": [],
+  "chatcmds": [
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: паук!\",\"color\":\"red\"}",
+     "execute at {nick} run summon spider ~3 ~ ~3"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 паук",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!паук",
+    "cooldown": 60,
+    "icon_file": "vault/15.$ Mobs/2. Neutral/Spider.webp"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: тьма!\",\"color\":\"red\"}",
+     "effect give {nick} blindness 3 0"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 слепота",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!тьма",
+    "cooldown": 120,
+    "icon_file": "vault/60. Interface/1.$ Effects/Blindness.png"
+   },
+   {
+    "commands": [
+     "title @a actionbar {\"text\":\"{user}: прыг!\",\"color\":\"red\"}",
+     "effect give {nick} levitation 1 1"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 подбросить",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!прыг",
+    "cooldown": 60,
+    "icon_file": "vault/60. Interface/1.$ Effects/Levitation.png"
+   }
+  ],
+  "goals": [
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"набрал 5000 лайков — ИССУШИТЕЛЬ\",\"color\":\"dark_purple\"}",
+     "title @a title {\"text\":\"ЧАТ\",\"color\":\"dark_purple\"}",
+     "execute at {nick} run summon wither ~ ~10 ~"
+    ],
+    "delays": [
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 иссушитель от чата",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "likes",
+    "target": 5000
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"собрали 1000 монет — ВАРДЕН\",\"color\":\"dark_red\"}",
+     "title @a title {\"text\":\"ВЫ\",\"color\":\"dark_red\"}",
+     "execute at {nick} run summon warden ~6 ~ ~6",
+     "effect give {nick} darkness 15 0"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 варден от всех",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "coins",
+    "target": 1000
+   },
+   {
+    "commands": [
+     "title @a subtitle {\"text\":\"орда зомби\",\"color\":\"red\"}",
+     "title @a title {\"text\":\"50 ПОДПИСЧИКОВ\",\"color\":\"red\"}",
+     "execute at {nick} run summon zombie ~4 ~ ~4",
+     "execute at {nick} run summon zombie ~4 ~ ~4",
+     "execute at {nick} run summon zombie ~4 ~ ~4",
+     "execute at {nick} run summon zombie ~4 ~ ~4"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 орда зомби",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "follows",
+    "target": 50
+   }
+  ],
+  "panel": [
+   {
+    "commands": [
+     "effect clear {nick}",
+     "effect give {nick} instant_health 1 3"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💊 Спастись",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "execute at {nick} run kill @e[type=zombie,distance=..60]",
+     "execute at {nick} run kill @e[type=skeleton,distance=..60]",
+     "execute at {nick} run kill @e[type=spider,distance=..60]",
+     "execute at {nick} run kill @e[type=creeper,distance=..60]",
+     "execute at {nick} run kill @e[type=witch,distance=..60]",
+     "execute at {nick} run kill @e[type=ravager,distance=..60]",
+     "execute at {nick} run kill @e[type=tnt,distance=..60]",
+     "execute at {nick} run kill @e[type=warden,distance=..60]",
+     "execute at {nick} run kill @e[type=wither,distance=..60]"
+    ],
+    "delays": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧹 Убрать мобов",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "time set day",
+     "weather clear"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "☀ День и ясно",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ]
+ }
+}

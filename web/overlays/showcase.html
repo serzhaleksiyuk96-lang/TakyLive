@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Витрина подарков</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; overflow:hidden; font-family:"Segoe UI",Roboto,sans-serif;
+         --ic:88px; }
+  #wrap { position:fixed; inset:10px; display:flex; overflow:hidden; }
+  #wrap.row    { align-items:flex-end; justify-content:center; }
+  #wrap.column { align-items:flex-start; justify-content:flex-start; }
+  #list { display:flex; gap:8px; }
+  #wrap.row #list    { flex-direction:row; }
+  #wrap.column #list { flex-direction:column; width:230px; }
+
+  .g {
+    background:rgba(13,17,23,0.88); backdrop-filter:blur(8px);
+    border:2px solid rgba(255,255,255,0.14); border-radius:14px;
+    box-shadow:0 4px 18px rgba(0,0,0,0.45); flex:none;
+    transition:transform .25s ease, border-color .25s ease, box-shadow .25s ease;
+  }
+  #wrap.row .g    { width:calc(var(--ic) * 1.75); padding:12px 8px; text-align:center; }
+  #wrap.column .g { display:flex; align-items:center; gap:12px; padding:10px 12px; }
+  #wrap.column #list { width:calc(var(--ic) * 3.4); }
+
+  .g img, .ph { object-fit:contain; display:block; border-radius:8px;
+                background:rgba(255,255,255,0.1); }
+  #wrap.row .g img, #wrap.row .ph       { width:var(--ic); height:var(--ic); margin:0 auto 8px; }
+  #wrap.column .g img, #wrap.column .ph { width:calc(var(--ic) * 0.75);
+                                          height:calc(var(--ic) * 0.75); flex:none; }
+  .ph { display:flex; align-items:center; justify-content:center;
+        color:#fff; font-weight:700; font-size:calc(var(--ic) * 0.36); }
+
+  .nm  { color:#fff; font-size:max(13px, calc(var(--ic) * 0.185)); font-weight:600;
+         line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ac  { color:#22d3ee; font-size:max(12px, calc(var(--ic) * 0.165)); font-weight:600;
+         margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ac b { color:#fbbf24; }
+  .txt { min-width:0; }
+
+  .g.k-likes    { border-color:rgba(248,113,113,0.45); }
+  .g.k-subs     { border-color:rgba(251,191,36,0.45); }
+  .g.k-follows  { border-color:rgba(52,211,153,0.45); }
+  .g.k-chatcmds { border-color:rgba(34,211,238,0.45); }
+  /* ═══ Анимации: три независимых слоя ═══
+     1) появление (.in + ap-*) — короткое, потом класс снимается
+     2) эффект карточек (fx-*) — живёт постоянно
+     3) подсветка при подарке (.hit) — сильнее всех */
+  .g { position:relative; }
+
+  /* 1) появление */
+  #list .g.in { animation-duration:.6s; animation-fill-mode:both; animation-timing-function:ease;
+                animation-delay:var(--ad, 0ms); }
+  .ap-fade     #list .g.in { animation-name:in-fade; }
+  .ap-pulse    #list .g.in { animation-name:in-pulse; }
+  .ap-wave     #list .g.in { animation-name:in-wave; }
+  .ap-flip     #list .g.in { animation-name:in-flip; }
+  .ap-zoom     #list .g.in { animation-name:in-zoom; }
+  .ap-domino   #list .g.in { animation-name:in-domino; }
+  .ap-carousel #list .g.in { animation-name:in-carousel; }
+  .ap-spiral   #list .g.in { animation-name:in-spiral; animation-duration:.75s; }
+  .ap-bounce   #list .g.in { animation-name:in-bounce;  animation-duration:.8s; }
+  .ap-diagonal #list .g.in { animation-name:in-diagonal; }
+  .ap-flash    #list .g.in { animation-name:in-flash;   animation-duration:.85s; }
+  .ap-blur     #list .g.in { animation-name:in-blur;    animation-duration:.7s; }
+  @keyframes in-fade     { from{opacity:0} to{opacity:1} }
+  @keyframes in-pulse    { 0%{opacity:0;transform:scale(.84)} 55%{opacity:1;transform:scale(1.13)}
+                           100%{opacity:1;transform:none} }
+  @keyframes in-wave     { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+  @keyframes in-flip     { from{opacity:0;transform:rotateY(90deg)} to{opacity:1;transform:none} }
+  @keyframes in-zoom     { from{opacity:0;transform:scale(.3)} to{opacity:1;transform:none} }
+  @keyframes in-domino   { from{opacity:0;transform:translateY(-26px) rotate(-12deg)} to{opacity:1;transform:none} }
+  @keyframes in-carousel { from{opacity:0;transform:translateX(120px)} to{opacity:1;transform:none} }
+  @keyframes in-spiral   { from{opacity:0;transform:rotate(-200deg) scale(.2)} to{opacity:1;transform:none} }
+  @keyframes in-bounce   { 0%{opacity:0;transform:translateY(-60px)} 55%{opacity:1;transform:translateY(8px)}
+                           75%{transform:translateY(-4px)} 100%{opacity:1;transform:none} }
+  @keyframes in-diagonal { from{opacity:0;transform:translate(-16px,-16px) scale(.7)} to{opacity:1;transform:none} }
+  @keyframes in-flash    { 0%{opacity:0;filter:brightness(3);box-shadow:0 0 30px #fff}
+                           40%{opacity:1;filter:brightness(2);box-shadow:0 0 24px #22d3ee}
+                           100%{opacity:1;filter:none} }
+  @keyframes in-blur     { from{opacity:0;filter:blur(10px);transform:scale(1.15)} to{opacity:1;filter:none;transform:none} }
+
+  /* 2) эффект карточек — постоянный (цвета рамок по типу не перебивает) */
+  .fx-glow    #list .g { animation:fx-glow 2.4s ease infinite;         animation-delay:var(--d, 0ms); }
+  .fx-breathe #list .g { animation:fx-breathe 2.8s ease-in-out infinite; animation-delay:var(--d, 0ms); }
+  .fx-float   #list .g { animation:fx-float 2.4s ease-in-out infinite;  animation-delay:var(--d, 0ms); }
+  .fx-wobble  #list .g { animation:fx-wobble 1.8s ease-in-out infinite; animation-delay:var(--d, 0ms); }
+  .fx-neon    #list .g { animation:fx-neon 1.9s ease-in-out infinite;   animation-delay:var(--d, 0ms); }
+  .fx-rainbow #list .g { animation:fx-rainbow 4s linear infinite;       animation-delay:var(--d, 0ms); }
+  .fx-shine   #list .g { overflow:hidden; }
+  .fx-shine   #list .g::after {
+    content:""; position:absolute; top:0; bottom:0; width:45%; left:-60%; pointer-events:none;
+    background:linear-gradient(100deg, transparent, rgba(255,255,255,0.35), transparent);
+    animation:fx-shine 2.8s ease-in-out infinite; animation-delay:var(--d, 0ms); }
+  @keyframes fx-glow    { 0%,70%,100%{box-shadow:0 4px 18px rgba(0,0,0,0.45)}
+                          12%{box-shadow:0 0 0 2px #22d3ee, 0 0 22px rgba(34,211,238,0.6)} }
+  @keyframes fx-breathe { 0%,100%{transform:scale(1);opacity:.88} 50%{transform:scale(1.04);opacity:1} }
+  @keyframes fx-float   { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-7px)} }
+  @keyframes fx-wobble  { 0%,100%{transform:rotate(-2.5deg)} 50%{transform:rotate(2.5deg)} }
+  @keyframes fx-neon    { 0%,100%{box-shadow:0 0 0 1px rgba(34,211,238,0.15), 0 4px 18px rgba(0,0,0,0.45)}
+                          50%{box-shadow:0 0 0 2px #22d3ee, 0 0 16px rgba(34,211,238,0.75)} }
+  @keyframes fx-rainbow { 0%{border-color:#f87171;box-shadow:0 0 12px #f87171}
+                          25%{border-color:#fbbf24;box-shadow:0 0 12px #fbbf24}
+                          50%{border-color:#34d399;box-shadow:0 0 12px #34d399}
+                          75%{border-color:#a78bfa;box-shadow:0 0 12px #a78bfa}
+                          100%{border-color:#f87171;box-shadow:0 0 12px #f87171} }
+  @keyframes fx-shine   { 0%{left:-60%} 55%,100%{left:130%} }
+
+  /* 3) подсветка при подарке — перебивает и появление, и эффект */
+  #wrap #list .g.hit { border-color:#22d3ee; box-shadow:0 0 24px rgba(34,211,238,0.6);
+                       animation:pop .6s ease; }
+  @keyframes pop { 0%{transform:scale(1)} 35%{transform:scale(1.14)} 100%{transform:scale(1)} }
+
+  /* движение для прокрутки и бегущей строки */
+  #wrap.column #list.mv-smooth { animation:sc-up var(--dur) linear infinite; }
+  #wrap.row    #list.mv-smooth { animation:sc-left var(--dur) linear infinite; }
+  @keyframes sc-up   { from{transform:translateY(0)} to{transform:translateY(calc(-50% - 4px))} }
+  @keyframes sc-left { from{transform:translateX(0)} to{transform:translateX(calc(-50% - 4px))} }
+  .fade { transition:opacity .35s ease; }
+
+  #list { perspective:900px; }
+
+  .pic { position:relative; display:inline-block; }
+  #wrap.column .pic { flex:none; }
+  .bdg {
+    position:absolute; border-radius:8px; object-fit:contain;
+    background:rgba(13,17,23,0.9); border:2px solid rgba(13,17,23,0.95);
+    box-shadow:0 2px 8px rgba(0,0,0,0.5);
+  }
+  .bdg.br { right:-6px; bottom:-6px; }
+  .bdg.bl { left:-6px;  bottom:-6px; }
+  .bdg.tr { right:-6px; top:-6px; }
+  .bdg.tl { left:-6px;  top:-6px; }
+
+  #wrap.grid { align-items:center; justify-content:center; }
+  #wrap.grid #list { flex-direction:column; width:auto; gap:8px; align-items:center; }
+  .grow { display:flex; gap:8px; justify-content:center; }
+  #wrap.grid .g { width:calc(var(--ic) * 1.75); padding:12px 8px; text-align:center; display:block; }
+  #wrap.grid .g img, #wrap.grid .ph { width:var(--ic); height:var(--ic); margin:0 auto 8px; }
+  .dots { display:flex; gap:6px; justify-content:center; margin-top:4px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:rgba(255,255,255,0.28);
+         transition:background .3s ease; }
+  .dot.on { background:#22d3ee; box-shadow:0 0 8px rgba(34,211,238,0.8); }
+</style>
+</head>
+<body>
+<div id="wrap" class="column"><div id="list"></div></div>
+<script>
+const params = new URLSearchParams(location.search);
+const layout = params.get("layout") === "row" ? "row" : "column";
+const wrap = document.getElementById("wrap");
+const list = document.getElementById("list");
+wrap.className = layout;
+
+const DEMO = new URLSearchParams(location.search).get("demo");
+let prevSnap = null, lastSeq = -1;
+let ITEMS = [], MODE = "grid", SPEED = 5, PER_ROW = 7, ROWS = 3, ICON = 88;
+let APPEAR = "pulse", MOTION = "smooth", EFFECT = "none", BADGE = "br", BADGE_SZ = 38;
+let page = 0, pageTimer = null, stepTimer = null, stepPos = 0;
+const STAGGER = {wave:45, flip:45, domino:60, spiral:50, bounce:70, carousel:40};
+const FX_STAGGER = {glow:260, float:180, wobble:130, neon:220, rainbow:350, shine:300, breathe:0};
+
+function readSettings(d) {
+  MODE = d.anim || "grid";
+  SPEED = Math.max(1, d.speed || 5);
+  PER_ROW = Math.max(1, d.per_row || 7);
+  ROWS = Math.max(1, d.rows || 3);
+  APPEAR = d.trans_grid || "pulse";
+  MOTION = d.motion || (d.trans_list === "step" ? "step" : "smooth");
+  EFFECT = d.effect || (["glow", "breathe"].includes(d.trans_list) ? d.trans_list : "none");
+  BADGE = d.badge || "br";
+  BADGE_SZ = Math.min(70, Math.max(15, d.badge_size || 38));
+  ICON = Math.min(180, Math.max(40, d.icon || 88));
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/gift_showcase", {cache:"no-store"});
+    const d = await r.json();
+    readSettings(d);
+    if (DEMO) {
+      // в превью — свои карточки и размеры, но ТВОИ анимации и режим
+      PER_ROW = 3; ROWS = 2; ICON = 96;
+      document.body.style.setProperty("--ic", ICON + "px");
+      apply(DEMO_ITEMS);
+      return;
+    }
+    document.body.style.setProperty("--ic", ICON + "px");
+    apply(d.items || []);
+    highlight(d.last || {});
+  } catch(e) {}
+}
+
+function imgFail(img) {
+  const d = document.createElement("div");
+  d.className = "ph";
+  d.textContent = img.dataset.ph || "?";
+  img.replaceWith(d);
+}
+
+function src(p) { return /^https?:\/\//.test(p) ? p : "/media/" + encodeURI(p); }
+
+function cardHtml(it) {
+  // заглушка: эмодзи по типу события (подарок, лайки, подписка…)
+  const ph = esc(it.emoji || it.name.charAt(0).toUpperCase());
+  const base = it.image
+    ? `<img src="${src(it.image)}" alt="" data-ph="${ph}" onerror="imgFail(this)">`
+    : `<div class="ph">${ph}</div>`;
+  // значок подарка поверх картинки — чтобы зритель понял, за какой подарок
+  let bdg = "";
+  if (it.badge && BADGE !== "none") {
+    const isCol = (layout === "column");
+    const px = Math.round((isCol ? ICON * 0.75 : ICON) * BADGE_SZ / 100);
+    bdg = `<img class="bdg ${BADGE}" src="${src(it.badge)}"
+             style="width:${px}px;height:${px}px" alt=""
+             onerror="this.remove()">`;
+  }
+  const pic = `<span class="pic">${base}${bdg}</span>`;
+  const act = it.label
+    ? `<div class="ac">${it.count > 1 ? "<b>×" + it.count + "</b> " : ""}${esc(it.label)}</div>`
+    : "";
+  return `<div class="g" data-n="${esc(it.name.toLowerCase())}">
+    ${pic}<div class="txt"><div class="nm">${esc(it.name)}</div>${act}</div></div>`;
+}
+
+function stopTimers() {
+  clearInterval(pageTimer); pageTimer = null;
+  clearInterval(stepTimer); stepTimer = null;
+}
+
+function setWrap(base) { wrap.className = base + " ap-" + APPEAR + " fx-" + EFFECT; }
+
+function resolveMode(items) {
+  let mode = MODE;
+  if (mode === "auto") {
+    const perCard = (layout === "column") ? ICON * 0.75 + 24 : ICON * 1.75 + 8;
+    const room = (layout === "column") ? window.innerHeight - 20 : window.innerWidth - 20;
+    mode = (items.length * perCard <= room) ? "none" : (layout === "column" ? "scroll" : "grid");
+  }
+  if (mode === "marquee" && layout === "column") mode = "scroll";
+  if (mode === "scroll" && layout === "row") mode = "marquee";
+  return mode;
+}
+
+function apply(items) {
+  const snap = JSON.stringify([items, MODE, SPEED, PER_ROW, ROWS, ICON,
+                               APPEAR, MOTION, EFFECT, BADGE, BADGE_SZ, layout]);
+  if (snap === prevSnap) return;
+  prevSnap = snap;
+  ITEMS = items;
+  stopTimers();
+  list.className = "";
+  list.style.removeProperty("--dur");
+  list.style.transform = ""; list.style.transition = ""; list.style.opacity = 1;
+  if (!items.length) { list.innerHTML = ""; setWrap(layout); return; }
+
+  const mode = resolveMode(items);
+  if (mode === "grid") {
+    setWrap("grid");
+    page = 0;
+    renderGrid();
+    const pages = Math.ceil(items.length / (PER_ROW * ROWS));
+    pageTimer = setInterval(() => {
+      if (pages > 1) {
+        list.style.opacity = 0;
+        setTimeout(() => { page = (page + 1) % pages; renderGrid(); list.style.opacity = 1; }, 350);
+      } else {
+        playIn();          // страница одна — анимация повторяется, а не играет один раз
+      }
+    }, SPEED * 1000);
+  } else if (mode === "scroll" || mode === "marquee") {
+    setWrap(layout);
+    // дублируем список — прокрутка идёт бесшовно по кругу; движение НЕ зависит от эффекта
+    list.innerHTML = items.map(cardHtml).join("") + items.map(cardHtml).join("");
+    if (MOTION === "step") startStep(items.length);
+    else { list.style.setProperty("--dur", (items.length * SPEED) + "s"); list.className = "mv-smooth"; }
+    applyFx();
+  } else {
+    setWrap(layout);
+    list.innerHTML = items.map(cardHtml).join("");
+    playIn();
+  }
+}
+
+// По шагам: сдвиг ровно на одну карточку и пауза
+function startStep(n) {
+  stepPos = 0;
+  list.style.transform = "translate(0,0)";
+  stepTimer = setInterval(() => {
+    stepPos++;
+    const kids = list.children, target = kids[stepPos];
+    if (!target) { stepPos = 0; return; }
+    const off = (layout === "column") ? target.offsetTop - kids[0].offsetTop
+                                      : target.offsetLeft - kids[0].offsetLeft;
+    list.style.transition = "transform .6s ease";
+    list.style.transform = (layout === "column") ? `translateY(${-off}px)` : `translateX(${-off}px)`;
+    if (stepPos >= n) {      // доехали до копии первой — незаметно прыгаем в начало
+      setTimeout(() => { list.style.transition = "none"; list.style.transform = "translate(0,0)"; stepPos = 0; }, 650);
+    }
+  }, SPEED * 1000);
+}
+
+// Постоянный эффект: у каждой карточки свой сдвиг по времени (бегущая волна)
+function applyFx() {
+  const st = FX_STAGGER[EFFECT] || 0;
+  list.querySelectorAll(".g").forEach((el, i) => el.style.setProperty("--d", (i * st) + "ms"));
+}
+
+// Появление: класс .in снимается после анимации — иначе он глушил эффект и подсветку
+function playIn() {
+  const st = STAGGER[APPEAR] || 0;
+  list.querySelectorAll(".g").forEach((el, i) => {
+    let delay = i * st;
+    if (APPEAR === "diagonal") delay = (Math.floor(i / PER_ROW) + i % PER_ROW) * 80;
+    el.style.setProperty("--ad", delay + "ms");
+    el.classList.remove("in");
+    void el.offsetWidth;                      // перезапуск анимации
+    el.classList.add("in");
+    clearTimeout(el._inT);
+    el._inT = setTimeout(() => el.classList.remove("in"), delay + 1100);
+    el.onanimationend = ev => {
+      if (ev.target === el && String(ev.animationName).startsWith("in-")) el.classList.remove("in");
+    };
+  });
+  applyFx();
+}
+
+function renderGrid() {
+  list.classList.add("fade");
+  const perPage = PER_ROW * ROWS;
+  const items = ITEMS.slice(page * perPage, page * perPage + perPage);
+  let html = "";
+  for (let i = 0; i < items.length; i += PER_ROW) {
+    html += `<div class="grow">${items.slice(i, i + PER_ROW).map(cardHtml).join("")}</div>`;
+  }
+  const pages = Math.ceil(ITEMS.length / perPage);
+  if (pages > 1) {
+    html += `<div class="dots">${Array.from({length: pages},
+      (_, i) => `<div class="dot${i === page ? " on" : ""}"></div>`).join("")}</div>`;
+  }
+  list.innerHTML = html;
+  playIn();
+}
+
+function highlight(last) {
+  if (!last.seq || last.seq === lastSeq) return;
+  lastSeq = last.seq;
+  const name = String(last.name || "").toLowerCase();
+  document.querySelectorAll(".g").forEach(el => {
+    if (el.dataset.n === name) {
+      el.classList.remove("hit");
+      void el.offsetWidth;
+      el.classList.add("hit");
+      setTimeout(() => el.classList.remove("hit"), 1500);
+    }
+  });
+}
+
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+// ── Превью (?demo=1): пример карточек, но анимации и режим — из твоих настроек ──
+const D = (n, c, l, k, e, img) =>
+  ({name:n, image:img || "", badge:"", count:c, label:l, kind:k, emoji:e});
+const M = "mobs/";
+const DEMO_ITEMS = [
+  D("Rose",       50, "зомби",       "gifts",    "🌹", M+"husk.png"),
+  D("GG",          3, "тнт",         "gifts",    "🎮", M+"tnt.png"),
+  D("Butterfly",   1, "крипер",      "gifts",    "🦋", M+"creeper.png"),
+  D("Perfume",     1, "иссушитель",  "gifts",    "🧴", M+"wither.png"),
+  D("500 лайков",  1, "ведьма",      "likes",    "❤",  M+"witch.png"),
+  D("Подписка",    5, "варден",      "subs",     "⭐", M+"warden.png"),
+  D("!моб",        1, "бык",         "chatcmds", "💬", M+"ravager.png"),
+  D("Фоллов",      1, "приветствие", "follows",  "➕"),
+  D("Coffee",      1, "зелье",       "gifts",    "☕"),
+];
+if (DEMO) {
+  // значки подарков — настоящие иконки TikTok
+  fetch("/api/gift_icons", {cache:"no-store"}).then(r => r.json()).then(d => {
+    const on = d.online || {};
+    DEMO_ITEMS.forEach(it => { if (it.kind === "gifts" && on[it.name.toLowerCase()]) it.badge = on[it.name.toLowerCase()]; });
+    prevSnap = null;
+  }).catch(() => {});
+  // время от времени «дарят» подарок — видно подсветку
+  let fakeSeq = 0;
+  setInterval(() => {
+    const it = DEMO_ITEMS[Math.floor(Math.random() * DEMO_ITEMS.length)];
+    highlight({name: it.name, seq: ++fakeSeq});
+  }, 4000);
+}
+setInterval(poll, 1500);
+poll();
+</script>
+</body>
+</html>

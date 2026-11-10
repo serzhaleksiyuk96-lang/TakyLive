@@ -1,0 +1,324 @@
+{
+ "title": "Консоль Valheim",
+ "game": "valheim",
+ "icon": "⚔",
+ "description": "Подарки призывают существ через консоль Valheim (F5). Один раз за сессию нажми на панели «🔓 devcommands». Окно Valheim должно быть активным; на выделенном сервере ты должен быть в adminlist.txt.",
+ "profile": {
+  "game": "valheim",
+  "gifts": [
+   {
+    "commands": [
+     "spawn Boar 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🐗 кабан",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rose",
+    "gift_id": "5655",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawn Greyling 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "👹 грейлинги",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "GG",
+    "gift_id": "6064",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawn Neck 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🦎 некки",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Ice Cream Cone",
+    "gift_id": "5827",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawn Skeleton 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💀 скелеты",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rosa",
+    "gift_id": "8913",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "tod 0"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🌙 ночь",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Perfume",
+    "gift_id": "5658",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawn Draugr 2"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧟 драугры",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Doughnut",
+    "gift_id": "5879",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawn Troll 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧌 тролль",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Corgi",
+    "gift_id": "6267",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawn Eikthyr 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "⚡ босс Эйктюр",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Money Gun",
+    "gift_id": "7168",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawn Troll 2",
+     "tod 0"
+    ],
+    "delays": [
+     0,
+     0.6
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧌 два тролля ночью",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Galaxy",
+    "gift_id": "11046",
+    "repeat_by_count": false
+   }
+  ],
+  "likes": [
+   {
+    "commands": [
+     "spawn Deer 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🦌 олени",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 500
+   }
+  ],
+  "subs": [],
+  "follows": [
+   {
+    "commands": [
+     "heal"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "❤ лечение",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "welcome": [],
+  "chatcmds": [
+   {
+    "commands": [
+     "spawn Boar 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🐗 кабан",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!кабан",
+    "cooldown": 30
+   }
+  ],
+  "goals": [],
+  "panel": [
+   {
+    "commands": [
+     "devcommands"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🔓 devcommands",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "tod -1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "☀ Обычное время",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "killall"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧹 Убрать мобов",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ]
+ }
+}

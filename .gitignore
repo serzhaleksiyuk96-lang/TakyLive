@@ -1,0 +1,39 @@
+# Личное — ни в коем случае не в публичный репозиторий
+fish_key.txt
+config.json
+profiles.json
+viewer_voices.json
+gift_icons_live.json
+gift_catalog.json
+
+# То, что программа создаёт сама
+servers/
+java/
+steamcmd/
+media/vault/
+media/_thumbs/
+media/tts/*
+!media/tts/.gitkeep
+_update/
+_проверка/
+__pycache__/
+*.pyc
+
+# Сборка и архивы
+*.zip
+*.exe
+build/
+dist/
+Output/
+*.spec
+release_notes.md
+TakyLive-*-update.zip
+
+# Свои видео и рабочие заметки — не в публичный репозиторий
+media/*.mp4
+media/*.mov
+media/*.webm
+media/*.mkv
+media/*.avi
+media/.tmp_*
+ЗАДАНИЕ_ДЛЯ_CLAUDE_CODE.md

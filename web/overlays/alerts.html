@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Алерты</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; overflow:hidden; font-family:"Segoe UI",Roboto,sans-serif; }
+  #stage {
+    position:fixed; top:40px; left:50%; transform:translateX(-50%);
+    display:flex; flex-direction:column; gap:12px; align-items:center;
+  }
+  .alert {
+    display:flex; align-items:center; gap:16px;
+    background:rgba(13,17,23,0.92); backdrop-filter:blur(10px);
+    border:2px solid var(--c,#00d4ff); border-radius:16px;
+    padding:16px 28px; min-width:340px;
+    box-shadow:0 0 30px var(--c,#00d4ff), 0 8px 24px rgba(0,0,0,0.5);
+    animation:pop .5s cubic-bezier(.18,1.4,.4,1) forwards, glow 1.5s ease-in-out infinite;
+    transform-origin:center;
+  }
+  .alert.out { animation:popout .4s ease forwards; }
+  @keyframes pop { from{opacity:0; transform:scale(.5) translateY(-30px);} to{opacity:1; transform:scale(1) translateY(0);} }
+  @keyframes popout { to{opacity:0; transform:scale(.8) translateY(-20px);} }
+  @keyframes glow { 0%,100%{box-shadow:0 0 24px var(--c),0 8px 24px rgba(0,0,0,.5);} 50%{box-shadow:0 0 42px var(--c),0 8px 24px rgba(0,0,0,.5);} }
+  .icon {
+    font-size:44px; filter:drop-shadow(0 0 8px var(--c));
+    animation:bounce 1s ease-in-out infinite;
+  }
+  @keyframes bounce { 0%,100%{transform:translateY(0);} 50%{transform:translateY(-6px);} }
+  .txt { color:#fff; }
+  .user { font-size:22px; font-weight:700; color:var(--c); text-shadow:0 0 10px var(--c); }
+  .action { font-size:16px; color:#e6edf3; margin-top:2px; }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+let lastSeq = 0;
+const stage = document.getElementById("stage");
+
+async function poll() {
+  try {
+    const r = await fetch("/api/overlay?since=" + lastSeq);
+    const d = await r.json();
+    lastSeq = d.seq;
+    d.new_events.forEach(showAlert);
+  } catch(e) {}
+}
+
+function showAlert(ev) {
+  const el = document.createElement("div");
+  el.className = "alert";
+  el.style.setProperty("--c", ev.color || "#00d4ff");
+  el.innerHTML = `
+    <div class="icon">${ev.icon||"🎁"}</div>
+    <div class="txt">
+      <div class="user">${escapeHtml(ev.user)}</div>
+      <div class="action">${escapeHtml(ev.text)}</div>
+    </div>`;
+  stage.appendChild(el);
+  // Убираем через 5 секунд
+  setTimeout(() => {
+    el.classList.add("out");
+    setTimeout(() => el.remove(), 400);
+  }, 5000);
+  // Не копим больше 4 на экране
+  while (stage.children.length > 4) stage.removeChild(stage.firstChild);
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+const DEMO = new URLSearchParams(location.search).get("demo");
+if (DEMO) {
+  const samples = [
+    {icon:"🎁", color:"#00d4ff", user:"Takymi",  text:"подарил «Роза» x10"},
+    {icon:"❤",  color:"#f87171", user:"Аня",     text:"1000 лайков!"},
+    {icon:"⭐", color:"#fbbf24", user:"Витя",    text:"оформил подписку!"},
+    {icon:"➕", color:"#34d399", user:"Максим",  text:"подписался на профиль!"},
+  ];
+  let i = 0;
+  const tick = () => { showAlert(samples[i % samples.length]); i++; };
+  tick(); setInterval(tick, 2200);
+} else {
+setInterval(poll, 1000);
+poll();
+}
+</script>
+</body>
+</html>

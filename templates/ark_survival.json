@@ -1,0 +1,348 @@
+{
+ "title": "Выживание на острове",
+ "game": "ark",
+ "icon": "🦖",
+ "description": "Свой сервер ARK + RCON. Обязательно впиши свой ID игрока в «Настройки → Серверные игры» — он подставляется в {nick}.",
+ "profile": {
+  "game": "ark",
+  "gifts": [
+   {
+    "commands": [
+     "ServerChat {user} подарил розу!"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "привет в чат",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rose",
+    "gift_id": "5655",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "GiveExpToPlayer {nick} 2000 0 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "опыт",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "GG",
+    "gift_id": "6064",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "GiveItemToPlayer {nick} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_MetalIngot.PrimalItemResource_MetalIngot'\" 50 0 0"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "металл",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Finger Heart",
+    "gift_id": "5487",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "GiveItemToPlayer {nick} \"Blueprint'/Game/PrimalEarth/CoreBlueprints/Resources/PrimalItemResource_Crystal.PrimalItemResource_Crystal'\" 30 0 0"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "кристаллы",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rosa",
+    "gift_id": "8913",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "SetTimeOfDay 00:00"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "ночь",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Perfume",
+    "gift_id": "5658",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "GiveExpToPlayer {nick} 10000 0 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "много опыта",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Doughnut",
+    "gift_id": "5879",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "Broadcast {user} подарил Hand Hearts!",
+     "GiveExpToPlayer {nick} 15000 0 1"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "объявление и опыт",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Hand Hearts",
+    "gift_id": "",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "DestroyWildDinos"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "вымирание",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Corgi",
+    "gift_id": "6267",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "KillPlayer {nick}"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "смерть",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Money Gun",
+    "gift_id": "7168",
+    "repeat_by_count": false
+   }
+  ],
+  "likes": [
+   {
+    "commands": [
+     "GiveExpToPlayer {nick} 5000 0 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "опыт",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 500
+   }
+  ],
+  "subs": [
+   {
+    "commands": [
+     "Broadcast {user} оформил подписку!",
+     "GiveExpToPlayer {nick} 20000 0 1"
+    ],
+    "delays": [
+     0,
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "опыт",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "follows": [
+   {
+    "commands": [
+     "ServerChat {user} подписался!"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "привет в чат",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "welcome": [],
+  "chatcmds": [
+   {
+    "commands": [
+     "SetTimeOfDay 12:00"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "день",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!день",
+    "cooldown": 120
+   }
+  ],
+  "goals": [
+   {
+    "commands": [
+     "GiveExpToPlayer {nick} 50000 0 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "50 000 опыта",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "metric": "likes",
+    "target": 3000
+   }
+  ],
+  "panel": [
+   {
+    "commands": [
+     "SaveWorld"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💾 Сохранить мир",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "SetTimeOfDay 12:00"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "☀ День",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ]
+ }
+}

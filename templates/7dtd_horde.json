@@ -1,0 +1,413 @@
+{
+ "title": "Кровавая ночь",
+ "game": "7dtd",
+ "icon": "🩸",
+ "description": "Подарки призывают зомби прямо к тебе: собаки, крикуньи, толстые копы и бродячие орды. Сервер — во вкладке «🖥 Серверы» (кнопка «🔌 Подарки сюда»). {pid} — ID игрока, программа узнаёт его сама.",
+ "profile": {
+  "game": "7dtd",
+  "gifts": [
+   {
+    "commands": [
+     "say \"{user} подарил розу!\""
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "📢 сообщение",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rose",
+    "gift_id": "5655",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnentity {pid} zombieArlene 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧟 зомби",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "GG",
+    "gift_id": "6064",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnentity {pid} zombieDog 2"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🐕 зомби-собаки",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Ice Cream Cone",
+    "gift_id": "5827",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnentity {pid} zombieArlene 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧟 3 зомби",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Finger Heart",
+    "gift_id": "5487",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnentity {pid} zombieScreamer 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "😱 крикунья",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Rosa",
+    "gift_id": "8913",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "buffplayer {nick} buffLegBroken"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🦴 сломанная нога",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Perfume",
+    "gift_id": "5658",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnentity {pid} zombieFatCop 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "👮 толстый коп",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Doughnut",
+    "gift_id": "5879",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnentity {pid} animalBear 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🐻 медведь",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Hat and Mustache",
+    "gift_id": "6427",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnwanderinghorde"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧟 бродячая орда",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Corgi",
+    "gift_id": "6267",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnairdrop"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "📦 сброс припасов",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Money Gun",
+    "gift_id": "7168",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "spawnentity {pid} zombieArlene 10",
+     "spawnentity {pid} zombieScreamer 2"
+    ],
+    "delays": [
+     0,
+     0.6
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧟 10 зомби и крикуньи",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Galaxy",
+    "gift_id": "11046",
+    "repeat_by_count": false
+   },
+   {
+    "commands": [
+     "say \"{user} устроил КРОВАВУЮ НОЧЬ\"",
+     "spawnwanderinghorde",
+     "spawnentity {pid} zombieFatCop 5",
+     "spawnentity {pid} zombieDog 5"
+    ],
+    "delays": [
+     0,
+     0.6,
+     0.6,
+     0.6
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🩸 кровавая ночь",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "name": "Lion",
+    "gift_id": "6369",
+    "repeat_by_count": false
+   }
+  ],
+  "likes": [
+   {
+    "commands": [
+     "spawnentity {pid} zombieDog 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🐕 собака",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 500
+   },
+   {
+    "commands": [
+     "spawnwanderinghorde"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🧟 орда",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "threshold": 2000
+   }
+  ],
+  "subs": [
+   {
+    "commands": [
+     "give {nick} medicalBandage 3"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "🩹 бинты от подписчика",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "follows": [
+   {
+    "commands": [
+     "say \"{user} подписался — беги!\""
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "📢 приветствие",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ],
+  "welcome": [],
+  "chatcmds": [
+   {
+    "commands": [
+     "spawnentity {pid} zombieScreamer 1"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "😱 крикунья",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100,
+    "trigger": "!крик",
+    "cooldown": 300
+   }
+  ],
+  "goals": [],
+  "panel": [
+   {
+    "commands": [
+     "spawnairdrop"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "📦 Сброс припасов",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   },
+   {
+    "commands": [
+     "saveworld"
+    ],
+    "delays": [
+     0
+    ],
+    "random": false,
+    "enabled": true,
+    "multiplier": 1,
+    "title": "💾 Сохранить мир",
+    "showcase": true,
+    "media_file": "",
+    "media_kind": "video",
+    "sound_file": "",
+    "media_volume": 100,
+    "sound_volume": 100
+   }
+  ]
+ }
+}

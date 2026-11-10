@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Медиа-алерты</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; overflow:hidden; font-family:"Segoe UI",Roboto,sans-serif; }
+  #stage {
+    position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+  }
+  .media-box {
+    display:none; flex-direction:column; align-items:center; gap:14px;
+    animation:appear .5s cubic-bezier(.18,1.4,.4,1);
+  }
+  .media-box.show { display:flex; }
+  @keyframes appear { from{opacity:0; transform:scale(.6);} to{opacity:1; transform:scale(1);} }
+  .media-box.hide { animation:disappear .4s ease forwards; }
+  @keyframes disappear { to{opacity:0; transform:scale(.85);} }
+
+  .caption {
+    background:rgba(13,17,23,0.85); backdrop-filter:blur(8px);
+    border:2px solid #00d4ff; border-radius:14px; padding:10px 24px;
+    color:#fff; font-size:22px; font-weight:600;
+    box-shadow:0 0 24px rgba(0,212,255,0.5);
+    text-shadow:0 0 8px #00d4ff;
+  }
+  .caption .u { color:#00d4ff; }
+  video, img {
+    max-width:70vw; max-height:70vh; border-radius:16px;
+    box-shadow:0 0 40px rgba(0,0,0,0.6);
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="media-box" id="box">
+    <div class="caption" id="cap"></div>
+    <div id="holder"></div>
+  </div>
+</div>
+
+<script>
+const dbg = (msg) => {
+  // Только в консоль браузера (F12) — на экране/в OBS не видно
+  console.log("[media]", msg);
+};
+let lastSeq = 0;
+let playing = false;
+const queue = [];
+const box = document.getElementById("box");
+const cap = document.getElementById("cap");
+const holder = document.getElementById("holder");
+
+async function poll() {
+  try {
+    const r = await fetch("/api/media_queue?since=" + lastSeq);
+    const d = await r.json();
+    lastSeq = d.seq;
+    d.new_media.forEach(m => queue.push(m));
+    if (!playing) playNext();
+  } catch(e) {}
+}
+
+function playNext() {
+  if (queue.length === 0) { playing = false; return; }
+  playing = true;
+  const item = queue.shift();
+  showMedia(item);
+}
+
+function showMedia(item) {
+  const m = item.media || {};
+  dbg("показываю: " + (m.file||"нет файла") + " (тип: " + (m.kind||"?") + ")");
+  holder.innerHTML = "";
+  cap.innerHTML = `<span class="u">${escapeHtml(item.user)}</span> ${escapeHtml(item.text||"")}`;
+
+  // Звук (отдельный файл) — играет параллельно
+  let audio = null;
+  if (m.sound) {
+    audio = new Audio("/media/" + encodeURI(m.sound));
+    audio.volume = Math.max(0, Math.min(1, (m.sound_volume ?? 100) / 100));
+  }
+
+  let mediaEl = null;
+  let finished = false;
+  const doFinish = () => { if (!finished) { finished = true; finish(audio); } };
+
+  box.classList.remove("hide");
+  box.classList.add("show");
+
+  if (m.file && m.kind === "video") {
+    mediaEl = document.createElement("video");
+    mediaEl.src = "/media/" + encodeURI(m.file);          // encodeURI — чтобы работали и файлы из папок
+    mediaEl.setAttribute("playsinline", "");
+    mediaEl.volume = Math.max(0, Math.min(1, (m.volume ?? 100) / 100));
+    mediaEl.onended = doFinish;
+    mediaEl.onerror = () => { dbg("ОШИБКА: видео не загрузилось — " + mediaEl.src + " (проверь формат, лучше mp4/H.264)"); doFinish(); };
+    holder.appendChild(mediaEl);
+
+    // Пытаемся запустить. Если браузер блокирует автоплей со звуком —
+    // включаем без звука (muted) и запускаем снова, звук идёт из audio.
+    const tryPlay = () => {
+      const p = mediaEl.play();
+      if (p && p.catch) {
+        p.catch(() => {
+          mediaEl.muted = true;
+          mediaEl.play().catch(err => {
+            console.error("Видео не запустилось:", err);
+            // Фолбэк по таймеру
+            setTimeout(doFinish, 6000);
+          });
+        });
+      }
+    };
+    tryPlay();
+    // Видео играет до конца, сколько бы ни длилось. Страховка — только если оно «зависло»:
+    // знаем длительность — ждём её + 5 секунд; не знаем — до 10 минут.
+    let guard = setTimeout(doFinish, 600000);
+    mediaEl.addEventListener("loadedmetadata", () => {
+      if (isFinite(mediaEl.duration) && mediaEl.duration > 0) {
+        clearTimeout(guard);
+        guard = setTimeout(doFinish, (mediaEl.duration + 5) * 1000);
+      }
+    });
+
+  } else if (m.file && (m.kind === "image" || m.kind === "gif")) {
+    mediaEl = document.createElement("img");
+    mediaEl.src = "/media/" + encodeURI(m.file);
+    mediaEl.onerror = () => { console.error("Картинка не загрузилась:", mediaEl.src); doFinish(); };
+    holder.appendChild(mediaEl);
+    // картинку/гифку показываем столько, сколько задано в карточке (а со звуком — пока он играет)
+    setTimeout(() => { if (!audio || audio.ended || audio.paused) doFinish(); else { audio.onended = doFinish; } },
+               Math.max(1, m.show_seconds || 5) * 1000);
+  } else {
+    // Нет видео/картинки. Если есть звук — ждём пока доиграет.
+    if (audio) {
+      audio.onended = doFinish;
+      audio.onerror = doFinish;
+      setTimeout(doFinish, 60000);  // страховка
+    } else {
+      setTimeout(doFinish, 2000);
+    }
+  }
+
+  if (audio) {
+    audio.play().catch(err => console.error("Звук не запустился:", err));
+  }
+}
+
+function finish(audio) {
+  if (audio) { try { audio.pause(); } catch(e){} }
+  box.classList.add("hide");
+  setTimeout(() => {
+    box.classList.remove("show");
+    box.classList.remove("hide");
+    holder.innerHTML = "";
+    // Небольшая пауза между алертами
+    setTimeout(playNext, 400);
+  }, 400);
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+const DEMO = new URLSearchParams(location.search).get("demo");
+if (DEMO) {
+  // Демо: показываем рамку алерта с подписью, без реального файла
+  cap.innerHTML = '<span class="u">Takymi</span> подарил «Роза» x10';
+  const v = document.createElement("video");
+  v.src = "/media/demo.mp4";
+  v.muted = true; v.loop = true; v.autoplay = true;
+  v.setAttribute("playsinline", "");
+  v.style.width = "70vw";   // в демо растягиваем, иначе в превью не разглядеть
+  v.style.height = "auto";
+  v.onerror = () => {
+    holder.innerHTML = '<div style="width:60%;aspect-ratio:16/9;border-radius:14px;' +
+      'background:rgba(255,255,255,0.07);border:2px dashed rgba(255,255,255,0.25);' +
+      'display:flex;align-items:center;justify-content:center;font-size:44px">🎬</div>';
+  };
+  holder.appendChild(v);
+  v.play().catch(() => {});
+  box.classList.add("show");
+} else {
+setInterval(poll, 1000);
+poll();
+}
+</script>
+</body>
+</html>

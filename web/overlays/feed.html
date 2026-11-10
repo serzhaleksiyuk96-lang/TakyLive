@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Лента событий</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; overflow:hidden; font-family:"Segoe UI",Roboto,sans-serif; }
+  #feed {
+    position:fixed; bottom:20px; left:20px; width:320px;
+    display:flex; flex-direction:column-reverse; gap:8px;
+  }
+  .item {
+    display:flex; align-items:center; gap:10px;
+    background:rgba(13,17,23,0.85); backdrop-filter:blur(8px);
+    border-left:3px solid var(--c,#00d4ff); border-radius:10px;
+    padding:9px 14px;
+    box-shadow:0 2px 12px rgba(0,0,0,0.4);
+  }
+  .item.changed { animation:softin .4s ease; }
+  @keyframes softin { from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:translateY(0);} }
+  .ic { font-size:20px; filter:drop-shadow(0 0 4px var(--c)); }
+  .tx { flex:1; color:#e6edf3; font-size:13px; }
+  .tx b { color:var(--c,#00d4ff); }
+</style>
+</head>
+<body>
+<div id="feed"></div>
+<script>
+async function poll() {
+  try {
+    const r = await fetch("/api/overlay");
+    const d = await r.json();
+    render(d.feed || []);
+  } catch(e) {}
+}
+let maxSeq = 0;
+let prevSnap = null;
+function render(feed) {
+  const items = feed.slice(0,8);
+  const snap = JSON.stringify(items.map(e => e.seq));
+  if (snap === prevSnap) return;          // ничего нового — не трогаем DOM
+  prevSnap = snap;
+  const box = document.getElementById("feed");
+  box.innerHTML = items.map(e => `
+    <div class="item${(e.seq||0) > maxSeq ? ' changed' : ''}" style="--c:${e.color||'#00d4ff'}">
+      <div class="ic">${e.icon||'🎁'}</div>
+      <div class="tx"><b>${escapeHtml(e.user)}</b> ${escapeHtml(e.text)}</div>
+    </div>`).join("");
+  items.forEach(e => { if ((e.seq||0) > maxSeq) maxSeq = e.seq; });
+}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+const DEMO = new URLSearchParams(location.search).get("demo");
+if (DEMO) {
+  render([
+    {seq:5,icon:"🎁",color:"#00d4ff",user:"Takymi",text:"подарил «Роза» x10"},
+    {seq:4,icon:"❤", color:"#f87171",user:"Аня",   text:"500 лайков"},
+    {seq:3,icon:"⭐",color:"#fbbf24",user:"Витя",  text:"оформил подписку"},
+  ]);
+} else {
+setInterval(poll, 1500);
+poll();
+}
+</script>
+</body>
+</html>

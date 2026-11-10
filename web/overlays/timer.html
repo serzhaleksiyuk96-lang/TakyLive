@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Таймер-челлендж</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:transparent; overflow:hidden; font-family:"Segoe UI",Roboto,sans-serif; }
+  #box {
+    position:fixed; top:14px; left:14px;
+    background:rgba(13,17,23,0.9); backdrop-filter:blur(10px);
+    border:2px solid #22d3ee; border-radius:16px; padding:12px 26px;
+    box-shadow:0 0 24px rgba(34,211,238,0.35); text-align:center;
+  }
+  #time {
+    font-family:"Consolas",monospace; font-size:52px; font-weight:700;
+    color:#fff; text-shadow:0 0 16px rgba(34,211,238,0.8); line-height:1.1;
+  }
+  #time.low { color:#f87171; text-shadow:0 0 16px rgba(248,113,113,0.9); animation:blink 1s infinite; }
+  @keyframes blink { 50% { opacity:.55; } }
+  #hint { color:#94a3b8; font-size:12px; margin-top:2px; }
+</style>
+</head>
+<body>
+<div id="box">
+  <div id="time">--:--</div>
+  <div id="hint">🎁 подарки добавляют время</div>
+</div>
+<script>
+async function poll() {
+  try {
+    const r = await fetch("/api/timer", {cache:"no-store"});
+    const d = await r.json();
+    const s = d.remaining;
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    const el = document.getElementById("time");
+    el.textContent = (h>0 ? h+":" : "") +
+      String(m).padStart(2,"0") + ":" + String(sec).padStart(2,"0");
+    el.classList.toggle("low", d.running && s <= 60);
+    el.style.opacity = d.running ? 1 : 0.55;
+  } catch(e) {}
+}
+const DEMO = new URLSearchParams(location.search).get("demo");
+if (DEMO) {
+  document.getElementById("time").textContent = "12:34";
+} else {
+setInterval(poll, 1000);
+poll();
+}
+</script>
+</body>
+</html>
