@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 import zipfile
 
 from aiohttp import ClientSession, ClientTimeout, web
@@ -65,6 +66,7 @@ class Updater:
         if not force and self.info is not None and time.time() - self.checked_at < 1800:
             return self.info
         url = f"{self.api()}/repos/{repo}/releases/latest"
+        reset = None
         try:
             async with ClientSession(timeout=ClientTimeout(total=15),
                                      headers={"User-Agent": f"TakyLive/{self.version}",
@@ -74,25 +76,68 @@ class Updater:
                         self.error = "в репозитории ещё нет ни одного релиза"
                         self.info, self.checked_at = None, time.time()
                         return None
-                    if r.status != 200:
+                    if r.status in (403, 429):
+                        # API без входа — 60 запросов в час на IP, а у провайдеров с общим IP их
+                        # съедают чужие запросы. Тогда идём обычными страницами github.com.
+                        reset = r.headers.get("X-RateLimit-Reset")
+                        d = None
+                    elif r.status != 200:
                         raise RuntimeError(f"GitHub ответил {r.status}")
-                    d = await r.json(content_type=None)
+                    else:
+                        d = await r.json(content_type=None)
+            info = self._from_api(d) if d is not None else await self._from_web(repo)
         except Exception as e:
             self.error = f"не удалось проверить обновления: {e}"
+            if reset:
+                try:
+                    mins = max(1, int((int(reset) - time.time()) / 60) + 1)
+                    self.error = f"GitHub временно ограничил проверки обновлений — попробуй через {mins} мин"
+                except ValueError:
+                    pass
             return None
-        tag = str(d.get("tag_name") or "")
-        asset = next((a for a in d.get("assets") or [] if str(a.get("name", "")).endswith("-update.zip")), None)
-        dig = str((asset or {}).get("digest") or "")
-        self.info = {"version": tag.lstrip("vV"), "tag": tag, "notes": str(d.get("body") or "")[:4000],
-                     "url": (asset or {}).get("browser_download_url", ""), "size": (asset or {}).get("size", 0),
-                     "sha256": dig.split(":", 1)[1] if dig.startswith("sha256:") else "",
-                     "page": d.get("html_url", ""), "date": str(d.get("published_at") or "")[:10]}
+        self.info = info
         self.info["available"] = bool(self.info["url"]) and vkey(self.info["version"]) > vkey(self.version)
         self.error, self.checked_at = "", time.time()
         if self.info["available"] and getattr(self, "_announced", "") != self.info["version"]:
             self._announced = self.info["version"]
             self.log("ОБНОВЛЕНИЕ", f"Доступна новая версия TakyLive {self.info['version']} (сейчас {self.version})")
         return self.info
+
+    @staticmethod
+    def _from_api(d):
+        tag = str(d.get("tag_name") or "")
+        asset = next((a for a in d.get("assets") or [] if str(a.get("name", "")).endswith("-update.zip")), None)
+        dig = str((asset or {}).get("digest") or "")
+        return {"version": tag.lstrip("vV"), "tag": tag, "notes": str(d.get("body") or "")[:4000],
+                "url": (asset or {}).get("browser_download_url", ""), "size": (asset or {}).get("size", 0),
+                "sha256": dig.split(":", 1)[1] if dig.startswith("sha256:") else "",
+                "page": d.get("html_url", ""), "date": str(d.get("published_at") or "")[:10]}
+
+    async def _from_web(self, repo):
+        """Последний релиз без API: github.com/<repo>/releases/latest переадресует на страницу метки,
+        а файлы релиза лежат по постоянному адресу …/releases/download/<метка>/<файл>."""
+        base = f"https://github.com/{repo}/releases"
+        async with ClientSession(timeout=ClientTimeout(total=20),
+                                 headers={"User-Agent": f"TakyLive/{self.version}"}) as cs:
+            async with cs.get(f"{base}/latest", allow_redirects=False) as r:
+                loc = r.headers.get("Location", "")
+            m = re.search(r"/releases/tag/([^/?#]+)$", loc)
+            if not m:
+                raise RuntimeError("GitHub не показал последний релиз")
+            tag = urllib.parse.unquote(m.group(1))
+            ver = tag.lstrip("vV")
+            dl = f"{base}/download/{tag}/TakyLive-{ver}-update.zip"
+            url, size, sha = "", 0, ""
+            async with cs.head(dl, allow_redirects=True) as r:
+                if r.status == 200:
+                    url, size = dl, int(r.headers.get("Content-Length") or 0)
+            if url:
+                async with cs.get(dl + ".sha256", allow_redirects=True) as r:
+                    if r.status == 200:
+                        m = re.search(r"\b[0-9a-fA-F]{64}\b", await r.text())
+                        sha = m.group(0).lower() if m else ""
+        return {"version": ver, "tag": tag, "notes": "", "url": url, "size": size, "sha256": sha,
+                "page": f"{base}/tag/{tag}", "date": ""}
 
     async def _download(self, url, dest):
         h = hashlib.sha256()
@@ -128,7 +173,8 @@ class Updater:
                     f'/XF {" ".join(KEEP_FILES)} /XD {" ".join(KEEP_DIRS)} >nul\r\n'
                     f'start "" "{exe}"\r\n'
                     f'rmdir /S /Q "{os.path.join(upd, "new")}"\r\n'
-                    f'del /Q "{os.path.join(upd, "update.zip")}"\r\n')
+                    f'del /Q "{os.path.join(upd, "update.zip")}"\r\n'
+                    '(goto) 2>nul & del "%~f0"\r\n')                     # и сам скрипт — без хвостов
             with open(path, "w", encoding="utf-8", newline="") as f:
                 f.write(body)
             return ["cmd", "/c", path]
@@ -163,7 +209,8 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
             return {"ok": False, "error": "идёт эфир — обнови после стрима, чтобы не оборвать его"}
         if self.job and self.job["state"] in ("downloading", "extracting", "restarting"):
             return {"ok": False, "error": "обновление уже идёт"}
-        info = await self.check(force=True)
+        # только что проверяли — не тратим ещё один запрос к GitHub (у API лимит 60 в час на IP)
+        info = await self.check(force=time.time() - self.checked_at > 120)
         if not info or not info.get("available"):
             return {"ok": False, "error": self.error or "у тебя уже последняя версия"}
         self.job = {"state": "downloading", "progress": 0.0, "error": "", "version": info["version"]}

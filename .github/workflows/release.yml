@@ -48,7 +48,11 @@ jobs:
 
       - name: Пакет обновления
         shell: pwsh
-        run: Compress-Archive -Path "dist\TakyLive\*" -DestinationPath "TakyLive-$env:TAKY_VERSION-update.zip"
+        run: |
+          $z = "TakyLive-$env:TAKY_VERSION-update.zip"
+          Compress-Archive -Path "dist\TakyLive\*" -DestinationPath $z
+          # контрольная сумма отдельным файлом — программа сверит её, даже когда API GitHub недоступен
+          ((Get-FileHash $z -Algorithm SHA256).Hash.ToLower() + "  " + $z) | Out-File -Encoding ascii -NoNewline "$z.sha256"
 
       - name: Установщик
         shell: pwsh
@@ -64,3 +68,4 @@ jobs:
           files: |
             Output/TakyLive-Setup-*.exe
             TakyLive-*-update.zip
+            TakyLive-*-update.zip.sha256

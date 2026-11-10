@@ -11,6 +11,16 @@ async function updLoad(force) {
   if (!document.getElementById("changelogModal").classList.contains("hidden")) updRender();
 }
 
+// Текст релиза с GitHub — простой Markdown: заголовки ##, **жирный**, `код`, списки «- ».
+function updMd(s) {
+  return esc(s).split(/\r?\n/).map(l => {
+    l = l.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+    if (/^#{1,6}\s+/.test(l)) return `<b>${l.replace(/^#{1,6}\s+/, "")}</b>`;
+    if (/^[-*]\s+/.test(l)) return "• " + l.replace(/^[-*]\s+/, "");
+    return l;
+  }).join("<br>").replace(/(<br>){3,}/g, "<br><br>");
+}
+
 function updAvailable() { return !!(UPD && UPD.info && UPD.info.available); }
 
 function updBadge() {
@@ -41,13 +51,16 @@ function updRender() {
   }
   if (updAvailable()) {
     const i = UPD.info;
+    const meta = [i.date, i.size ? `${(i.size / 1048576).toFixed(0)} МБ` : ""].filter(Boolean).join(" · ");
     box.innerHTML = `<div class="upd-box avail"><div class="row"><b>⬆ Доступна версия ${esc(i.version)}</b>
-        <span class="hint" style="margin-left:8px">${esc(i.date || "")} · ${(i.size / 1048576).toFixed(0)} МБ</span>
+        <span class="hint" style="margin-left:8px">${esc(meta)}</span>
         <div class="spacer"></div>
         <button class="primary" onclick="updInstall()">Обновить</button></div>
-      ${i.notes ? `<div class="upd-notes">${esc(i.notes).replace(/\n/g, "<br>")}</div>` : ""}
+      ${i.notes ? `<div class="upd-notes">${updMd(i.notes)}</div>`
+        : i.page ? `<div class="hint"><a href="${esc(i.page)}" target="_blank" rel="noopener">Что нового — на GitHub</a></div>` : ""}
       <div class="hint">Настройки, вкладки, голоса зрителей и серверы не тронутся. Программа перезапустится сама.</div>
-      ${j && j.state === "error" ? `<div class="upd-err">✗ ${esc(j.error)}</div>` : ""}</div>`;
+      ${j && j.state === "error" ? `<div class="upd-err">✗ ${esc(j.error)}</div>`
+        : UPD.error ? `<div class="upd-err">⚠ ${esc(UPD.error)}</div>` : ""}</div>`;
     return;
   }
   box.innerHTML = `<div class="upd-box"><div class="row">
@@ -64,7 +77,7 @@ async function updCheckNow(btn) {
 
 async function updInstall() {
   const d = await (await fetch("/api/update/install", {method: "POST"})).json();
-  if (!d.ok) { alert(d.error); return; }
+  if (!d.ok) { alert(d.error); await updLoad(false); return; }   // и в самом окне — не «Доступна» как ни в чём не бывало
   const target = d.version;
   const tick = setInterval(async () => {
     try {

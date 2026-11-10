@@ -2949,8 +2949,8 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.65.3"
-APP_DATE = "2026-11-07"
+APP_VERSION = "1.65.4"
+APP_DATE = "2026-11-11"
 
 
 def load_changelog():
@@ -2962,7 +2962,10 @@ def load_changelog():
 
 
 async def h_version(request):
-    return web.json_response({"version": APP_VERSION, "date": APP_DATE, "changelog": load_changelog()})
+    log = load_changelog()
+    # дата версии — из её записи в changelog.json (APP_DATE забывали менять при выпуске)
+    date = next((str(e.get("date") or "") for e in log if isinstance(e, dict) and e.get("version") == APP_VERSION), "")
+    return web.json_response({"version": APP_VERSION, "date": date or APP_DATE, "changelog": log})
 
 
 # ── Мосты для модов игр ──────────────────────────────────────────────────────
