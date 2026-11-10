@@ -30,9 +30,10 @@ Name: "russian"; MessagesFile: "compiler:Languages\Russian.isl"
 Name: "desktopicon"; Description: "Ярлык на рабочем столе"; GroupDescription: "Ярлыки:"
 
 [Files]
-Source: "dist\TakyLive\*"; DestDir: "{app}"; Excludes: "\gift_names_ru.json"; Flags: ignoreversion recursesubdirs createallsubdirs
-; свои русские названия подарков — данные пользователя: кладём только при первой установке
+Source: "dist\TakyLive\*"; DestDir: "{app}"; Excludes: "\gift_names_ru.json,\fish_key.txt"; Flags: ignoreversion recursesubdirs createallsubdirs
+; русские названия подарков и ключ Fish — данные пользователя: кладём только при первой установке
 Source: "dist\TakyLive\gift_names_ru.json"; DestDir: "{app}"; Flags: onlyifdoesntexist
+Source: "dist\TakyLive\fish_key.txt"; DestDir: "{app}"; Flags: onlyifdoesntexist skipifsourcedoesntexist
 
 [Icons]
 Name: "{autoprograms}\TakyLive"; Filename: "{app}\TakyLive.exe"; IconFilename: "{app}\web\takylive.ico"

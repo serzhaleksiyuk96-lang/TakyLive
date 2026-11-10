@@ -171,6 +171,11 @@ class Updater:
                     "(timeout /t 1 /nobreak >nul & goto wait)\r\n"
                     f'robocopy "{new_dir}" "{self.base}" /E /R:3 /W:1 /NFL /NDL /NJH /NJS '
                     f'/XF {" ".join(KEEP_FILES)} /XD {" ".join(KEEP_DIRS)} >nul\r\n'
+                    # данные пользователя не заменяем, но если такого файла ещё нет (например, общий
+                    # ключ Fish или названия подарков) — кладём из обновления
+                    + "".join(f'if not exist "{os.path.join(self.base, f)}" if exist "{os.path.join(new_dir, f)}" '
+                              f'copy /Y "{os.path.join(new_dir, f)}" "{os.path.join(self.base, f)}" >nul\r\n'
+                              for f in KEEP_FILES) +
                     f'start "" "{exe}"\r\n'
                     f'rmdir /S /Q "{os.path.join(upd, "new")}"\r\n'
                     f'del /Q "{os.path.join(upd, "update.zip")}"\r\n'
@@ -197,6 +202,9 @@ for root, dirs, files in os.walk(src):
     for fn in files:
         if fn not in KEEP_F:
             shutil.copy2(os.path.join(root, fn), os.path.join(dst, rel, fn))
+for fn in KEEP_F:                     # своих данных нет — кладём из обновления, есть — не трогаем
+    if not os.path.exists(os.path.join(dst, fn)) and os.path.exists(os.path.join(src, fn)):
+        shutil.copy2(os.path.join(src, fn), os.path.join(dst, fn))
 shutil.rmtree(src, ignore_errors=True)
 open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
 """

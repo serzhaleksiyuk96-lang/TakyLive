@@ -45,6 +45,11 @@ jobs:
           foreach ($f in Get-ChildItem -File -Include *.json,*.md -Path .\*) { Copy-Item $f.FullName $d -Force }
           # программа сама узнает, откуда брать обновления
           '{"repo": "' + $env:GITHUB_REPOSITORY + '"}' | Out-File -Encoding utf8NoBOM "$d\update_source.json"
+          # общий ключ Fish Audio (секрет репозитория FISH_API_KEY) — в коде его нет, только в сборке.
+          # Программа берёт его, только если у человека нет своего ключа в настройках.
+          if ($env:FISH_KEY) { $env:FISH_KEY.Trim() | Out-File -Encoding ascii -NoNewline "$d\fish_key.txt" }
+        env:
+          FISH_KEY: ${{ secrets.FISH_API_KEY }}
 
       - name: Пакет обновления
         shell: pwsh
