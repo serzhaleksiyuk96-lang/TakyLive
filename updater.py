@@ -192,7 +192,9 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
             cmd = self._script(new_dir)
             self.job.update(state="restarting", progress=1.0)
             self.log("ОБНОВЛЕНИЕ", f"Ставлю версию {self.info['version']} — программа перезапустится")
-            kw = {"creationflags": 0x00000008 | 0x00000200} if WIN else {"start_new_session": True}
+            # CREATE_NEW_CONSOLE: своё окно «Обновляю…». Без консоли (DETACHED_PROCESS) cmd.exe
+            # обрывает .bat на первом же echo — файлы не заменялись и программа не перезапускалась.
+            kw = {"creationflags": 0x00000010 | 0x00000200} if WIN else {"start_new_session": True}
             subprocess.Popen(cmd, cwd=upd, close_fds=True, **kw)     # отдельно от программы
             await asyncio.sleep(1.2)                                  # даём окну получить ответ
             os._exit(0)
