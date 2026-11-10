@@ -12,6 +12,8 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      PYTHONUTF8: "1"   # русский текст в консоли сборщика (иначе cp1252 → UnicodeEncodeError)
     steps:
       - uses: actions/checkout@v4
 
