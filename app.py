@@ -2913,7 +2913,7 @@ async def h_gift_catalog_fetch(request):
     """🌍 Загрузить подарки региона — прямо у TikTok, без подключения к эфиру."""
     d = await request.json()
     region = str(d.get("region") or "").upper().strip()
-    if not re.fullmatch(r"[A-Z]{2}", region):
+    if not (region == "ALL" or re.fullmatch(r"[A-Z]{2}", region)):
         return web.json_response({"ok": False, "error": "выбери регион"})
     try:
         from TikTokLive import TikTokLiveClient
@@ -2950,7 +2950,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.66"
+APP_VERSION = "1.66.1"
 APP_DATE = "2026-11-11"
 
 
@@ -3249,6 +3249,10 @@ async def h_migrate(request):
                 shutil.copy2(p, os.path.join(bdir, *f.split("/")))
         for old in sorted(os.listdir(BACKUP_DIR))[:-5]:          # храним 5 последних копий
             shutil.rmtree(os.path.join(BACKUP_DIR, old), ignore_errors=True)
+        existed_before = set()                                         # какие файлы были до переноса — для «↩ Отменить»
+        for f in MIGRATE_FILES + [os.path.join("servers", "servers.json")]:
+            if os.path.isfile(os.path.join(BASE_DIR, f)):
+                existed_before.add(os.path.normpath(f))
         cur_m = _folder_info(BASE_DIR)["mtime"]
         old_newer = _folder_info(src)["mtime"] > cur_m
         P = lambda base, f: os.path.join(base, f)
@@ -3296,6 +3300,7 @@ async def h_migrate(request):
             shutil.copy2(P(src, "fish_key.txt"), cur_key)
         # серверы, Java, SteamCMD и свои картинки — докладываем то, чего нет, ничего не заменяя
         n = 0
+        copied_new = []                                        # докопированные файлы — их «↩ Отменить» уберёт
         for dn in MIGRATE_DIRS + ["media"]:
             sroot = P(src, dn)
             if not os.path.isdir(sroot):
@@ -3311,6 +3316,7 @@ async def h_migrate(request):
                     if not os.path.exists(dst):
                         os.makedirs(os.path.dirname(dst), exist_ok=True)
                         shutil.copy2(os.path.join(root, fn), dst)
+                        copied_new.append(os.path.relpath(dst, BASE_DIR))
                         n += 1
         ss = _jload(P(src, os.path.join("servers", "servers.json")), [])
         if ss:
@@ -3324,6 +3330,10 @@ async def h_migrate(request):
                 report.append(f"серверов +{len(add)}")
         if n:
             report.append(f"файлов докопировано: {n}")
+        created = [f for f in MIGRATE_FILES + [os.path.join("servers", "servers.json")]
+                   if os.path.isfile(os.path.join(BASE_DIR, f)) and os.path.normpath(f) not in existed_before] + copied_new
+        with open(os.path.join(bdir, "_created.json"), "w", encoding="utf-8") as fh:
+            json.dump(created, fh, ensure_ascii=False)
         report.append(f"резервная копия: _backup/{stamp}")
     await loop.run_in_executor(None, work)
     load_config()
@@ -3339,18 +3349,32 @@ async def h_migrate_undo(request):
     if not os.path.isdir(BACKUP_DIR) or not os.listdir(BACKUP_DIR):
         return web.json_response({"ok": False, "error": "резервных копий нет"})
     last = os.path.join(BACKUP_DIR, sorted(os.listdir(BACKUP_DIR))[-1])
+    created = _jload(os.path.join(last, "_created.json"), [])
     for root, _d, files in os.walk(last):
         for fn in files:
             rel = os.path.relpath(os.path.join(root, fn), last)
+            if rel == "_created.json":
+                continue
             dst = os.path.join(BASE_DIR, rel)
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(os.path.join(root, fn), dst)
+    removed = 0
+    for rel in created:                                        # файлы, которых до переноса не было
+        p = os.path.normpath(os.path.join(BASE_DIR, rel))
+        if not p.startswith(os.path.normpath(BASE_DIR) + os.sep) or not os.path.isfile(p):
+            continue
+        os.remove(p)
+        removed += 1
+        d = os.path.dirname(p)                                 # и опустевшие папки (мир сервера и т.п.)
+        while d != os.path.normpath(BASE_DIR) and os.path.isdir(d) and not os.listdir(d):
+            os.rmdir(d)
+            d = os.path.dirname(d)
     shutil.rmtree(last, ignore_errors=True)
     load_config()
     STATE.viewer_voices.clear()
     STATE.viewer_voices.update(load_viewer_voices())
-    STATE.log("ПЕРЕНОС", "Перенос отменён — данные возвращены из резервной копии")
-    return web.json_response({"ok": True})
+    STATE.log("ПЕРЕНОС", "Перенос отменён — данные возвращены" + (f", убрано новых файлов: {removed}" if removed else ""))
+    return web.json_response({"ok": True, "removed": removed})
 
 
 # ── 🧩 Мод TakyLive для GTA 5: найти игру, проверить Script Hook V и .NET, поставить одной кнопкой ──

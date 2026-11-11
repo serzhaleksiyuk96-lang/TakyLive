@@ -3191,18 +3191,18 @@ function libItems() {
 }
 
 async function libFetchRegion() {
-  const sel = document.getElementById("libRegionLoad"), btn = document.getElementById("libRegionBtn");
-  const hint = document.getElementById("libRegionHint");
-  if (!sel.value) { hint.textContent = "выбери страну"; return; }
+  const btn = document.getElementById("libRegionBtn"), hint = document.getElementById("libRegionHint");
   btn.disabled = true; btn.textContent = "⏳ Спрашиваю TikTok…";
   try {
     const d = await (await fetch("/api/gift_catalog/fetch", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({region: sel.value})})).json();
-    hint.textContent = d.ok ? `✓ ${d.name}: ${d.total} подарков, новых — ${d.new}` : "✗ " + d.error;
-    if (d.ok) { await loadGiftIcons(); LIB_REGION = d.region; renderGiftLib(); }
+      body: JSON.stringify({region: "ALL"})})).json();
+    hint.textContent = d.ok ? `✓ TikTok прислал ${d.total} подарков, новых в библиотеке — ${d.new}` : "✗ " + d.error;
+    if (d.ok) { await loadGiftIcons(); LIB_REGION = "tiktok"; renderGiftLib(); }
   } catch (e) { hint.textContent = "✗ " + e.message; }
-  finally { btn.disabled = false; btn.textContent = "🌍 Загрузить"; }
+  finally { btn.disabled = false; btn.textContent = "🌍 Загрузить весь список"; }
 }
+// подарок из списка TikTok (любой загрузки, кроме своего эфира)
+const fromTikTok = rg => (rg || []).some(r => r !== "эфир");
 
 async function openGiftLib(idx) {
   libTarget = idx;
@@ -3230,11 +3230,12 @@ function renderGiftLib() {
     .map((g, i) => [g.name, g.coins, i, g.regions])
     .filter(([n]) => !q || n.toLowerCase().includes(q) || normGift(ruNameOf(n)).includes(normGift(q)))
     .filter(([n]) => !onlyPic || GIFT_ICONS[n.toLowerCase()] || GIFT_ICONS_ONLINE[n.toLowerCase()])
-    .filter(([, , , rg]) => !LIB_REGION || (rg || []).includes(LIB_REGION))
+    .filter(([, , , rg]) => !LIB_REGION || (LIB_REGION === "tiktok" ? fromTikTok(rg) : (rg || []).includes(LIB_REGION)))
     .sort((a, b) => a[1] - b[1]);
   const known = GIFT_CAT.known || [];
   const loaded = Object.entries(GIFT_CAT.regions || {});
   const rname = code => (known.find(k => k[0] === code) || [code, code])[1];
+  const tiktokN = (GIFT_CAT.gifts || []).filter(g => fromTikTok(g.regions)).length;
   const cur = ((DATA.profiles[activeProfile][libSection] || [])[libTarget] || {}).name || "";
   box.innerHTML = `
     <div class="row" style="margin-bottom:12px">
@@ -3248,15 +3249,14 @@ function renderGiftLib() {
       <button class="icon danger" onclick="closeGiftLib()">✕</button>
     </div>
     <div class="lib-reg">
-      <span class="lib-reg-t">🌍 Подарки других стран:</span>
-      <select id="libRegionLoad" class="sx-in">${known.map(([k, n]) =>
-        `<option value="${k}"${k === "KZ" ? " selected" : ""}>${esc(n)}${GIFT_CAT.regions[k] ? " ✓" : ""}</option>`).join("")}</select>
-      <button class="small primary" id="libRegionBtn" onclick="libFetchRegion()">🌍 Загрузить</button>
-      <span class="hint" id="libRegionHint">TikTok пришлёт все подарки страны — с ID и картинками</span>
+      <span class="lib-reg-t">🌍 Все подарки TikTok:</span>
+      <button class="small primary" id="libRegionBtn" onclick="libFetchRegion()">🌍 Загрузить весь список</button>
+      <span class="hint" id="libRegionHint">с ID и картинками. TikTok отдаёт список по твоему интернету — в нём уже есть подарки соседних стран, например казахстанские Dombra и Yurt</span>
     </div>
     ${loaded.length ? `<div class="lib-chips"><span class="fish-tag${!LIB_REGION ? " active" : ""}" onclick="LIB_REGION=''; renderGiftLib()">Все</span>
-      ${loaded.map(([k, v]) => `<span class="fish-tag${LIB_REGION === k ? " active" : ""}" onclick="LIB_REGION='${esc(k)}'; renderGiftLib()">
-        ${k === "эфир" ? "📡 Мой эфир" : esc(rname(k))} · ${v.count}</span>`).join("")}</div>` : ""}
+      ${tiktokN ? `<span class="fish-tag${LIB_REGION === "tiktok" ? " active" : ""}" onclick="LIB_REGION='tiktok'; renderGiftLib()">🌍 Список TikTok · ${tiktokN}</span>` : ""}
+      ${GIFT_CAT.regions["эфир"] ? `<span class="fish-tag${LIB_REGION === "эфир" ? " active" : ""}" onclick="LIB_REGION='эфир'; renderGiftLib()">📡 Мой эфир · ${GIFT_CAT.regions["эфир"].count}</span>` : ""}
+    </div>` : ""}
     <div class="gift-lib-grid">
       ${items.map(([n, p, gi]) => {
         const key = n.toLowerCase();
@@ -3268,9 +3268,7 @@ function renderGiftLib() {
           ? `<img src="${url}" alt="" loading="lazy" onerror="imgFail(this)" data-ph="${letter}">`
           : `<div class="gl-ph">${letter}</div>`;
         const sel = (n === cur) ? ' style="border-color:var(--cyan)"' : "";
-        const rg = (LIB_ALL[gi].regions || []).filter(r => r !== "эфир");
         return `<div class="gift-lib-item"${sel} onclick="pickGift(${gi})">
-          ${rg.length ? `<span class="gl-reg" title="${esc(rg.map(rname).join(", "))}">${esc(rg.slice(0, 2).join(" "))}${rg.length > 2 ? "+" : ""}</span>` : ""}
           ${img}<div class="gl-name">${esc(n)}</div>${ruNameOf(n) ? `<div class="gl-ru">${esc(ruNameOf(n))}</div>` : ""}
           <div class="gl-price">${p} 🪙</div></div>`;
       }).join("")}

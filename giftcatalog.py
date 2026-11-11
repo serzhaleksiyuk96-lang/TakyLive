@@ -102,7 +102,9 @@ class GiftCatalog:
 
     async def fetch_region(self, region, web_get, gift_list_url):
         """Спрашивает у TikTok список подарков региона (без подключения к эфиру)."""
-        params = {"region": region, "priority_region": region, "app_language": "en", "webcast_language": "en"}
+        params = {"app_language": "en", "webcast_language": "en"}
+        if region != "ALL":                    # TikTok всё равно отдаёт список по IP — страну не передаём без нужды
+            params.update(region=region, priority_region=region)
         r = await web_get(url=gift_list_url, extra_params=params)
         data = r.json() if hasattr(r, "json") else r
         found = {}
@@ -110,7 +112,7 @@ class GiftCatalog:
         if not found:
             raise RuntimeError("TikTok не прислал список подарков — попробуй позже")
         new, total = self.merge(found, region)
-        name = dict(REGIONS).get(region, region)
+        name = "Список TikTok" if region == "ALL" else dict(REGIONS).get(region, region)
         self.log("ПОДАРКИ", f"{name}: TikTok прислал {total} подарков, новых в каталоге — {new}")
         return {"region": region, "name": name, "total": total, "new": new}
 
