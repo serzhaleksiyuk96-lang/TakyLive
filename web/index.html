@@ -593,7 +593,7 @@
   .vv-row .vv-nick { font-weight: 600; color: var(--text); }
   .vv-row .vv-meta { color: var(--text-mut); font-size: 12px; }
   .vv-row .vv-label { margin-left: auto; color: var(--cyan); white-space: nowrap; }
-  .vv-row .vv-voice { max-width: 220px; }
+  .vv-row .vv-voice { width: 220px; flex: none; }
   .vv-row .vv-pin { opacity: .35; } .vv-row .vv-pin.on { opacity: 1; }
   .vv-row.pinned { border-color: rgba(251,191,36,0.5); }
   .vv-add { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; align-items: center; }
@@ -666,6 +666,145 @@
   .mp-dropcover { display: none; position: absolute; inset: 0; border-radius: inherit; background: rgba(34,211,238,0.14);
                   border: 2px dashed var(--cyan); align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: var(--text); }
   #mediaPickModal.dragging .mp-dropcover { display: flex; }
+  .vpm-box { max-width: 1000px; width: 94vw; max-height: 90vh; overflow-y: auto; }
+  .vpm-box .vp-grid { max-height: 52vh; overflow-y: auto; }
+  .vbtn { display: inline-flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 8px 12px; border-radius: 10px;
+          background: var(--panel2); border: 1px solid var(--border2); color: var(--text); font-size: 13px; cursor: pointer; text-align: left; }
+  .vbtn:hover { border-color: var(--cyan); }
+  .vbtn.empty { color: var(--text-mut); }
+  .vbtn-i { font-size: 15px; }
+  .vbtn-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vbtn-a { opacity: .6; font-size: 11px; }
+
+  /* ── Витрина: настройки плитками ── */
+  #scSettings .sc-legacy { display: none; }
+  .sc-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 22px; align-items: start; margin-top: 12px; }
+  @media (max-width: 1250px) {                     /* узкое окно — превью сверху, на всю ширину, и едет за прокруткой */
+    .sc-wrap { grid-template-columns: 1fr; }
+    .sc-live { order: -1; z-index: 5; background: var(--panel); box-shadow: 0 10px 24px rgba(0,0,0,0.45); }
+    .sc-live .hint, .sc-live > button { display: none; }
+  }
+  .sc-step { margin-bottom: 24px; }
+  .sc-h { font-size: 15px; font-weight: 700; color: var(--text); margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+  .sc-h b { width: 24px; height: 24px; border-radius: 50%; background: var(--grad); color: #fff; display: inline-flex;
+            align-items: center; justify-content: center; font-size: 13px; flex: none; }
+  .sc-sub { font-size: 12px; font-weight: 600; color: var(--text-dim); margin: 14px 0 8px; }
+  .sct-grid { display: grid; gap: 10px; }
+  .sct-grid.five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .sct-grid.six { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .sct-grid.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .sct-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 440px; }
+  @media (max-width: 900px) { .sct-grid.six { grid-template-columns: repeat(4, minmax(0, 1fr)); } .sct-grid.five { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  .sct { border-radius: 12px; background: var(--panel2); border: 1.5px solid var(--border); padding: 8px; cursor: pointer;
+         transition: border-color .15s, transform .15s, box-shadow .15s; }
+  .sct:hover { border-color: var(--cyan); transform: translateY(-2px); }
+  .sct.on { border-color: var(--gold); box-shadow: 0 0 14px rgba(251,191,36,0.3); }
+  .sct.on .sct-t::after { content: " ✓"; color: var(--gold); }
+  .sct-t { font-size: 12.5px; font-weight: 700; color: var(--text); margin-top: 7px; }
+  .sct-d { font-size: 11px; color: var(--text-mut); margin-top: 2px; line-height: 1.3; }
+  .pv { position: relative; height: 64px; border-radius: 8px; background: #070910; overflow: hidden;
+        display: flex; align-items: center; justify-content: center; }
+  .sct-grid.small .pv { height: 54px; }
+  .scm { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; border-radius: 4px; flex: none;
+         font-style: normal; font-size: 10px; line-height: 1; background: hsl(var(--h) 55% 20%); border: 1px solid hsl(var(--h) 70% 50% / .7);
+         position: relative; overflow: hidden; }
+  .scm.big { width: 30px; height: 30px; border-radius: 7px; font-size: 17px; }
+  /* режимы */
+  .pv-pages { position: absolute; inset: 0; }
+  .pv-pages .pg { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(4, 16px); gap: 5px;
+                  justify-content: center; align-content: center; }
+  .pv-pages .a { animation: pvA 4s infinite; } .pv-pages .b { animation: pvB 4s infinite; }
+  @keyframes pvA { 0%,40% { opacity: 1; transform: none } 48%,92% { opacity: 0; transform: scale(.8) } 100% { opacity: 1; transform: none } }
+  @keyframes pvB { 0%,40% { opacity: 0; transform: scale(.8) } 48%,92% { opacity: 1; transform: none } 100% { opacity: 0; transform: scale(.8) } }
+  .pv-scroll { position: absolute; inset: 0; display: flex; justify-content: center; }
+  .pv-scroll .trk { display: grid; grid-template-columns: repeat(2, 16px); gap: 5px; padding-top: 6px; height: max-content;
+                    animation: pvUp 4s linear infinite; }
+  @keyframes pvUp { from { transform: translateY(0) } to { transform: translateY(-63px) } }
+  .pv-marq { position: absolute; inset: 0; display: flex; align-items: center; }
+  .pv-marq .trk { display: flex; gap: 5px; padding-left: 6px; animation: pvLeft 6s linear infinite; }
+  @keyframes pvLeft { from { transform: translateX(0) } to { transform: translateX(-252px) } }
+  .pv-marq.step .trk { animation: pvStep 6s ease-in-out infinite; }
+  @keyframes pvStep { 0%,18% { transform: translateX(0) } 25%,43% { transform: translateX(-21px) } 50%,68% { transform: translateX(-42px) }
+                      75%,93% { transform: translateX(-63px) } 100% { transform: translateX(-84px) } }
+  .pv-all { display: grid; grid-template-columns: repeat(5, 16px); gap: 5px; }
+  .pv-auto { position: absolute; inset: 0; }
+  .pv-auto b { position: absolute; top: 4px; right: 4px; font-size: 8px; color: #0a0c13; background: var(--cyan); border-radius: 4px; padding: 1px 4px; }
+  /* появление: три карточки по кругу, как в витрине */
+  .pv-tr { display: flex; gap: 8px; perspective: 200px; }
+  .pv-tr .scm { width: 22px; height: 22px; font-size: 13px; border-radius: 6px; animation-duration: 2.8s; animation-iteration-count: infinite;
+                animation-fill-mode: both; animation-timing-function: ease-out; }
+  .pv-tr .scm.stg { animation-delay: calc(var(--i) * .2s); }
+  .tr-fade { animation-name: p-fade; } .tr-pulse { animation-name: p-pulse; } .tr-wave { animation-name: p-wave; }
+  .tr-flip { animation-name: p-flip; } .tr-zoom { animation-name: p-zoom; } .tr-domino { animation-name: p-domino; }
+  .tr-carousel { animation-name: p-carousel; } .tr-spiral { animation-name: p-spiral; } .tr-bounce { animation-name: p-bounce; }
+  .tr-diagonal { animation-name: p-diagonal; } .tr-flash { animation-name: p-flash; } .tr-blur { animation-name: p-blur; }
+  @keyframes p-fade { 0% { opacity: 0 } 30%,86% { opacity: 1 } 100% { opacity: 0 } }
+  @keyframes p-pulse { 0% { opacity: 0; transform: scale(.84) } 15% { opacity: 1; transform: scale(1.18) } 28%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-wave { 0% { opacity: 0; transform: translateY(16px) } 25%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-flip { 0% { opacity: 0; transform: rotateY(90deg) } 25%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-zoom { 0% { opacity: 0; transform: scale(.3) } 25%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-domino { 0% { opacity: 0; transform: translateY(-20px) rotate(-14deg) } 25%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-carousel { 0% { opacity: 0; transform: translateX(60px) } 25%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-spiral { 0% { opacity: 0; transform: rotate(-200deg) scale(.2) } 28%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-bounce { 0% { opacity: 0; transform: translateY(-30px) } 15% { opacity: 1; transform: translateY(6px) } 24%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-diagonal { 0% { opacity: 0; transform: translate(-14px,-14px) scale(.7) } 25%,86% { opacity: 1; transform: none } 100% { opacity: 0 } }
+  @keyframes p-flash { 0% { opacity: 0; filter: brightness(3); box-shadow: 0 0 16px #fff } 25%,86% { opacity: 1; filter: none; box-shadow: none } 100% { opacity: 0 } }
+  @keyframes p-blur { 0% { opacity: 0; filter: blur(6px); transform: scale(1.15) } 28%,86% { opacity: 1; filter: none; transform: none } 100% { opacity: 0 } }
+  /* эффекты карточек */
+  .pv-fx { display: flex; gap: 12px; }
+  .fx-glow { animation: e-glow 2.4s infinite; animation-delay: calc(var(--i) * .6s); }
+  @keyframes e-glow { 0%,60%,100% { box-shadow: none } 30% { box-shadow: 0 0 14px 2px hsl(var(--h) 90% 60%); } }
+  .fx-breathe { animation: e-breathe 2.2s ease-in-out infinite; }
+  @keyframes e-breathe { 0%,100% { transform: scale(1); opacity: .85 } 50% { transform: scale(1.12); opacity: 1 } }
+  .fx-float { animation: e-float 2s ease-in-out infinite; animation-delay: calc(var(--i) * .5s); }
+  @keyframes e-float { 0%,100% { transform: translateY(3px) } 50% { transform: translateY(-6px) } }
+  .fx-wobble { animation: e-wobble 1.4s ease-in-out infinite; }
+  @keyframes e-wobble { 0%,100% { transform: rotate(-7deg) } 50% { transform: rotate(7deg) } }
+  .fx-shine::after { content: ""; position: absolute; top: 0; bottom: 0; width: 45%; left: -60%;
+                     background: linear-gradient(100deg, transparent, rgba(255,255,255,0.75), transparent); animation: e-shine 2.2s infinite; }
+  @keyframes e-shine { 0% { left: -60% } 55%,100% { left: 130% } }
+  .fx-neon { animation: e-neon 1.6s infinite; }
+  @keyframes e-neon { 0%,100% { box-shadow: 0 0 0 1px rgba(34,211,238,0.2) } 45% { box-shadow: 0 0 10px 2px #22d3ee, inset 0 0 6px #22d3ee }
+                      55% { box-shadow: 0 0 2px 1px #22d3ee } 65% { box-shadow: 0 0 12px 3px #22d3ee } }
+  .fx-rainbow { animation: e-rainbow 3s linear infinite; border-width: 2px; }
+  @keyframes e-rainbow { 0% { border-color: #f87171; box-shadow: 0 0 8px #f87171 } 25% { border-color: #fbbf24; box-shadow: 0 0 8px #fbbf24 }
+                         50% { border-color: #34d399; box-shadow: 0 0 8px #34d399 } 75% { border-color: #60a5fa; box-shadow: 0 0 8px #60a5fa }
+                         100% { border-color: #f87171; box-shadow: 0 0 8px #f87171 } }
+  /* значок */
+  .pv-badge { position: relative; }
+  .pv-badge .bdg { position: absolute; width: 15px; height: 15px; border-radius: 50%; font-style: normal; font-size: 9px; display: flex;
+                   align-items: center; justify-content: center; background: #0a0c13; border: 1px solid #fbbf24; animation: e-breathe 1.6s infinite; }
+  .bdg.br { right: -6px; bottom: -6px; } .bdg.bl { left: -6px; bottom: -6px; } .bdg.tr { right: -6px; top: -6px; } .bdg.tl { left: -6px; top: -6px; }
+  /* что показывать */
+  .sc-types2 { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sct-type { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-radius: 12px; cursor: pointer; font-size: 13px;
+              background: var(--panel2); border: 1.5px solid var(--border); color: var(--text-dim); }
+  .sct-type .e { font-size: 16px; } .sct-type .tick { color: var(--gold); font-weight: 700; min-width: 10px; }
+  .sct-type.on { color: var(--text); border-color: var(--gold); box-shadow: 0 0 10px rgba(251,191,36,0.22); }
+  /* размер и скорость */
+  .sc-sizes { display: flex; flex-direction: column; gap: 14px; }
+  .sc-lbl { font-size: 12.5px; color: var(--text-dim); margin-bottom: 7px; } .sc-lbl b { color: var(--text); }
+  .sc-speed { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sct-sp { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 96px; padding: 8px 12px; border-radius: 12px; cursor: pointer;
+            background: var(--panel2); border: 1.5px solid var(--border); font-size: 11px; color: var(--text-mut); }
+  .sct-sp .e { font-size: 20px; } .sct-sp b { font-size: 12.5px; color: var(--text); }
+  .sct-sp.on { border-color: var(--gold); box-shadow: 0 0 12px rgba(251,191,36,0.28); }
+  .sct-sp.own { flex-direction: row; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .sct-sp.own input { width: 56px; padding: 4px 6px; }
+  .sc-grid-ctl { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .stp { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); }
+  .stp button { width: 30px; height: 30px; padding: 0; border-radius: 8px; font-size: 16px; }
+  .stp b { min-width: 22px; text-align: center; font-size: 15px; color: var(--text); }
+  .mini-grid { display: flex; flex-direction: column; gap: 3px; padding: 8px; border-radius: 8px; background: #070910; }
+  .mg-row { display: flex; gap: 3px; } .mg-row i { width: 9px; height: 9px; border-radius: 2px; background: rgba(34,211,238,0.55); }
+  .sc-slide { display: flex; align-items: center; gap: 10px; max-width: 420px; } .sc-slide input { flex: 1; }
+  .sc-slide .s { font-size: 12px; } .sc-slide .l { font-size: 22px; }
+  /* живое превью */
+  .sc-live { position: sticky; top: 12px; padding: 12px; border-radius: 14px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); }
+  .sc-live-h { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .sc-live-box { width: 100%; height: 168px; overflow: hidden; border-radius: 10px; position: relative;
+                 background: repeating-conic-gradient(#0d1018 0% 25%, #11141d 0% 50%) 50% / 18px 18px; }
+  .sc-live-box iframe { position: absolute; left: 0; top: 0; width: 1280px; height: 512px; border: 0; transform-origin: 0 0; background: transparent; }
   .ver-badge { font-size: 11px; font-weight: 600; color: var(--cyan); margin-left: 8px; padding: 2px 8px;
                border-radius: 999px; border: 1px solid rgba(34,211,238,0.4); background: rgba(34,211,238,0.08);
                cursor: pointer; vertical-align: middle; }
@@ -683,6 +822,13 @@
   .mig-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
   .mig-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
   .mig-row .mono { font-size: 12px; } .mig-row input { flex: 1; min-width: 260px; }
+  .mig-row { padding: 8px 10px; border-radius: 10px; border: 1px solid transparent; }
+  .mig-row.fresh { border-color: rgba(52,211,153,0.5); background: rgba(52,211,153,0.06); }
+  .mig-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .mig-new { font-size: 11px; font-weight: 700; color: #0a0c13; background: var(--green); border-radius: 6px; padding: 2px 8px; }
+  .mig-link { margin: 18px 0 0; text-align: center; font-size: 13px; }
+  .mig-link span { color: var(--text-mut); cursor: pointer; border-bottom: 1px dashed var(--text-mut); }
+  .mig-link span:hover { color: var(--cyan); border-color: var(--cyan); }
   .cl-ver { font-size: 14px; font-weight: 600; color: var(--text); margin: 14px 0 4px; }
   .cl-ver:first-child { margin-top: 0; }
   .cl-ver span { font-size: 12px; font-weight: 400; color: var(--text-mut); margin-left: 6px; }
@@ -1400,7 +1546,7 @@
         <div class="vv-add">
           <input id="vvNewNick" class="sx-in" list="vvRecent" placeholder="ник зрителя — или выбери из тех, кто писал">
           <datalist id="vvRecent"></datalist>
-          <select id="vvNewVoice" class="sx-in"></select>
+          <div id="vvNewVoiceBox"></div>
           <input id="vvNewLabel" class="sx-in" placeholder="подпись, например «Модер»">
           <div class="vv-add-act">
             <label class="chk" title="Зритель не сможет сменить голос командой, «Очистить всех» его не тронет">
@@ -1540,7 +1686,9 @@
     </div>
 
     <div class="card hidden" id="scSettings">
-      <h3>🎁 Настройки витрины</h3>
+      <h3>🎁 Настройки витрины <span class="hint" style="font-weight:400">— нажимай на плитки, справа сразу видно, что получилось</span></h3>
+      <div id="scNew"></div>
+      <div class="sc-legacy">
       <div class="settings-grid">
         <div class="field">
           <label>Анимация когда подарков много</label>
@@ -1635,6 +1783,7 @@
       <label class="chk" style="margin-top:10px">
         <input type="checkbox" id="sc_online" checked> 🌐 Брать иконки подарков с серверов TikTok
       </label>
+      </div>
       <div class="row" style="margin-top:12px">
         <div class="spacer"></div>
         <span class="ev-saved" data-panelsave>✓ Сохранено</span>
@@ -1716,6 +1865,18 @@
     <div class="gh-warn st-only" id="srvSteamInfo" style="margin:10px 0"></div>
     <div class="row"><span class="hint" id="srvCreateHint" style="color:var(--red)"></span><div class="spacer"></div>
       <button class="primary" onclick="srvCreate()">Создать сервер</button></div>
+  </div>
+</div>
+
+<div id="voicePickModal" class="mdl hidden" onclick="if(event.target===this)closeVoicePick()">
+  <div class="mdl-box vpm-box">
+    <div class="row" style="margin-bottom:10px">
+      <h3 style="margin:0" id="vpmTitle">Голос</h3>
+      <div class="spacer"></div>
+      <button class="small hidden" id="vpmDefault" onclick="vpPickDefault()">👥 Как у всех</button>
+      <button class="icon danger" onclick="closeVoicePick()">✕</button>
+    </div>
+    <div id="vpModalSlot"></div>
   </div>
 </div>
 
@@ -1830,5 +1991,6 @@
 <script src="/web/viewers.js?v=__VERSION__"></script>
 <script src="/web/update.js?v=__VERSION__"></script>
 <script src="/web/mediapick.js?v=__VERSION__"></script>
+<script src="/web/showcase-ui.js?v=__VERSION__"></script>
 </body>
 </html>

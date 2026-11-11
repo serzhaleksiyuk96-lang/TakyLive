@@ -28,7 +28,7 @@ API = "https://api.github.com"
 # что никогда не трогаем при обновлении — это данные пользователя
 KEEP_FILES = ["config.json", "profiles.json", "viewer_voices.json", "fish_key.txt", "gift_icons_live.json",
               "gift_names_ru.json", "gift_catalog.json"]
-KEEP_DIRS = ["servers", "java", "steamcmd", "vault", "tts", "_thumbs", "_update", "_проверка"]
+KEEP_DIRS = ["servers", "java", "steamcmd", "vault", "tts", "_thumbs", "_backup", "_update", "_проверка"]
 WIN = sys.platform == "win32"
 
 

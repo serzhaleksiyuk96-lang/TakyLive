@@ -2949,7 +2949,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.65.6"
+APP_VERSION = "1.65.8"
 APP_DATE = "2026-11-11"
 
 
@@ -3135,8 +3135,26 @@ def _is_app_folder(path):
         and (os.path.isfile(os.path.join(path, "app.py")) or any(f.endswith(".exe") for f in os.listdir(path)))
 
 
+def _jload(path, default):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def _folder_info(path):
+    """Что лежит в папке программы: когда менялось, сколько вкладок, зрителей, команд голосов."""
+    files = [os.path.join(path, f) for f in ("config.json", "profiles.json", "viewer_voices.json")]
+    mtime = max([os.path.getmtime(f) for f in files if os.path.isfile(f)] or [0])
+    cfg = _jload(files[0], {})
+    return {"path": path, "tabs": len(_jload(files[1], {}) or {}), "viewers": len(_jload(files[2], {}) or {}),
+            "voice_cmds": len(cfg.get("voice_cmds") or []) if isinstance(cfg, dict) else 0,
+            "mtime": mtime, "changed": time.strftime("%d.%m.%Y %H:%M", time.localtime(mtime)) if mtime else ""}
+
+
 async def h_migrate_find(request):
-    """Ищет старые папки программы на рабочем столе, в загрузках и документах."""
+    """Ищет старые папки программы на рабочем столе, в загрузках и документах — самые свежие первыми."""
     home = os.path.expanduser("~")
     roots = [os.path.join(home, d) for d in ("Desktop", "Рабочий стол", "Downloads", "Загрузки", "Documents", "Документы")]
     found = []
@@ -3146,60 +3164,192 @@ async def h_migrate_find(request):
         for d1 in [root] + [os.path.join(root, x) for x in os.listdir(root) if os.path.isdir(os.path.join(root, x))]:
             try:
                 if os.path.abspath(d1) != os.path.abspath(BASE_DIR) and _is_app_folder(d1):
-                    n = 0
-                    try:
-                        with open(os.path.join(d1, "profiles.json"), encoding="utf-8") as f:
-                            n = len(json.load(f))
-                    except Exception:
-                        pass
-                    found.append({"path": d1, "tabs": n})
+                    found.append(_folder_info(d1))
             except OSError:
                 continue
-    return web.json_response({"items": found[:10]})
+    found.sort(key=lambda x: -x["mtime"])
+    return web.json_response({"items": found[:10], "current": _folder_info(BASE_DIR),
+                              "backups": sorted(os.listdir(BACKUP_DIR))[-5:] if os.path.isdir(BACKUP_DIR) else []})
+
+
+BACKUP_DIR = os.path.join(BASE_DIR, "_backup")
+
+
+def _empty(v):
+    return v is None or v == "" or v == [] or v == {}
+
+
+def merge_config(cur, old, old_newer):
+    """Настройки: пустое не затирает заполненное; при споре побеждает более свежая папка.
+    Команды голосов и голоса ролей объединяются."""
+    out = dict(cur)
+    for k, ov in old.items():
+        cv = cur.get(k)
+        if k == "voice_cmds" and isinstance(ov, list):
+            have = {str(x.get("cmd", "")).lower() for x in (cv or []) if isinstance(x, dict)}
+            out[k] = list(cv or []) + [x for x in ov if isinstance(x, dict) and str(x.get("cmd", "")).lower() not in have]
+        elif isinstance(ov, dict) and isinstance(cv, dict):
+            out[k] = {**ov, **{kk: vv for kk, vv in cv.items() if not _empty(vv)}} if not old_newer else \
+                     {**cv, **{kk: vv for kk, vv in ov.items() if not _empty(vv)}}
+        elif _empty(cv) and not _empty(ov):
+            out[k] = ov
+        elif not _empty(ov) and old_newer:
+            out[k] = ov
+    return out
+
+
+def merge_profiles(cur, old, old_newer):
+    """Вкладки из обеих папок. Одинаковое имя и разное содержимое — сохраняем обе."""
+    out = dict(cur)
+    for name, prof in (old or {}).items():
+        if name not in out:
+            out[name] = prof
+        elif json.dumps(out[name], sort_keys=True, ensure_ascii=False) != json.dumps(prof, sort_keys=True, ensure_ascii=False):
+            keep, other = (prof, out[name]) if old_newer else (out[name], prof)
+            out[name] = keep
+            alt = f"{name} (вторая копия)"
+            n = 2
+            while alt in out:
+                n += 1
+                alt = f"{name} (копия {n})"
+            out[alt] = other
+    return out
+
+
+def merge_viewers(cur, old):
+    """Зрители с голосами из обеих папок; один и тот же зритель — берём более позднюю запись."""
+    out = dict(cur or {})
+    for k, v in (old or {}).items():
+        if k not in out or str(v.get("at", "")) > str(out[k].get("at", "")):
+            pinned = bool(out.get(k, {}).get("pinned")) or bool(v.get("pinned"))
+            out[k] = {**v, "pinned": pinned} if pinned else v
+    return out
 
 
 async def h_migrate(request):
-    """Копирует настройки, вкладки, голоса зрителей, серверы и медиа из старой папки."""
+    """Переносит данные из старой папки — ОБЪЕДИНЯЯ с текущими. Перед этим — резервная копия."""
     d = await request.json()
     src = os.path.abspath(str(d.get("path") or "").strip().strip('"'))
     if not os.path.isdir(src) or not _is_app_folder(src):
         return web.json_response({"ok": False, "error": "в этой папке нет данных программы (config.json / profiles.json)"})
     if src == os.path.abspath(BASE_DIR):
         return web.json_response({"ok": False, "error": "это и есть текущая папка программы"})
-    copied = []
+    report = []
     loop = asyncio.get_event_loop()
 
     def work():
-        for f in MIGRATE_FILES:
-            if os.path.isfile(os.path.join(src, f)):
-                shutil.copy2(os.path.join(src, f), os.path.join(BASE_DIR, f))
-                copied.append(f)
-        for dn in MIGRATE_DIRS:
-            if os.path.isdir(os.path.join(src, dn)):
-                shutil.copytree(os.path.join(src, dn), os.path.join(BASE_DIR, dn), dirs_exist_ok=True)
-                copied.append(dn + "/")
-        msrc = os.path.join(src, "media")
-        if os.path.isdir(msrc):                        # свои картинки и звуки — без замены программных
-            n = 0
-            for root, _dirs, files in os.walk(msrc):
-                rel = os.path.relpath(root, msrc)
-                if rel.split(os.sep)[0] in ("tts",):
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        bdir = os.path.join(BACKUP_DIR, stamp)
+        os.makedirs(bdir, exist_ok=True)
+        for f in MIGRATE_FILES + ["servers/servers.json"]:
+            p = os.path.join(BASE_DIR, *f.split("/"))
+            if os.path.isfile(p):
+                os.makedirs(os.path.dirname(os.path.join(bdir, f)), exist_ok=True)
+                shutil.copy2(p, os.path.join(bdir, *f.split("/")))
+        for old in sorted(os.listdir(BACKUP_DIR))[:-5]:          # храним 5 последних копий
+            shutil.rmtree(os.path.join(BACKUP_DIR, old), ignore_errors=True)
+        cur_m = _folder_info(BASE_DIR)["mtime"]
+        old_newer = _folder_info(src)["mtime"] > cur_m
+        P = lambda base, f: os.path.join(base, f)
+        # настройки
+        cur_cfg, old_cfg = _jload(P(BASE_DIR, "config.json"), {}), _jload(P(src, "config.json"), {})
+        if old_cfg:
+            before = len(cur_cfg.get("voice_cmds") or [])
+            merged = merge_config(cur_cfg, old_cfg, old_newer)
+            with open(P(BASE_DIR, "config.json"), "w", encoding="utf-8") as f:
+                json.dump(merged, f, ensure_ascii=False, indent=2)
+            report.append("настройки объединены" + (f", команд голосов +{len(merged.get('voice_cmds') or []) - before}"
+                                                    if len(merged.get("voice_cmds") or []) > before else ""))
+        # вкладки
+        cur_p, old_p = _jload(P(BASE_DIR, "profiles.json"), {}), _jload(P(src, "profiles.json"), {})
+        if old_p:
+            merged = merge_profiles(cur_p, old_p, old_newer)
+            with open(P(BASE_DIR, "profiles.json"), "w", encoding="utf-8") as f:
+                json.dump(merged, f, ensure_ascii=False, indent=2)
+            report.append(f"вкладок: было {len(cur_p)}, стало {len(merged)}")
+        # зрители с голосами
+        cur_v, old_v = _jload(P(BASE_DIR, "viewer_voices.json"), {}), _jload(P(src, "viewer_voices.json"), {})
+        if old_v:
+            merged = merge_viewers(cur_v, old_v)
+            with open(P(BASE_DIR, "viewer_voices.json"), "w", encoding="utf-8") as f:
+                json.dump(merged, f, ensure_ascii=False, indent=1)
+            report.append(f"зрителей с голосами: было {len(cur_v)}, стало {len(merged)}")
+        # словари подарков — объединяем
+        for f in ("gift_icons_live.json", "gift_names_ru.json"):
+            o = _jload(P(src, f), {})
+            if o:
+                cur = _jload(P(BASE_DIR, f), {})
+                with open(P(BASE_DIR, f), "w", encoding="utf-8") as fh:
+                    json.dump({**o, **cur}, fh, ensure_ascii=False)
+        o = _jload(P(src, "gift_catalog.json"), {})
+        if o.get("gifts"):
+            cur = _jload(P(BASE_DIR, "gift_catalog.json"), {"gifts": {}, "regions": {}})
+            cur["gifts"] = {**o.get("gifts", {}), **cur.get("gifts", {})}
+            cur["regions"] = {**o.get("regions", {}), **cur.get("regions", {})}
+            with open(P(BASE_DIR, "gift_catalog.json"), "w", encoding="utf-8") as fh:
+                json.dump(cur, fh, ensure_ascii=False)
+        # ключ Fish — только если своего нет
+        cur_key = P(BASE_DIR, "fish_key.txt")
+        have_key = os.path.isfile(cur_key) and open(cur_key, encoding="utf-8").read().strip()
+        if os.path.isfile(P(src, "fish_key.txt")) and not have_key:
+            shutil.copy2(P(src, "fish_key.txt"), cur_key)
+        # серверы, Java, SteamCMD и свои картинки — докладываем то, чего нет, ничего не заменяя
+        n = 0
+        for dn in MIGRATE_DIRS + ["media"]:
+            sroot = P(src, dn)
+            if not os.path.isdir(sroot):
+                continue
+            for root, _dirs, files in os.walk(sroot):
+                rel = os.path.relpath(root, sroot)
+                if dn == "media" and rel.split(os.sep)[0] in ("tts", "_thumbs"):
                     continue
                 for fn in files:
-                    dst = os.path.join(MEDIA_DIR, rel, fn)
+                    dst = os.path.join(BASE_DIR, dn, rel, fn)
+                    if dn == "servers" and rel == "." and fn == "servers.json":
+                        continue
                     if not os.path.exists(dst):
                         os.makedirs(os.path.dirname(dst), exist_ok=True)
                         shutil.copy2(os.path.join(root, fn), dst)
                         n += 1
-            if n:
-                copied.append(f"media ({n} файлов)")
+        ss = _jload(P(src, os.path.join("servers", "servers.json")), [])
+        if ss:
+            cs = _jload(P(BASE_DIR, os.path.join("servers", "servers.json")), [])
+            ids = {x.get("id") for x in cs}
+            add = [x for x in ss if x.get("id") not in ids]
+            if add:
+                os.makedirs(P(BASE_DIR, "servers"), exist_ok=True)
+                with open(P(BASE_DIR, os.path.join("servers", "servers.json")), "w", encoding="utf-8") as fh:
+                    json.dump(cs + add, fh, ensure_ascii=False, indent=2)
+                report.append(f"серверов +{len(add)}")
+        if n:
+            report.append(f"файлов докопировано: {n}")
+        report.append(f"резервная копия: _backup/{stamp}")
     await loop.run_in_executor(None, work)
     load_config()
     STATE.viewer_voices.clear()
     STATE.viewer_voices.update(load_viewer_voices())
     STATE.gift_names_ru.update(load_gift_names_ru())
-    STATE.log("ПЕРЕНОС", f"Из {src} перенесено: {', '.join(copied) or 'ничего'}")
-    return web.json_response({"ok": True, "copied": copied, "tabs": len(STATE.profiles)})
+    STATE.log("ПЕРЕНОС", f"Из {src}: " + "; ".join(report))
+    return web.json_response({"ok": True, "copied": report, "tabs": len(STATE.profiles)})
+
+
+async def h_migrate_undo(request):
+    """↩ Отменить перенос — возвращаем последнюю резервную копию."""
+    if not os.path.isdir(BACKUP_DIR) or not os.listdir(BACKUP_DIR):
+        return web.json_response({"ok": False, "error": "резервных копий нет"})
+    last = os.path.join(BACKUP_DIR, sorted(os.listdir(BACKUP_DIR))[-1])
+    for root, _d, files in os.walk(last):
+        for fn in files:
+            rel = os.path.relpath(os.path.join(root, fn), last)
+            dst = os.path.join(BASE_DIR, rel)
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
+            shutil.copy2(os.path.join(root, fn), dst)
+    shutil.rmtree(last, ignore_errors=True)
+    load_config()
+    STATE.viewer_voices.clear()
+    STATE.viewer_voices.update(load_viewer_voices())
+    STATE.log("ПЕРЕНОС", "Перенос отменён — данные возвращены из резервной копии")
+    return web.json_response({"ok": True})
 
 
 async def h_tts_check(request):
@@ -3584,6 +3734,7 @@ def make_app():
     STATE.updater.routes(app)
     app.router.add_get("/api/migrate/find", h_migrate_find)
     app.router.add_post("/api/migrate", h_migrate)
+    app.router.add_post("/api/migrate/undo", h_migrate_undo)
 
     async def _first_update_check(app_):
         async def later():

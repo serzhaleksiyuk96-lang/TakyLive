@@ -89,21 +89,43 @@ async function updInstall() {
   updLoad(false);
 }
 
-// ── Перенос данных: для установленной версии со старой папки ──
+// ── Перенос данных из другой папки: объединяет, ничего не затирает, можно отменить ──
+let MIG_OPEN = false;
 async function migRender() {
   const box = document.getElementById("stMigrate");
   if (!box) return;
-  if (Object.keys(DATA.profiles || {}).length) { box.innerHTML = ""; return; }
-  let items = [];
-  try { items = (await (await fetch("/api/migrate/find", {cache: "no-store"})).json()).items || []; } catch (e) {}
+  const empty = !Object.keys(DATA.profiles || {}).length;
+  if (!empty && !MIG_OPEN) {
+    box.innerHTML = `<div class="mig-link"><span onclick="MIG_OPEN=true; migRender()">📦 Перенести данные из другой папки программы</span></div>`;
+    return;
+  }
+  let d = {items: [], current: null, backups: []};
+  try { d = await (await fetch("/api/migrate/find", {cache: "no-store"})).json(); } catch (e) {}
+  const items = d.items || [];
+  const card = (x, i) => `<div class="mig-row${i === 0 ? " fresh" : ""}">
+      <div class="mig-info"><span class="mono">${esc(x.path)}</span>
+        <span class="hint">изменено ${esc(x.changed || "—")} · вкладок ${x.tabs} · зрителей с голосами ${x.viewers} · команд голосов ${x.voice_cmds}</span></div>
+      ${i === 0 && items.length > 1 ? '<span class="mig-new">самая свежая</span>' : ""}
+      <button class="small primary" onclick='migDo(${JSON.stringify(x.path)})'>Перенести</button></div>`;
   box.innerHTML = `<div class="mig-box">
-    <div class="mig-title">📦 Пользовался программой раньше? Перенеси вкладки, настройки, голоса зрителей и серверы</div>
-    ${items.map(x => `<div class="mig-row"><span class="mono">${esc(x.path)}</span>
-        <span class="hint">вкладок: ${x.tabs}</span>
-        <button class="small primary" onclick='migDo(${JSON.stringify(x.path)})'>Перенести</button></div>`).join("")}
-    <div class="mig-row"><input id="migPath" class="sx-in mono" placeholder="или вставь путь к старой папке, например C:\\Users\\…\\Desktop\\TikTok-Minecraft-Bridge">
+    <div class="row"><div class="mig-title">📦 Перенос из другой папки программы</div><div class="spacer"></div>
+      ${!empty ? `<button class="icon" onclick="MIG_OPEN=false; migRender()" title="Свернуть">✕</button>` : ""}</div>
+    <div class="hint" style="margin-bottom:10px">Перенос <b>объединяет</b>: вкладки, зрители с голосами и команды голосов из обеих папок
+      останутся, пустое не затрёт заполненное. Перед переносом делается резервная копия — можно отменить.
+      ${d.current ? `Сейчас здесь: вкладок ${d.current.tabs}, зрителей ${d.current.viewers}, команд голосов ${d.current.voice_cmds}.` : ""}</div>
+    ${items.map(card).join("") || '<div class="hint">На рабочем столе, в загрузках и документах других папок программы не нашлось.</div>'}
+    <div class="mig-row"><input id="migPath" class="sx-in mono" placeholder="или вставь путь к папке, например C:\\Users\\…\\Desktop\\TikTok-Minecraft-Bridge">
       <button class="small" onclick="migDo(document.getElementById('migPath').value)">Перенести</button></div>
-    <div class="hint" id="migHint"></div></div>`;
+    <div class="hint" id="migHint"></div>
+    ${(d.backups || []).length ? `<button class="small" onclick="migUndo()">↩ Отменить последний перенос</button>` : ""}</div>`;
+}
+
+async function migUndo() {
+  if (!confirm("Вернуть данные, какими они были до последнего переноса?")) return;
+  const d = await (await fetch("/api/migrate/undo", {method: "POST"})).json();
+  const hint = document.getElementById("migHint");
+  if (hint) hint.textContent = d.ok ? "✓ Перенос отменён" : "✗ " + d.error;
+  if (d.ok) setTimeout(() => updReload(), 900);
 }
 
 async function migDo(path) {
@@ -113,6 +135,6 @@ async function migDo(path) {
   const d = await (await fetch("/api/migrate", {method: "POST", headers: {"Content-Type": "application/json"},
                                                 body: JSON.stringify({path})})).json();
   if (!d.ok) { hint.textContent = "✗ " + d.error; return; }
-  hint.textContent = `✓ Перенесено: ${d.copied.join(", ")} — вкладок: ${d.tabs}`;
-  setTimeout(() => updReload(), 1200);
+  hint.textContent = `✓ ${d.copied.join("; ")}`;
+  setTimeout(() => updReload(), 2500);
 }

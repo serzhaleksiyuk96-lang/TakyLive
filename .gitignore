@@ -15,6 +15,7 @@ media/_thumbs/
 media/tts/*
 !media/tts/.gitkeep
 _update/
+_backup/
 _проверка/
 __pycache__/
 *.pyc

@@ -76,10 +76,7 @@ function vcRender() {
   box.innerHTML = cmds.map((c, i) => `<div class="vc-row">
       <input class="sx-in" value="${esc(c.cmd || "")}" placeholder="!девочка" oninput="vcSet(${i},'cmd',this.value)">
       <input class="sx-in" value="${esc(c.label || "")}" placeholder="Девочка" oninput="vcSet(${i},'label',this.value)">
-      <select class="sx-in" onchange="vcSetVoice(${i}, this.value)">
-        ${opts.map(([v, n]) => `<option value="${esc(v)}"${v === c.voice ? " selected" : ""}>${esc(n)}</option>`).join("")}
-        <option value="__cur">🎙 Взять голос из раздела «Голос»…</option>
-      </select>
+      ${voiceBtnHtml(c.voice, `vcPick(${i})`)}
       <button class="small" onclick="vcPreview(${i}, this)" title="Послушать">▶</button>
       <button class="icon danger" onclick="vcRemove(${i})" title="Удалить команду">🗑</button>
     </div>`).join("") || '<div class="hint" style="margin-bottom:8px">Команд пока нет.</div>';
@@ -89,6 +86,14 @@ function vcSet(i, k, v) {
   const c = DATA.config.voice_cmds[i];
   c[k] = k === "cmd" ? (v.trim() && !v.trim().startsWith("!") ? "!" + v.trim() : v.trim()) : v;
   scheduleCfgSave();
+}
+
+function vcPick(i) {
+  const c = DATA.config.voice_cmds[i];
+  openVoicePick({cur: c.voice, label: `команды ${c.cmd || ""}`.trim(), onPick: (v, t) => {
+    c.voice = v; if (t && v.startsWith("fish:")) c.voice_title = t;
+    vcRender(); scheduleCfgSave();
+  }});
 }
 
 function vcSetVoice(i, v) {
@@ -149,9 +154,7 @@ function vvRender() {
       <span class="vv-nick">${esc(x.nick)}</span><span class="vv-meta">@${esc(String(x.user || "").replace(/^@/, ""))} ·
         ${esc(x.cmd === "вручную" ? "назначил ты" : (x.cmd || ""))} · ${esc(x.at || "")}</span>
       <span class="vv-label">🎭 ${esc(x.label || "")}</span>
-      <select class="sx-in vv-voice" onchange="vvSetVoice(${k}, this.value)">
-        ${vo.map(([v, n]) => `<option value="${esc(v)}"${v === x.voice ? " selected" : ""}>${esc(n)}</option>`).join("")}
-      </select>
+      <span class="vv-voice">${voiceBtnHtml(x.voice, `vvPickVoice(${k})`)}</span>
       <button class="icon vv-pin${x.pinned ? " on" : ""}" onclick="vvPin(${k}, ${!x.pinned})"
         title="${x.pinned ? "Закреплён — зритель не сменит голос командой. Нажми, чтобы открепить" : "Закрепить голос"}">📌</button>
       <button class="icon danger" onclick="vvRemove(${k})" title="Убрать голос">🗑</button>
@@ -181,6 +184,14 @@ async function vvSet(body) {
   return d;
 }
 
+function vvPickVoice(key) {
+  const x = VV.find(v => v.key === key) || {};
+  openVoicePick({cur: x.voice, label: x.nick || "зрителя", onPick: v => {
+    if (!v) return;
+    vvSet({key, voice: v, label: x.label || voiceLabel(v).replace(/^(Microsoft|Google|Fish) · /, "")});
+  }});
+}
+
 function vvSetVoice(key, voice) {
   if (!voice) { vvRemove(key); return; }
   const n = (vcVoices().find(o => o[0] === voice) || [voice, voice])[1].replace(/^(Microsoft|Google|Fish) · /, "");
@@ -190,9 +201,16 @@ function vvSetVoice(key, voice) {
 function vvPin(key, on) { vvSet({key, pinned: on}); }
 
 // ⭐ особенный зритель вручную
+let VV_NEW = "";
+function vvNewPick() {
+  openVoicePick({cur: VV_NEW || DATA.config.tts_voice, label: "особенного зрителя", onPick: v => {
+    VV_NEW = v; document.getElementById("vvNewVoiceBox").innerHTML = voiceBtnHtml(VV_NEW, "vvNewPick()");
+  }});
+}
+
 async function vvAddSpecial() {
   const nick = document.getElementById("vvNewNick").value.trim();
-  let voice = document.getElementById("vvNewVoice").value;
+  let voice = VV_NEW || DATA.config.tts_voice;
   const hint = document.getElementById("vvAddHint");
   if (voice === "__cur") voice = DATA.config.tts_voice;
   const opt = vcVoices().find(o => o[0] === voice);
@@ -212,13 +230,8 @@ async function vvRecentLoad() {
   try { VV_RECENT = (await (await fetch("/api/viewers/recent", {cache: "no-store"})).json()).items || []; } catch (e) { VV_RECENT = []; }
   const dl = document.getElementById("vvRecent");
   if (dl) dl.innerHTML = VV_RECENT.map(r => `<option value="${esc(r.nick)} (@${esc(r.user)})">писал в ${esc(r.seen)}</option>`).join("");
-  const sel = document.getElementById("vvNewVoice");
-  if (sel) {
-    const cur = sel.value;
-    sel.innerHTML = vcVoices().map(([v, n]) => `<option value="${esc(v)}">${esc(n)}</option>`).join("") +
-                    '<option value="__cur">🎙 Голос из раздела «Голос»</option>';
-    if (cur) sel.value = cur;
-  }
+  const box = document.getElementById("vvNewVoiceBox");
+  if (box) box.innerHTML = voiceBtnHtml(VV_NEW || DATA.config.tts_voice, "vvNewPick()");
 }
 
 // 👑 голоса по ролям
@@ -231,13 +244,15 @@ function roleRender() {
   const opts = [["", "— как у всех —"]].concat(vcVoices());
   box.innerHTML = ROLES.map(([r, n]) => {
     const vo = !rv[r] || opts.some(o => o[0] === rv[r]) ? opts : opts.concat([[rv[r], rv[r]]]);
-    return `<div class="role-row"><span>${n}</span>
-      <select class="sx-in" onchange="roleSet('${r}', this.value)">
-        ${vo.map(([v, t]) => `<option value="${esc(v)}"${v === (rv[r] || "") ? " selected" : ""}>${esc(t)}</option>`).join("")}
-        <option value="__cur">🎙 Голос из раздела «Голос»</option>
-      </select></div>`;
+    return `<div class="role-row"><span>${n}</span>${voiceBtnHtml(rv[r] || "", `rolePick('${r}')`, "как у всех")}</div>`;
   }).join("");
 }
+function rolePick(r) {
+  const n = (ROLES.find(x => x[0] === r) || [r, r])[1].replace(/^\S+\s/, "");
+  openVoicePick({cur: (DATA.config.role_voices || {})[r] || "", label: n.toLowerCase(), allowDefault: true,
+                 onPick: v => roleSet(r, v)});
+}
+
 function roleSet(r, v) {
   if (v === "__cur") v = DATA.config.tts_voice;
   (DATA.config.role_voices = DATA.config.role_voices || {})[r] = v;

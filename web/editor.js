@@ -1820,7 +1820,60 @@ function vpProviderOf(voice) {
   return "edge";
 }
 
-function vpCurVoice() { return document.getElementById("cfg_tts_voice").value; }
+// Режим «выбрать голос для…»: то же окно голосов открывается поверх программы
+let VP_PICK = null;          // {cur, title, label, allowDefault, onPick}
+let VP_HOME = null;          // куда вернуть блок голосов после выбора
+function vpCurVoice() { return VP_PICK ? (VP_PICK.cur || "") : document.getElementById("cfg_tts_voice").value; }
+
+function voiceTitle(v) {
+  const t = (DATA.config.voice_titles || {})[v];
+  if (t) return t;
+  if (v === DATA.config.tts_voice && DATA.config.fish_voice_title) return DATA.config.fish_voice_title;
+  return "";
+}
+
+// «Microsoft · Светлана», «Google · Русский», «Fish · Меллстрой»
+function voiceLabel(v) {
+  if (!v) return "как у всех";
+  const p = vpProviderOf(v);
+  if (p === "fish") return "Fish · " + (voiceTitle(v) || "голос " + v.slice(5, 11));
+  const o = (VOICES[p] || []).find(x => x.v === v);
+  return (p === "gt" ? "Google · " : "Microsoft · ") + (o ? o.name : v);
+}
+
+// кнопка выбора голоса — для команд, ролей, особенных зрителей
+function voiceBtnHtml(v, onclick, emptyText) {
+  const p = v ? vpProviderOf(v) : "";
+  const icon = !v ? "👥" : p === "fish" ? "🐟" : p === "gt" ? "⚡" : "🎙";
+  return `<button class="vbtn${v ? "" : " empty"}" onclick="${onclick}" title="Выбрать голос">
+    <span class="vbtn-i">${icon}</span><span class="vbtn-t">${esc(v ? voiceLabel(v) : (emptyText || "выбрать голос"))}</span><span class="vbtn-a">▾</span></button>`;
+}
+
+function openVoicePick(opts) {
+  VP_PICK = opts;
+  const vp = document.querySelector(".vp");
+  if (!VP_HOME) VP_HOME = {parent: vp.parentNode, next: vp.nextSibling};
+  document.getElementById("vpModalSlot").appendChild(vp);
+  document.getElementById("vpmTitle").textContent = "Голос для " + (opts.label || "выбора");
+  document.getElementById("vpmDefault").classList.toggle("hidden", !opts.allowDefault);
+  document.getElementById("voicePickModal").classList.remove("hidden");
+  vpSetProvider(opts.cur ? vpProviderOf(opts.cur) : (vpProvider || "edge"));
+}
+
+function closeVoicePick() {
+  document.getElementById("voicePickModal").classList.add("hidden");
+  if (vpAudio) { try { vpAudio.pause(); } catch (e) {} vpAudio = null; vpPlayingKey = ""; }
+  const vp = document.querySelector(".vp");
+  if (VP_HOME && vp) VP_HOME.parent.insertBefore(vp, VP_HOME.next);
+  VP_PICK = null;
+  vpRender();
+}
+
+function vpPickDefault() {
+  const cb = VP_PICK && VP_PICK.onPick;
+  closeVoicePick();
+  if (cb) cb("", "");
+}
 
 function vpSetProvider(p) {
   vpProvider = p;
@@ -1865,7 +1918,10 @@ function vpRender() {
   const found = all.find(x => x.v === cur);
   if (found) curName = found.name + (cur.startsWith("gt:") ? " (Google)" : " (Edge)");
   else if (cur.startsWith("fish:")) curName = (DATA.config.fish_voice_title || "голос Fish Audio") + " (Fish Audio)";
-  document.getElementById("vpCurrent").innerHTML = `Сейчас озвучивает: <b>${esc(curName)}</b>`;
+  if (VP_PICK) curName = cur ? voiceLabel(cur) : "как у всех";
+  document.getElementById("vpCurrent").innerHTML = VP_PICK
+    ? `Сейчас у ${esc(VP_PICK.label || "")}: <b>${esc(curName)}</b> — нажми на голос, чтобы поставить`
+    : `Сейчас озвучивает: <b>${esc(curName)}</b>`;
 
   let list;
   if (vpProvider === "fish") {
@@ -1873,7 +1929,7 @@ function vpRender() {
       langs: m.languages, cover: m.cover, coverAlt: m.cover_alt, sample: m.sample, uses: m.uses}));
     // выбранный голос Fish всегда виден, даже если его нет в результатах поиска
     if (cur.startsWith("fish:") && !list.some(x => x.v === cur)) {
-      list.unshift({v: cur, name: DATA.config.fish_voice_title || "Выбранный голос",
+      list.unshift({v: cur, name: (VP_PICK ? voiceTitle(cur) : DATA.config.fish_voice_title) || "Выбранный голос",
                     desc: "Твой текущий голос из библиотеки Fish Audio", langs: []});
     }
     document.getElementById("vpHint").textContent = list.length ? "" :
@@ -1887,6 +1943,17 @@ function vpRender() {
 }
 
 async function vpSelect(voice, title) {
+  if (voice.startsWith("fish:") && title) {                  // запоминаем имя голоса Fish — для подписей везде
+    DATA.config.voice_titles = DATA.config.voice_titles || {};
+    DATA.config.voice_titles[voice] = title;
+  }
+  if (VP_PICK) {                                             // выбор «для команды / роли / зрителя»
+    const cb = VP_PICK.onPick;
+    closeVoicePick();
+    if (cb) cb(voice, title);
+    if (typeof scheduleCfgSave === "function") scheduleCfgSave();
+    return;
+  }
   document.getElementById("cfg_tts_voice").value = voice;
   DATA.config.tts_voice = voice;
   if (voice.startsWith("fish:")) DATA.config.fish_voice_title = title;
@@ -2105,6 +2172,7 @@ function togglePanelCfg(id, btn) {
   const open = el.classList.toggle("hidden") === false;
   if (btn) btn.classList.toggle("cfg-open", open);
   if (open) el.scrollIntoView({behavior: "smooth", block: "nearest"});
+  if (id === "scSettings" && typeof scLiveToggle === "function") scLiveToggle(open);
 }
 
 function scTransUI() {
@@ -2160,6 +2228,7 @@ function fillPanelCfg() {
     el("sc_bsize").value = c.showcase_badge_size ?? 38;
     el("sc_bsize_lbl").textContent = c.showcase_badge_size ?? 38;
     el("sc_icon_lbl").textContent = c.showcase_icon ?? 88;
+    if (typeof scBuild === "function") scBuild();
   }
   el("tm_start").value = c.timer_start_min ?? 30;
   el("tm_percoin").value = c.timer_sec_per_coin ?? 5;
