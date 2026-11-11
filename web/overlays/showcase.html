@@ -148,7 +148,8 @@
 <div id="wrap" class="column"><div id="list"></div></div>
 <script>
 const params = new URLSearchParams(location.search);
-const layout = params.get("layout") === "row" ? "row" : "column";
+const URL_LAYOUT = params.get("layout") === "row" ? "row" : "column";
+let layout = URL_LAYOUT;              // «Бегущая строка» сама переключает витрину в одну строку
 const wrap = document.getElementById("wrap");
 const list = document.getElementById("list");
 wrap.className = layout;
@@ -233,19 +234,19 @@ function setWrap(base) { wrap.className = base + " ap-" + APPEAR + " fx-" + EFFE
 
 function resolveMode(items) {
   let mode = MODE;
+  layout = (MODE === "marquee") ? "row" : URL_LAYOUT;
   if (mode === "auto") {
     const perCard = (layout === "column") ? ICON * 0.75 + 24 : ICON * 1.75 + 8;
     const room = (layout === "column") ? window.innerHeight - 20 : window.innerWidth - 20;
     mode = (items.length * perCard <= room) ? "none" : (layout === "column" ? "scroll" : "grid");
   }
-  if (mode === "marquee" && layout === "column") mode = "scroll";
   if (mode === "scroll" && layout === "row") mode = "marquee";
   return mode;
 }
 
 function apply(items) {
   const snap = JSON.stringify([items, MODE, SPEED, PER_ROW, ROWS, ICON,
-                               APPEAR, MOTION, EFFECT, BADGE, BADGE_SZ, layout]);
+                               APPEAR, MOTION, EFFECT, BADGE, BADGE_SZ, URL_LAYOUT]);
   if (snap === prevSnap) return;
   prevSnap = snap;
   ITEMS = items;
@@ -253,9 +254,8 @@ function apply(items) {
   list.className = "";
   list.style.removeProperty("--dur");
   list.style.transform = ""; list.style.transition = ""; list.style.opacity = 1;
-  if (!items.length) { list.innerHTML = ""; setWrap(layout); return; }
-
   const mode = resolveMode(items);
+  if (!items.length) { list.innerHTML = ""; setWrap(layout); return; }
   if (mode === "grid") {
     setWrap("grid");
     page = 0;

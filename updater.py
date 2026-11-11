@@ -44,6 +44,9 @@ class Updater:
         self.checked_at = 0.0
         self.job = None               # {state, progress, error}
         self.error = ""
+        self.auto = None              # обратный отсчёт автообновления: {version, at}
+        self.postpone_until = 0.0     # «Не сейчас» — не предлагать до этого времени
+        self.ready = None             # заранее скачанная версия (режим «ставить при запуске»)
 
     def repo(self):
         r = str(self.cfg().get("update_repo") or "").strip()
@@ -225,25 +228,31 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
         asyncio.ensure_future(self._install_job())
         return {"ok": True, "version": info["version"]}
 
-    async def _install_job(self):
+    async def _fetch(self):
+        """Скачать, сверить контрольную сумму, распаковать в _update/new → путь к папке."""
         upd = os.path.join(self.base, "_update")
+        shutil.rmtree(upd, ignore_errors=True)
+        os.makedirs(upd, exist_ok=True)
+        zpath = os.path.join(upd, "update.zip")
+        digest = await self._download(self.info["url"], zpath)
+        if self.info.get("sha256") and self.info["sha256"].lower() != digest:
+            raise RuntimeError("файл обновления повреждён (не совпала контрольная сумма) — попробуй ещё раз")
+        self.job.update(state="extracting", progress=0.9)
+        new_dir = os.path.join(upd, "new")
+        with zipfile.ZipFile(zpath) as z:
+            for n in z.namelist():                         # защита от «../» в архиве
+                if n.startswith("/") or ".." in n.replace("\\", "/").split("/"):
+                    raise RuntimeError("подозрительный архив обновления")
+            z.extractall(new_dir)
+        need = "TakyLive.exe" if getattr(sys, "frozen", False) else "app.py"
+        if not os.path.exists(os.path.join(new_dir, need)):
+            raise RuntimeError(f"в обновлении нет {need} — архив не тот")
+        return new_dir
+
+    async def _install_job(self):
         try:
-            shutil.rmtree(upd, ignore_errors=True)
-            os.makedirs(upd, exist_ok=True)
-            zpath = os.path.join(upd, "update.zip")
-            digest = await self._download(self.info["url"], zpath)
-            if self.info.get("sha256") and self.info["sha256"].lower() != digest:
-                raise RuntimeError("файл обновления повреждён (не совпала контрольная сумма) — попробуй ещё раз")
-            self.job.update(state="extracting", progress=0.9)
-            new_dir = os.path.join(upd, "new")
-            with zipfile.ZipFile(zpath) as z:
-                for n in z.namelist():                         # защита от «../» в архиве
-                    if n.startswith("/") or ".." in n.replace("\\", "/").split("/"):
-                        raise RuntimeError("подозрительный архив обновления")
-                z.extractall(new_dir)
-            need = "TakyLive.exe" if getattr(sys, "frozen", False) else "app.py"
-            if not os.path.exists(os.path.join(new_dir, need)):
-                raise RuntimeError(f"в обновлении нет {need} — архив не тот")
+            new_dir = await self._fetch()
+            upd = os.path.dirname(new_dir)                    # _update — из неё запускаем скрипт
             cmd = self._script(new_dir)
             self.job.update(state="restarting", progress=1.0)
             self.log("ОБНОВЛЕНИЕ", f"Ставлю версию {self.info['version']} — программа перезапустится")
@@ -255,16 +264,111 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
             os._exit(0)
         except Exception as e:
             self.job.update(state="error", error=str(e))
-            self.log("ОШИБКА", f"обновление: {e}")
+            self.postpone_until = time.time() + 1800          # автоповтор — через 30 мин, а не каждые 40 с
+            self.log("ОШИБКА", f"обновление: {e} — автоматически попробую через 30 минут")
+
+    # ── Автообновление ──
+    def mode(self):
+        """auto — ставить само, когда нет эфира; on_start — скачать заранее, поставить при запуске; notify — только сообщать."""
+        m = str(self.cfg().get("auto_update") or "auto")
+        return m if m in ("auto", "on_start", "notify") else "auto"
+
+    async def auto_loop(self):
+        """Проверка раз в 30 минут; между проверками — следим, не закончился ли эфир."""
+        await asyncio.sleep(8)
+        while True:
+            try:
+                if self.repo() and self.cfg().get("auto_update_check", True):
+                    await self.check(force=True)
+            except Exception:
+                pass
+            for _ in range(120):                       # 120 × 15 с = 30 минут
+                try:
+                    await self._auto_step()
+                except Exception as e:
+                    self.log("ОШИБКА", f"автообновление: {e}")
+                await asyncio.sleep(15)
+
+    async def _auto_step(self):
+        info = self.info
+        busy = self.job and self.job.get("state") in ("downloading", "extracting", "restarting")
+        if not info or not info.get("available") or busy:
+            self.auto = None
+            return
+        m = self.mode()
+        if m == "auto":
+            if self.is_live() or time.time() < self.postpone_until:
+                if self.auto:
+                    self.log("ОБНОВЛЕНИЕ", "Автообновление отложено — " + ("идёт эфир" if self.is_live() else "ты нажал «Не сейчас»"))
+                self.auto = None
+                return
+            if not self.auto or self.auto["version"] != info["version"]:
+                self.auto = {"version": info["version"], "at": time.time() + 25}
+                self.log("ОБНОВЛЕНИЕ", f"Через 25 секунд TakyLive обновится до {info['version']}")
+                asyncio.ensure_future(self._fire(info["version"], self.auto["at"]))
+        elif m == "on_start" and time.time() >= self.postpone_until and \
+                (not self.ready or self.ready.get("version") != info["version"]):
+            await self._prefetch()
+
+    async def _fire(self, version, at):
+        await asyncio.sleep(max(0, at - time.time()))
+        a = self.auto
+        if not a or a["version"] != version or a["at"] != at:        # отменили, отложили или пришла другая версия
+            return
+        if self.is_live():
+            self.auto = None
+            return
+        self.auto = None
+        await self.install()
+
+    def postpone(self, hours=3):
+        self.postpone_until = time.time() + hours * 3600
+        self.auto = None
+        self.log("ОБНОВЛЕНИЕ", f"Обновление отложено на {hours} ч")
+
+    async def _prefetch(self):
+        """Режим «ставить при запуске»: тихо скачать и проверить заранее."""
+        self.job = {"state": "downloading", "progress": 0.0, "error": "", "version": self.info["version"], "prefetch": True}
+        try:
+            new_dir = await self._fetch()
+            self.ready = {"version": self.info["version"]}
+            with open(os.path.join(self.base, "_update", "ready.json"), "w", encoding="utf-8") as f:
+                json.dump(self.ready, f)
+            self.job = None
+            self.log("ОБНОВЛЕНИЕ", f"Версия {self.info['version']} скачана — поставится при следующем запуске программы")
+        except Exception as e:
+            self.job = {"state": "error", "error": str(e), "version": self.info["version"]}
+            self.postpone_until = time.time() + 1800          # не качать заново каждые 15 с
+            self.log("ОШИБКА", f"не удалось заранее скачать обновление: {e} — попробую через 30 минут")
+
+    def apply_ready(self):
+        """При запуске: если заранее скачана новая версия — ставим её до старта программы."""
+        try:
+            with open(os.path.join(self.base, "_update", "ready.json"), encoding="utf-8") as f:
+                ver = str(json.load(f).get("version") or "")
+        except Exception:
+            return False
+        new_dir = os.path.join(self.base, "_update", "new")
+        if vkey(ver) <= vkey(self.version) or not os.path.isdir(new_dir):
+            shutil.rmtree(os.path.join(self.base, "_update"), ignore_errors=True)
+            return False
+        self.info = {"version": ver}
+        cmd = self._script(new_dir)
+        kw = {"creationflags": 0x00000010 | 0x00000200} if WIN else {"start_new_session": True}
+        subprocess.Popen(cmd, cwd=os.path.join(self.base, "_update"), close_fds=True, **kw)
+        return True
 
     # ── HTTP ──
     def routes(self, app):
         app.router.add_get("/api/update/status", self.h_status)
         app.router.add_post("/api/update/check", self.h_check)
         app.router.add_post("/api/update/install", self.h_install)
+        app.router.add_post("/api/update/postpone", self.h_postpone)
 
     def status(self):
-        return {"current": self.version, "repo": self.repo(), "info": self.info, "error": self.error, "job": self.job}
+        auto = {"version": self.auto["version"], "left": max(0, round(self.auto["at"] - time.time()))} if self.auto else None
+        return {"current": self.version, "repo": self.repo(), "info": self.info, "error": self.error, "job": self.job,
+                "mode": self.mode(), "auto": auto, "ready": self.ready, "live": bool(self.is_live())}
 
     async def h_status(self, request):
         return web.json_response(self.status())
@@ -274,4 +378,9 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
         return web.json_response(self.status())
 
     async def h_install(self, request):
+        self.auto = None
         return web.json_response(await self.install())
+
+    async def h_postpone(self, request):
+        self.postpone()
+        return web.json_response({"ok": True})

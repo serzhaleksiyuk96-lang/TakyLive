@@ -743,6 +743,91 @@ function renderGameBar() {
   updGameStatus();
 }
 
+// ── 🧩 Мод для игры: у GTA 5 — установщик, у остальных — нужен ли мод вообще ──
+const MOD_INFO = {
+  minecraft: ["⛏", "Мод не нужен", "Команды идут на сервер Minecraft (RCON или ServerTap). Свой сервер с готовыми настройками — вкладка «🖥 Серверы»."],
+  cs2: ["⌨", "Мод не нужен", "Программа сама нажимает клавиши и вводит команды в консоль CS2 — работает и в сетевой игре."],
+  valheim: ["⌨", "Мод не нужен", "Команды вводятся в консоль Valheim (F5) прямо в окне игры."],
+  keyboard: ["⌨", "Мод не нужен", "Программа нажимает клавиши в окне любой игры."],
+  ark: ["🖥", "Мод не нужен", "Подарки идут на сервер ARK через RCON. Свой сервер — вкладка «🖥 Серверы»."],
+  rust: ["🖥", "Мод не нужен", "Подарки идут на сервер Rust через WebRCON. Свой сервер — вкладка «🖥 Серверы»."],
+  zomboid: ["🖥", "Мод не нужен", "Подарки идут на сервер Project Zomboid через RCON. Свой сервер — вкладка «🖥 Серверы»."],
+  "7dtd": ["🖥", "Мод не нужен", "Подарки идут на сервер 7 Days to Die через Telnet. Свой сервер — вкладка «🖥 Серверы»."],
+  palworld: ["🖥", "Мод не обязателен", "Объявления и сохранение работают через сервер. Спавн палов и предметов — только с модом сервера (UE4SS), он в планах."],
+};
+
+async function openModPanel() {
+  const g = curGame();
+  const box = document.getElementById("modBody");
+  document.getElementById("modTitle").textContent = "🧩 Мод для " + ((GAMES.find(x => x.id === g) || {}).t || "игры");
+  document.getElementById("modModal").classList.remove("hidden");
+  if (g !== "gta5") {
+    const [i, h, d] = MOD_INFO[g] || ["🎮", "Мод не нужен", ""];
+    box.innerHTML = `<div class="mod-none"><div class="mod-ico">${i}</div><div><b>${h}</b><div class="hint" style="margin-top:4px">${d}</div></div></div>`;
+    return;
+  }
+  box.innerHTML = '<div class="hint">Ищу GTA 5 на компьютере…</div>';
+  let d;
+  try { d = await (await fetch("/api/mods/gta5", {cache: "no-store"})).json(); } catch (e) { box.innerHTML = "✗ " + e.message; return; }
+  MOD_STATE = d;
+  modRender();
+}
+let MOD_STATE = null;
+
+function modRender() {
+  const d = MOD_STATE, box = document.getElementById("modBody");
+  const st = (d.games || []).find(x => x.path === d.current) || (d.games || [])[0];
+  const row = (ok, title, desc, action) => `<div class="mod-row ${ok ? "ok" : "no"}"><span class="mod-ic">${ok ? "✅" : "❌"}</span>
+    <div class="mod-t"><b>${title}</b><div class="hint">${desc}</div></div>${action || ""}</div>`;
+  box.innerHTML = `
+    <div class="mod-path">
+      ${st ? `<div>📁 Игра найдена: <span class="mono">${esc(st.path)}</span> · ${st.edition === "enhanced" ? "GTA 5 Enhanced" : "GTA 5"}</div>`
+           : `<div>😕 GTA 5 не нашлась автоматически — укажи папку игры (там, где GTA5.exe)</div>`}
+      ${(d.games || []).length > 1 ? `<select class="sx-in" onchange="MOD_STATE.current=this.value; modRender()">${d.games.map(x =>
+          `<option value="${esc(x.path)}"${x.path === (st && st.path) ? " selected" : ""}>${esc(x.path)}</option>`).join("")}</select>` : ""}
+      <div class="row" style="gap:8px;margin-top:8px"><input id="modPath" class="sx-in mono" style="flex:1"
+        placeholder="или вставь путь, например D:\\SteamLibrary\\steamapps\\common\\Grand Theft Auto V">
+        <button class="small" onclick="modUsePath()">Проверить</button></div>
+    </div>
+    ${st ? `<div class="mod-list">
+      ${row(st.shv, "Script Hook V", st.shv ? "стоит" : "нужен — авторы не разрешают его раздавать, скачай с их сайта: ScriptHookV.dll и dinput8.dll → в папку игры",
+            st.shv ? "" : `<a class="btn small" href="${d.links.shv}" target="_blank" rel="noopener">↗ Сайт</a>`)}
+      ${row(st.shvdn, "Script Hook V .NET Enhanced", st.shvdn ? "стоит" : "нужен — для обычной GTA 5 и для Enhanced; файлы ScriptHookVDotNet* и MinHook.x64.dll → в папку игры",
+            st.shvdn ? "" : `<a class="btn small" href="${d.links.shvdn}" target="_blank" rel="noopener">↗ Страница</a>`)}
+      ${row(st.mod_current, "Мод TakyLive — 80 команд", st.mod_current ? "стоит последняя версия" : st.mod ? "стоит старая версия — обнови" : "не установлен",
+            `<button class="small primary" onclick="modInstall()">${st.mod_current ? "↻ Переустановить" : st.mod ? "⬆ Обновить" : "⬇ Установить"}</button>`)}
+      ${st.old.length ? `<div class="gh-warn">⚠ В scripts лежит старый мод (${esc(st.old.join(", "))}) — при установке он удалится, иначе подарки сработают дважды.</div>` : ""}
+    </div>
+    <div class="row" style="margin-top:10px;gap:8px"><button class="small" onclick="modOpen()">📂 Открыть папку scripts</button>
+      <a class="btn small" href="${d.download}" download="TakyLive.3.cs">⬇ Скачать файл мода</a><div class="spacer"></div>
+      <span class="hint" id="modHint"></span></div>` : ""}
+    <div class="gh-warn" style="margin-top:12px">⚠ Только сюжетный режим — в GTA Online моды = бан.</div>`;
+}
+
+async function modUsePath() {
+  const p = document.getElementById("modPath").value.trim().replace(/^"|"$/g, "");
+  if (!p) return;
+  const d = await (await fetch("/api/mods/gta5?path=" + encodeURIComponent(p), {cache: "no-store"})).json();
+  if (d.ok === false) { document.getElementById("modBody").insertAdjacentHTML("afterbegin", `<div class="gh-warn">✗ ${esc(d.error)}</div>`); return; }
+  MOD_STATE = d;
+  modRender();
+}
+
+async function modInstall() {
+  const d = await (await fetch("/api/mods/gta5/install", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                          body: JSON.stringify({path: MOD_STATE.current})})).json();
+  if (!d.ok) { alert(d.error); return; }
+  await openModPanel();
+  const h = document.getElementById("modHint");
+  if (h) h.textContent = "✓ Мод установлен" + (d.removed.length ? ", старый удалён" : "") + " — запусти GTA 5 в сюжетном режиме";
+}
+
+async function modOpen() {
+  const d = await (await fetch("/api/mods/gta5/open", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                       body: JSON.stringify({path: MOD_STATE.current})})).json();
+  if (!d.ok) alert(d.error);
+}
+
 function openGamePick() {
   const box = document.getElementById("gamePickBody");
   const g = curGame();
@@ -804,37 +889,446 @@ setInterval(() => {
 }, 2000);
 
 // ── Каталог готовых команд: клик — и команда в цепочке ──────
+// GTA 5 — 80 команд мода TakyLive, по группам
+const GTA_GROUPS = [
+ [
+  "🚗 Транспорт",
+  [
+   [
+    "vehicle adder",
+    "🚗 Машина",
+    "перед тобой: adder, zentorno, rhino (танк), bmx, bus, monster…"
+   ],
+   [
+    "random_vehicle",
+    "🎲 Случайная машина",
+    "из весёлого списка: танк, мусоровоз, газонокосилка…"
+   ],
+   [
+    "vehicle_in rhino",
+    "🪖 Посадить в машину",
+    "спавнит и сажает тебя за руль"
+   ],
+   [
+    "rain_cars 5",
+    "🌧 Дождь из машин",
+    "N машин падают с неба (до 15)"
+   ],
+   [
+    "boost 60",
+    "🚀 Нитро",
+    "машина резко ускоряется"
+   ],
+   [
+    "jump_car 15",
+    "🦘 Прыжок машины",
+    "машину подбрасывает вверх"
+   ],
+   [
+    "flip",
+    "🙃 Перевернуть машину",
+    "колёсами кверху"
+   ],
+   [
+    "pop_tires",
+    "🛞 Пробить шины",
+    "все колёса сразу"
+   ],
+   [
+    "slippery 20",
+    "🧊 Скользкие шины",
+    "машину заносит N секунд"
+   ],
+   [
+    "engine_off 10",
+    "🔇 Заглушить мотор",
+    "двигатель не работает N секунд"
+   ],
+   [
+    "eject",
+    "🪂 Выкинуть из машины",
+    "персонаж выпрыгивает на ходу"
+   ],
+   [
+    "explode_car",
+    "💥 Взорвать машину",
+    "ту, в которой сидишь"
+   ],
+   [
+    "delete_car",
+    "👻 Машина исчезла",
+    "выходишь — а её нет"
+   ],
+   [
+    "repair",
+    "🔧 Починить машину",
+    "как новая"
+   ],
+   [
+    "upgrade",
+    "⚙ Тюнинг на максимум",
+    "все улучшения сразу"
+   ],
+   [
+    "paint",
+    "🎨 Перекрасить",
+    "случайный цвет"
+   ],
+   [
+    "car_power 3",
+    "⚡ Мощность ×N",
+    "машина становится зверем"
+   ]
+  ]
+ ],
+ [
+  "🧍 Игрок",
+  [
+   [
+    "heal",
+    "❤ Лечение",
+    "здоровье и броня на максимум"
+   ],
+   [
+    "armor",
+    "🛡 Броня",
+    "полная броня"
+   ],
+   [
+    "kill",
+    "💀 Убить",
+    "персонаж падает замертво"
+   ],
+   [
+    "god 30",
+    "😇 Бессмертие",
+    "N секунд неуязвимости"
+   ],
+   [
+    "invisible 20",
+    "🫥 Невидимка",
+    "N секунд тебя не видно"
+   ],
+   [
+    "superjump 30",
+    "🦘 Суперпрыжок",
+    "прыжки на крыши N секунд"
+   ],
+   [
+    "fast_run 30",
+    "🏃 Быстрый бег",
+    "бег и плавание быстрее N секунд"
+   ],
+   [
+    "drunk 20",
+    "🍺 Пьяный",
+    "шатается и качается камера N секунд"
+   ],
+   [
+    "ragdoll 3",
+    "🤸 Упасть",
+    "персонаж валится N секунд"
+   ],
+   [
+    "launch 25",
+    "🚀 Подбросить",
+    "в небо на N метров"
+   ],
+   [
+    "skydive 400",
+    "🪂 Прыжок с парашютом",
+    "телепорт на высоту + парашют"
+   ],
+   [
+    "fire_player",
+    "🔥 Поджечь",
+    "персонаж загорается"
+   ],
+   [
+    "wanted 3",
+    "🚓 Розыск",
+    "звёзды 0–5"
+   ],
+   [
+    "clear_wanted",
+    "😌 Снять розыск",
+    ""
+   ],
+   [
+    "teleport random",
+    "🌀 Телепорт",
+    "airport, chiliad, maze_bank, beach, vinewood_sign, sandy, docks, zancudo, paleto, prison или random"
+   ],
+   [
+    "teleport_waypoint",
+    "📍 Телепорт к метке",
+    "куда поставишь метку на карте"
+   ],
+   [
+    "money 1000",
+    "💵 Дать денег",
+    "в сюжете — текущему герою"
+   ],
+   [
+    "take_money 1000",
+    "💸 Отнять деньги",
+    ""
+   ],
+   [
+    "random_outfit",
+    "👕 Случайная одежда",
+    "переодевает героя"
+   ]
+  ]
+ ],
+ [
+  "🔫 Оружие",
+  [
+   [
+    "weapon weapon_rpg 10",
+    "🔫 Дать оружие",
+    "weapon_rpg, weapon_minigun, weapon_railgun, weapon_stungun…"
+   ],
+   [
+    "random_weapon",
+    "🎲 Случайное оружие",
+    ""
+   ],
+   [
+    "all_weapons",
+    "🧰 Весь арсенал",
+    "16 видов оружия сразу"
+   ],
+   [
+    "remove_weapons",
+    "🚫 Отобрать оружие",
+    "всё до последнего ножа"
+   ],
+   [
+    "infinite_ammo 30",
+    "♾ Бесконечные патроны",
+    "N секунд без перезарядки"
+   ],
+   [
+    "explosive_ammo 20",
+    "💣 Взрывные пули",
+    "N секунд"
+   ],
+   [
+    "fire_ammo 20",
+    "🔥 Огненные пули",
+    "N секунд"
+   ],
+   [
+    "explosive_punch 20",
+    "👊 Взрывной кулак",
+    "удары взрываются N секунд"
+   ]
+  ]
+ ],
+ [
+  "🧟 Люди и звери",
+  [
+   [
+    "zombies 5",
+    "🧟 Зомби",
+    "толпа зомби нападает"
+   ],
+   [
+    "clowns 4",
+    "🤡 Клоуны с битами",
+    ""
+   ],
+   [
+    "army 3",
+    "🪖 Армия",
+    "морпехи с автоматами"
+   ],
+   [
+    "aliens 2",
+    "👽 Пришельцы",
+    "с лучевыми пистолетами"
+   ],
+   [
+    "cops 3",
+    "👮 Копы",
+    "нападают + 2 звезды розыска"
+   ],
+   [
+    "juggernaut 1",
+    "🦾 Джаггернаут",
+    "в броне и с миниганом"
+   ],
+   [
+    "cougar 1",
+    "🐆 Пума",
+    "дикая кошка атакует"
+   ],
+   [
+    "enemies 3 weapon_pistol",
+    "😈 Враги",
+    "N врагов с оружием"
+   ],
+   [
+    "bodyguards 2",
+    "🕴 Охрана",
+    "N телохранителей за тобой"
+   ],
+   [
+    "peds 5",
+    "👥 Толпа людей",
+    "N случайных прохожих"
+   ],
+   [
+    "animal a_c_chimp",
+    "🐒 Животное",
+    "a_c_chimp, a_c_chop, a_c_cow, a_c_boar, a_c_cat_01…"
+   ],
+   [
+    "angry_peds 40",
+    "😡 Все злые",
+    "прохожие в радиусе N нападают с битами"
+   ],
+   [
+    "panic 50",
+    "😱 Паника",
+    "все вокруг разбегаются"
+   ],
+   [
+    "clear_area 60",
+    "🧹 Очистить район",
+    "убрать людей и машины вокруг"
+   ]
+  ]
+ ],
+ [
+  "🌍 Мир",
+  [
+   [
+    "meteors 8",
+    "☄ Метеоритный дождь",
+    "N взрывов падают вокруг"
+   ],
+   [
+    "airstrike",
+    "✈ Авиаудар",
+    "серия взрывов идёт прямо на тебя"
+   ],
+   [
+    "explode",
+    "💥 Взрыв",
+    "в нескольких метрах перед тобой"
+   ],
+   [
+    "fire",
+    "🔥 Пожар",
+    "огонь перед тобой"
+   ],
+   [
+    "fireworks 6",
+    "🎆 Салют",
+    "N залпов вокруг"
+   ],
+   [
+    "geyser",
+    "⛲ Гейзер",
+    "струя воды подбрасывает тебя"
+   ],
+   [
+    "poop 5",
+    "💩 Птичий налёт",
+    "сверху падают птичьи «подарки»"
+   ],
+   [
+    "weather THUNDER",
+    "⛈ Погода",
+    "THUNDER, RAIN, CLEAR, SNOW, XMAS, FOGGY, BLIZZARD, HALLOWEEN"
+   ],
+   [
+    "time 0",
+    "🌙 Время",
+    "час 0–23"
+   ],
+   [
+    "add_hours 6",
+    "⏩ Перемотать время",
+    "+N часов"
+   ],
+   [
+    "slowmo 5",
+    "🐢 Замедление",
+    "мир медленнее N секунд"
+   ],
+   [
+    "moon_gravity 20",
+    "🌕 Лунная гравитация",
+    "прыжки как на Луне N секунд"
+   ],
+   [
+    "riot 30",
+    "🔥 Бунт",
+    "весь город дерётся N секунд"
+   ],
+   [
+    "blackout 30",
+    "🌑 Блэкаут",
+    "в городе гаснет свет N секунд"
+   ]
+  ]
+ ],
+ [
+  "📺 Экран",
+  [
+   [
+    "shake 0.6",
+    "📳 Тряска камеры",
+    "сила 0.1–2"
+   ],
+   [
+    "trip 12",
+    "🌈 Глюки",
+    "случайный «кислотный» эффект N секунд"
+   ],
+   [
+    "screen_fx Rampage 10",
+    "🎞 Эффект экрана",
+    "Rampage, ChopVision, DrugsMichaelAliensFight, DeathFailOut…"
+   ],
+   [
+    "fade 3",
+    "⬛ Темнота",
+    "экран гаснет на N секунд"
+   ],
+   [
+    "notify {user} подарил {giftname}!",
+    "💬 Уведомление",
+    "сообщение в углу экрана"
+   ],
+   [
+    "big_text {user} устроил хаос!",
+    "🔠 Большой текст",
+    "крупная надпись внизу экрана"
+   ]
+  ]
+ ],
+ [
+  "🎲 Хаос",
+  [
+   [
+    "random_chaos",
+    "🎲 Случайный хаос",
+    "одна из 20 весёлых команд наугад"
+   ],
+   [
+    "reset",
+    "♻ Сбросить всё",
+    "снять все эффекты: гравитацию, бессмертие, глюки…"
+   ]
+  ]
+ ]
+];
 const GAME_CMDS = {
-  gta5: [
-    ["vehicle adder",            "🚗 Машина",            "перед тобой: adder, zentorno, rhino (танк), bmx, bus…"],
-    ["random_vehicle",           "🎲 Случайная машина",  "из весёлого списка"],
-    ["vehicle_in rhino",         "🪖 Посадить в машину", "спавнит и сажает тебя за руль"],
-    ["rain_cars 5",              "🌧 Дождь из машин",    "N машин падают с неба"],
-    ["explode",                  "💥 Взрыв",             "в нескольких метрах перед тобой"],
-    ["fire",                     "🔥 Пожар",             "огонь перед тобой"],
-    ["wanted 3",                 "🚓 Розыск",            "звёзды 0–5"],
-    ["clear_wanted",             "😇 Снять розыск",      ""],
-    ["enemies 3 weapon_pistol",  "🔫 Враги",             "N вооружённых NPC нападают"],
-    ["bodyguards 2",             "🛡 Охрана",            "N охранников с автоматами"],
-    ["peds 5",                   "🧍 Толпа",             "N случайных прохожих вокруг"],
-    ["animal a_c_chimp",         "🐒 Животное",          "a_c_chimp, a_c_mtlion (пума), a_c_cow, a_c_deer"],
-    ["weapon weapon_rpg 10",     "🚀 Оружие",            "weapon_rpg, weapon_minigun, weapon_pistol…"],
-    ["remove_weapons",           "🚫 Отнять оружие",     ""],
-    ["heal",                     "❤ Вылечить",           "здоровье и броня на максимум"],
-    ["armor",                    "🦺 Броня",             "полная броня"],
-    ["kill",                     "☠ Убить",              ""],
-    ["ragdoll 3",                "🤸 Упасть",            "персонаж валится на N секунд"],
-    ["launch 25",                "🚀 Подбросить",        "в небо"],
-    ["skydive 400",              "🪂 Парашют",           "телепорт на N метров вверх"],
-    ["slowmo 5",                 "🐌 Замедление",        "на N секунд"],
-    ["shake 0.6",                "📳 Тряска камеры",     ""],
-    ["weather THUNDER",          "⛈ Погода",             "CLEAR, RAIN, THUNDER, SNOW, FOGGY, XMAS"],
-    ["time 0",                   "🌙 Время суток",       "час 0–23"],
-    ["boost 60",                 "⚡ Ускорение",         "машины, в которой сидишь"],
-    ["flip",                     "🙃 Перевернуть машину", ""],
-    ["pop_tires",                "🛞 Пробить шины",      ""],
-    ["notify {user} подарил {giftname}!", "💬 Надпись", "уведомление на экране игры"],
-  ],
+  gta5: GTA_GROUPS.flatMap(g => g[1]),
   minecraft: [
     ["summon zombie ~ ~ ~",                            "🧟 Зомби",    ""],
     ["summon creeper ~ ~ ~",                           "💚 Крипер",   ""],
@@ -954,7 +1448,7 @@ function openCmdPicker(idx) {
   cmdTarget = {sec: activeSection, idx};
   const g = curGame();
   CMD_VIEW = [];
-  if (g === "gta5") CMD_VIEW.push(["🚗 GTA 5", GAME_CMDS.gta5]);
+  if (g === "gta5") GTA_GROUPS.forEach(([t, list]) => CMD_VIEW.push(["GTA 5 · " + t, list]));
   if (g === "cs2") CMD_VIEW.push(["🎯 CS2 — подлянки от зрителей", GAME_CMDS.cs2]);
   if (g === "valheim") CMD_VIEW.push(["⚔ Valheim — консоль F5", GAME_CMDS.valheim]);
   if (SERVER_GAMES[g]) CMD_VIEW.push([GAMES.find(x => x.id === g).n + " — команды сервера", GAME_CMDS[g]]);
@@ -1017,18 +1511,21 @@ function openGameHelp() {
   const t = document.getElementById("ghTitle"), b = document.getElementById("ghBody");
   if (g === "gta5") {
     t.textContent = "🚗 Как подключить GTA 5";
-    b.innerHTML = `<ol>
+    b.innerHTML = `<div class="gh-ok" style="margin-bottom:10px">🧩 Проще всего — кнопка <b>«Мод для игры»</b> рядом:
+      программа сама найдёт GTA 5, проверит, что нужно, и поставит мод одной кнопкой.</div>
+    Вручную:<ol>
       <li>Поставь <b>Script Hook V</b> — сайт <b>dev-c.com</b>, раздел GTA V. Файлы <code>ScriptHookV.dll</code>
           и <code>dinput8.dll</code> — в папку игры.</li>
       <li>Поставь <b>ScriptHookVDotNet Enhanced</b> — сайт <b>gta5-mods.com</b>. Подходит и для обычной GTA 5,
           и для Enhanced. Файлы <code>ScriptHookVDotNet*</code> — в папку игры.
           Для Enhanced авторы ещё советуют <b>DirectStorageFix</b>.</li>
       <li>Создай в папке игры папку <code>scripts</code> и положи туда мод:
-          <a href="/mods/GTA5/TikTokBridge.3.cs" download="TikTokBridge.3.cs"><b>⬇ скачать TikTokBridge.3.cs</b></a>
+          <a href="/mods/GTA5/TakyLive.3.cs" download="TakyLive.3.cs"><b>⬇ скачать TakyLive.3.cs</b></a>
           или <button class="small" onclick="openModFolder('gta5')">📂 открыть папку с модом</button>
           <span id="ghFolder" class="hint"></span></li>
       <li>Запусти <b>сначала эту программу</b>, потом GTA 5 → сюжетный режим.
-          В игре появится «TikTok Bridge подключён», а здесь — <span class="gs-on">● мод подключён</span>.</li>
+          В игре появится «TakyLive подключён», а здесь — <span class="gs-on">● мод подключён</span>.
+          Старый файл <code>TikTokBridge.3.cs</code> из <code>scripts</code> удали — иначе подарки сработают дважды.</li>
       <li>Нажми «▶ Тест» на любом событии — в игре должно сработать.</li>
     </ol>
     <div class="gh-warn">⚠ Только сюжетный режим — в GTA Online моды = бан.<br>

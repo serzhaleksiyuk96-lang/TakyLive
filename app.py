@@ -359,6 +359,7 @@ class State:
             "voice_reset_cmd": "!сброс",       # вернуть обычный голос
             "voice_cmd_confirm": True,        # сказать зрителю, что голос сменился
             "role_voices": {"moderator": "", "superfan": "", "friend": "", "gifter": "", "follower": ""},
+            "auto_update": "auto",            # auto — само, когда нет эфира · on_start — при запуске · notify — только сообщать
             "fish_api_key": "",               # ключ Fish Audio (fish.audio/app/api-keys)
             "fish_model": "s2.1-pro-free",    # модель Fish: бесплатная или платная
             "fish_voice_title": "",           # название выбранного голоса (для показа)
@@ -719,7 +720,7 @@ class _WebRcon:
                         self.key = key
                     self.ident = self.ident % 2_000_000_000 + 1
                     ident = self.ident
-                    await self.ws.send_str(json.dumps({"Identifier": ident, "Message": cmd, "Name": "TikTokBridge"}))
+                    await self.ws.send_str(json.dumps({"Identifier": ident, "Message": cmd, "Name": "TakyLive"}))
                     end = time.time() + wait
                     while time.time() < end:
                         try:
@@ -2949,7 +2950,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.65.8"
+APP_VERSION = "1.66"
 APP_DATE = "2026-11-11"
 
 
@@ -3352,6 +3353,50 @@ async def h_migrate_undo(request):
     return web.json_response({"ok": True})
 
 
+# ── 🧩 Мод TakyLive для GTA 5: найти игру, проверить Script Hook V и .NET, поставить одной кнопкой ──
+GTA_MOD_FILE = os.path.join(MODS_DIR, "GTA5", "TakyLive.3.cs")
+
+
+async def h_gta_mod(request):
+    import gtamod
+    want = str(request.query.get("path") or "").strip().strip('"')
+    if want:                                           # «Проверить» — папку указали вручную
+        want = os.path.abspath(want)
+        if not gtamod.edition(want):
+            return web.json_response({"ok": False, "error": "в этой папке нет GTA5.exe — это не папка игры"})
+        STATE.config["gta5_path"] = want
+        save_config()
+    games = gtamod.find_games([STATE.config.get("gta5_path", "")])
+    cur = STATE.config.get("gta5_path") or (games[0] if games else "")
+    return web.json_response({"games": [gtamod.status(p, GTA_MOD_FILE) for p in games],
+                              "current": cur, "links": gtamod.LINKS, "download": "/mods/GTA5/TakyLive.3.cs"})
+
+
+async def h_gta_mod_install(request):
+    import gtamod
+    d = await request.json()
+    path = os.path.abspath(str(d.get("path") or "").strip().strip('"'))
+    try:
+        removed = gtamod.install(path, GTA_MOD_FILE)
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    STATE.config["gta5_path"] = path
+    save_config()
+    STATE.log("МОД", f"Мод TakyLive поставлен в {path}" + (f", удалён старый: {', '.join(removed)}" if removed else ""))
+    return web.json_response({"ok": True, "removed": removed, "status": gtamod.status(path, GTA_MOD_FILE)})
+
+
+async def h_gta_mod_open(request):
+    d = await request.json()
+    path = os.path.join(os.path.abspath(str(d.get("path") or "")), "scripts")
+    if not os.path.isdir(path):
+        path = os.path.dirname(path)
+    if sys.platform == "win32":
+        os.startfile(path)
+        return web.json_response({"ok": True})
+    return web.json_response({"ok": False, "error": "открыть папку можно только на Windows", "path": path})
+
+
 async def h_tts_check(request):
     """«🧪 Проверить фразу» в настройках: что сделает защита с этим сообщением."""
     import textfilter as tf
@@ -3701,6 +3746,9 @@ def make_app():
     app.router.add_post("/api/tts/stop", h_tts_stop)
     app.router.add_post("/api/tts/skip", h_tts_skip)
     app.router.add_post("/api/tts/check", h_tts_check)
+    app.router.add_get("/api/mods/gta5", h_gta_mod)
+    app.router.add_post("/api/mods/gta5/install", h_gta_mod_install)
+    app.router.add_post("/api/mods/gta5/open", h_gta_mod_open)
     app.router.add_get("/api/viewer_voices", h_viewer_voices)
     app.router.add_post("/api/viewer_voices/remove", h_viewer_voices_remove)
     app.router.add_post("/api/viewer_voices/clear", h_viewer_voices_clear)
@@ -3736,13 +3784,14 @@ def make_app():
     app.router.add_post("/api/migrate", h_migrate)
     app.router.add_post("/api/migrate/undo", h_migrate_undo)
 
-    async def _first_update_check(app_):
-        async def later():
-            await asyncio.sleep(6)
-            if STATE.config.get("auto_update_check", True) and STATE.updater.repo():
-                await STATE.updater.check()
-        asyncio.ensure_future(later())
-    app.on_startup.append(_first_update_check)
+    # заранее скачанная версия (режим «ставить при запуске») — ставим до старта
+    if STATE.updater.apply_ready():
+        print("  Ставлю скачанное обновление TakyLive — программа сейчас перезапустится…")
+        os._exit(0)
+
+    async def _start_auto_update(app_):
+        asyncio.ensure_future(STATE.updater.auto_loop())      # проверка раз в 30 минут + автообновление
+    app.on_startup.append(_start_auto_update)
     app.router.add_post("/api/mod/log", h_mod_log)
     app.router.add_get("/api/mod/status", h_mod_status)
     app.router.add_post("/api/mod/open_folder", h_mod_open_folder)

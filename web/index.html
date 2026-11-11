@@ -805,6 +805,32 @@
   .sc-live-box { width: 100%; height: 168px; overflow: hidden; border-radius: 10px; position: relative;
                  background: repeating-conic-gradient(#0d1018 0% 25%, #11141d 0% 50%) 50% / 18px 18px; }
   .sc-live-box iframe { position: absolute; left: 0; top: 0; width: 1280px; height: 512px; border: 0; transform-origin: 0 0; background: transparent; }
+  .gh-ok { padding: 10px 12px; border-radius: 10px; background: rgba(52,211,153,0.08); border: 1px solid rgba(52,211,153,0.45);
+           color: var(--text); font-size: 13px; }
+  .mod-path { padding: 12px 14px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--border); font-size: 13px; }
+  .mod-path .mono { color: var(--cyan); }
+  .mod-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .mod-row { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 12px; background: var(--panel2);
+             border: 1px solid var(--border); }
+  .mod-row.ok { border-color: rgba(52,211,153,0.45); } .mod-row.no { border-color: rgba(248,113,113,0.45); }
+  .mod-ic { font-size: 18px; } .mod-t { flex: 1; min-width: 0; } .mod-t b { font-size: 14px; color: var(--text); }
+  .mod-none { display: flex; gap: 14px; align-items: center; padding: 16px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--border); }
+  .mod-ico { font-size: 34px; }
+  a.btn { display: inline-flex; align-items: center; text-decoration: none; padding: 6px 12px; border-radius: 8px;
+          background: var(--panel2); border: 1px solid var(--border2); color: var(--text); font-size: 12px; }
+  a.btn:hover { border-color: var(--cyan); }
+  .upd-banner { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; font-size: 13.5px;
+                color: var(--text); background: rgba(251,191,36,0.1); border: 1px solid rgba(251,191,36,0.55); }
+  .upd-banner.busy { background: rgba(34,211,238,0.08); border-color: rgba(34,211,238,0.5); }
+  .upd-banner.hidden { display: none; }
+  .upd-banner b { color: var(--gold); }
+  .upd-modes { margin-top: 14px; padding: 12px 14px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--border); }
+  .upd-mh { font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px; }
+  .upd-mode { display: flex; gap: 10px; align-items: flex-start; padding: 7px 8px; border-radius: 8px; cursor: pointer; }
+  .upd-mode.on { background: rgba(34,211,238,0.07); }
+  .upd-mode input { margin-top: 3px; width: auto; flex: none; accent-color: var(--cyan); }
+  .upd-mode > span { flex: 1; min-width: 0; text-align: left; display: block; }
+  .upd-mode b { display: block; font-size: 13px; color: var(--text); }
   .ver-badge { font-size: 11px; font-weight: 600; color: var(--cyan); margin-left: 8px; padding: 2px 8px;
                border-radius: 999px; border: 1px solid rgba(34,211,238,0.4); background: rgba(34,211,238,0.08);
                cursor: pointer; vertical-align: middle; }
@@ -1101,6 +1127,7 @@
   </div>
 
   <!-- Вкладки верхнего уровня -->
+  <div id="updBanner" class="upd-banner hidden"></div>
   <div class="tabs">
     <div class="tab" data-view="start" onclick="switchView('start')">🏠 Начало</div>
     <div class="tab active" data-view="events" onclick="switchView('events')">🎁 Подарки и события</div>
@@ -1134,6 +1161,7 @@
       <button class="small gb-change" onclick="openGamePick()" title="Если при создании выбрал не ту игру">сменить</button>
       <span class="gb-status" id="gameStatus"></span>
       <div class="spacer"></div>
+      <button class="small" onclick="openModPanel()">🧩 Мод для игры</button>
       <button class="small" onclick="openGameHelp()">📖 Как подключить</button>
     </div>
     <div class="ev-top">
@@ -1865,6 +1893,17 @@
     <div class="gh-warn st-only" id="srvSteamInfo" style="margin:10px 0"></div>
     <div class="row"><span class="hint" id="srvCreateHint" style="color:var(--red)"></span><div class="spacer"></div>
       <button class="primary" onclick="srvCreate()">Создать сервер</button></div>
+  </div>
+</div>
+
+<div id="modModal" class="mdl hidden" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="mdl-box" style="max-width:760px">
+    <div class="row" style="margin-bottom:12px">
+      <h3 style="margin:0" id="modTitle">🧩 Мод для игры</h3>
+      <div class="spacer"></div>
+      <button class="icon danger" onclick="document.getElementById('modModal').classList.add('hidden')">✕</button>
+    </div>
+    <div id="modBody"></div>
   </div>
 </div>
 

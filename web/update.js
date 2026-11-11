@@ -8,6 +8,7 @@ async function updLoad(force) {
                              {method: force ? "POST" : "GET", cache: "no-store"})).json();
   } catch (e) { return; }
   updBadge();
+  updBanner();
   if (!document.getElementById("changelogModal").classList.contains("hidden")) updRender();
 }
 
@@ -37,7 +38,7 @@ function updBadge() {
   }
 }
 
-function updRender() {
+function updRenderMain() {
   const box = document.getElementById("updBox");
   if (!box || !UPD) return;
   const j = UPD.job;
@@ -70,6 +71,22 @@ function updRender() {
       ${UPD.repo ? `<div class="hint">Обновления берутся с GitHub: ${esc(UPD.repo)}</div>` : ""}</div>`;
 }
 
+// окно версии: что с обновлением + выбор режима автообновления
+function updRender() {
+  updRenderMain();
+  const box = document.getElementById("updBox");
+  if (!box || !UPD) return;
+  const m = UPD.mode || "auto";
+  const opt = (v, t, d) => `<label class="upd-mode${m === v ? " on" : ""}"><input type="radio" name="updMode" ${m === v ? "checked" : ""}
+      onchange="updSetMode('${v}')"><span><b>${t}</b><span class="hint">${d}</span></span></label>`;
+  box.insertAdjacentHTML("beforeend", `<div class="upd-modes"><div class="upd-mh">🔄 Автообновление</div>
+    ${opt("auto", "Обновлять само", "проверка раз в 30 минут; есть новая версия и ты не в эфире — через 25 секунд обновится, можно отложить")}
+    ${opt("on_start", "При следующем запуске", "новая версия тихо скачается заранее и поставится, когда снова откроешь программу")}
+    ${opt("notify", "Только сообщать", "значок версии станет золотым — обновишься сам кнопкой")}
+    ${UPD.ready ? `<div class="hint" style="margin-top:6px">✓ Версия ${esc(UPD.ready.version)} уже скачана — поставится при следующем запуске</div>` : ""}
+    <div class="hint" style="margin-top:6px">Во время эфира программа никогда не обновляется — дождётся, пока ты отключишься.</div></div>`);
+}
+
 async function updCheckNow(btn) {
   if (btn) { btn.disabled = true; btn.textContent = "Проверяю…"; }
   await updLoad(true);
@@ -78,8 +95,13 @@ async function updCheckNow(btn) {
 async function updInstall() {
   const d = await (await fetch("/api/update/install", {method: "POST"})).json();
   if (!d.ok) { alert(d.error); await updLoad(false); return; }   // и в самом окне — не «Доступна» как ни в чём не бывало
-  const target = d.version;
-  const tick = setInterval(async () => {
+  updWaitFor(d.version);
+}
+
+let UPD_WAIT = null;
+function updWaitFor(target) {                                   // ждём, пока программа перезапустится новой версией
+  if (UPD_WAIT) return;
+  const tick = UPD_WAIT = setInterval(async () => {
     try {
       const v = await (await fetch("/api/version", {cache: "no-store"})).json();
       if (v.version === target) { clearInterval(tick); updReload(); return; }
@@ -88,6 +110,53 @@ async function updInstall() {
   }, 1000);
   updLoad(false);
 }
+
+// ── Автообновление: полоска с обратным отсчётом, «Обновить сейчас» / «Не сейчас» ──
+let UPD_LEFT = 0, UPD_COUNT = null;
+function updBanner() {
+  const el = document.getElementById("updBanner");
+  if (!el || !UPD) return;
+  const j = UPD.job;
+  if (j && ["downloading", "extracting", "restarting"].includes(j.state) && !j.prefetch) {
+    el.className = "upd-banner busy";
+    el.innerHTML = `⬇ Обновляю TakyLive до ${esc(j.version)}… ${Math.round((j.progress || 0) * 100)}% — не закрывай окно, оно перезапустится само`;
+    updWaitFor(j.version);
+    return;
+  }
+  if (UPD.auto) {
+    UPD_LEFT = UPD.auto.left;
+    el.className = "upd-banner";
+    el.innerHTML = `<span>⬆ Через <b id="updLeft">${UPD_LEFT}</b> с TakyLive обновится до <b>${esc(UPD.auto.version)}</b> и перезапустится</span>
+      <span class="spacer"></span>
+      <button class="small primary" onclick="updInstall()">Обновить сейчас</button>
+      <button class="small" onclick="updPostpone()">Не сейчас</button>`;
+    clearInterval(UPD_COUNT);
+    UPD_COUNT = setInterval(() => {
+      const b = document.getElementById("updLeft");
+      if (!b) { clearInterval(UPD_COUNT); return; }
+      UPD_LEFT = Math.max(0, UPD_LEFT - 1);
+      b.textContent = UPD_LEFT;
+      if (!UPD_LEFT) { clearInterval(UPD_COUNT); setTimeout(() => updLoad(false), 1500); }
+    }, 1000);
+    return;
+  }
+  clearInterval(UPD_COUNT);
+  el.className = "upd-banner hidden";
+  el.innerHTML = "";
+}
+
+async function updPostpone() {
+  await fetch("/api/update/postpone", {method: "POST"});
+  await updLoad(false);
+}
+
+async function updSetMode(m) {
+  DATA.config.auto_update = m;
+  await fetch("/api/config", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({auto_update: m})});
+  await updLoad(false);
+}
+
+setInterval(() => { if (typeof DATA !== "undefined" && DATA.config) updLoad(false); }, 20000);
 
 // ── Перенос данных из другой папки: объединяет, ничего не затирает, можно отменить ──
 let MIG_OPEN = false;
