@@ -40,3 +40,4 @@ media/*.mkv
 media/*.avi
 media/.tmp_*
 ЗАДАНИЕ_ДЛЯ_CLAUDE_CODE.md
+smoke_test_result.txt

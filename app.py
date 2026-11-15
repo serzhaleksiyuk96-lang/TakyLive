@@ -145,6 +145,14 @@ if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(os.path.abspath(sys.executable))
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Тестовый режим (для автопроверки): TAKY_TEST=1 — без окна и без автообновления,
+# TAKY_PORT — другой порт, чтобы не мешать установленной программе.
+TEST_MODE = os.environ.get("TAKY_TEST") == "1"
+try:
+    APP_PORT = int(os.environ.get("TAKY_PORT") or 8765)
+except ValueError:
+    APP_PORT = 8765
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 PROFILES_PATH = os.path.join(BASE_DIR, "profiles.json")
 WEB_DIR = os.path.join(BASE_DIR, "web")
@@ -4445,7 +4453,8 @@ def make_app():
 
     async def _start_auto_update(app_):
         asyncio.ensure_future(STATE.updater.auto_loop())      # проверка раз в 30 минут + автообновление
-    app.on_startup.append(_start_auto_update)
+    if not TEST_MODE:                                         # тестовая копия не обновляет сама себя
+        app.on_startup.append(_start_auto_update)
     app.router.add_post("/api/mod/log", h_mod_log)
     app.router.add_get("/api/mod/status", h_mod_status)
     app.router.add_post("/api/mod/open_folder", h_mod_open_folder)
@@ -4475,7 +4484,7 @@ def open_app_window():
     import time
     import webbrowser
     time.sleep(1.2)  # даём серверу подняться
-    url = "http://localhost:8765"
+    url = f"http://localhost:{APP_PORT}"
     if sys.platform == "win32":
         for browser in ("msedge", "chrome"):
             try:
@@ -4516,11 +4525,14 @@ def main():
     print(f"  TakyLive v{APP_VERSION} запущен!")
     print()
     print("  Окно приложения откроется само через пару секунд.")
-    print("  Если не открылось — зайди на http://localhost:8765")
+    print(f"  Если не открылось — зайди на http://localhost:{APP_PORT}")
     print()
     print("  (не закрывай это окно пока стримишь)")
     print("=" * 60)
-    threading.Thread(target=open_app_window, daemon=True).start()
+    if TEST_MODE:
+        print(f"  ТЕСТОВЫЙ РЕЖИМ: порт {APP_PORT}, без окна и без автообновления")
+    else:
+        threading.Thread(target=open_app_window, daemon=True).start()
     threading.Thread(target=tts_player_worker, daemon=True).start()
     app = make_app()
     # Слушаем IPv4 всегда; IPv6 (::1) добавляем только если он есть в системе.
@@ -4535,7 +4547,7 @@ def main():
         hosts.append("::1")
     except Exception:
         pass
-    web.run_app(app, host=hosts, port=8765, print=None)
+    web.run_app(app, host=hosts, port=APP_PORT, print=None)
 
 
 if __name__ == "__main__":
