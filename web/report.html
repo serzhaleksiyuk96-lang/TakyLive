@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Итоги эфира — TakyLive</title>
+<link rel="icon" href="/web/favicon-32.png">
+<style>
+  :root {
+    --bg: #0a0c13; --panel: #161a26; --panel2: #1e2334; --border: rgba(99,108,140,0.22); --border2: rgba(99,108,140,0.38);
+    --text: #eef1f8; --dim: #97a0b8; --mut: #626c85; --grid: rgba(99,108,140,0.16);
+    --cyan: #22d3ee; --indigo: #6366f1; --green: #34d399; --red: #f87171; --gold: #fbbf24;
+    --grad: linear-gradient(135deg, var(--indigo), var(--cyan));
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font: 14px/1.5 "Inter", -apple-system, "Segoe UI", Roboto, sans-serif;
+         background-image: radial-gradient(900px 500px at 15% -10%, rgba(99,102,241,0.12), transparent 60%); background-attachment: fixed; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 22px 20px 40px; }
+  .top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-size: 20px; font-weight: 700; }
+  .sub { color: var(--dim); font-size: 13px; }
+  .spacer { flex: 1; }
+  select, button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--border2);
+                   border-radius: 9px; padding: 7px 12px; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--cyan); }
+  button.primary { background: var(--grad); border-color: transparent; color: #fff; font-weight: 600; }
+  .msg { color: var(--dim); font-size: 13px; min-height: 18px; margin: -6px 0 10px; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 14px; }
+  @media (max-width: 760px) { .kpis { grid-template-columns: repeat(2, 1fr); } .two { grid-template-columns: 1fr !important; } }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; }
+  .kpi .v { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.3px; }
+  .kpi .l { color: var(--dim); font-size: 12.5px; }
+  .kpi .x { color: var(--mut); font-size: 12px; margin-top: 2px; }
+  .kpi.hero { border-color: rgba(34,211,238,0.45); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .seg { display: inline-flex; background: var(--panel2); border: 1px solid var(--border); border-radius: 9px; padding: 2px; margin-left: auto; }
+  .seg span { padding: 4px 11px; border-radius: 7px; cursor: pointer; font-size: 13px; font-weight: 400; color: var(--dim); }
+  .seg span.on { background: rgba(34,211,238,0.16); color: var(--text); }
+  .chart { position: relative; }
+  .chart svg { display: block; width: 100%; height: 240px; }
+  .tip { position: absolute; pointer-events: none; background: #0f1320; border: 1px solid var(--border2); border-radius: 8px;
+         padding: 6px 9px; font-size: 12.5px; white-space: nowrap; transform: translate(-50%, -100%); display: none; }
+  .tip b { font-variant-numeric: tabular-nums; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; color: var(--mut); font-weight: 500; font-size: 12px; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  td { padding: 6px 6px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  td.n, th.n { text-align: right; }
+  td.r { color: var(--mut); width: 26px; }
+  td.card-t { color: var(--dim); }
+  tr:last-child td { border-bottom: none; }
+  .empty { color: var(--mut); padding: 30px 6px; text-align: center; }
+  .live { display: inline-flex; align-items: center; gap: 6px; color: var(--green); font-size: 13px; font-weight: 600; }
+  .live i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px rgba(52,211,153,.8); }
+  .note { color: var(--mut); font-size: 12.5px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <h1>📊 Итоги эфира</h1>
+    <span id="liveMark"></span>
+    <div class="spacer"></div>
+    <select id="pick" onchange="choose(this.value)"></select>
+    <button onclick="dlText()">⬇ Скачать .txt</button>
+    <button class="primary" onclick="sendSummary(this)">📣 В Telegram / Discord</button>
+  </div>
+  <div class="msg" id="msg"></div>
+  <div id="body"><div class="empty">Загружаю…</div></div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
+const num = n => Math.round(Number(n || 0)).toLocaleString("ru-RU");
+const dur = s => { const m = Math.floor((s || 0) / 60); return m >= 60 ? `${Math.floor(m / 60)} ч ${String(m % 60).padStart(2, "0")} мин` : `${m} мин`; };
+const dt = t => new Date(t * 1000).toLocaleString("ru-RU", {day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit"});
+const hm = t => new Date(t * 1000).toLocaleTimeString("ru-RU", {hour: "2-digit", minute: "2-digit"});
+
+let CUR = "current", REP = null, RATE = 0.005, CURRENCY = "$", METRIC = "c", timer = null;
+const METRICS = {c: ["Монеты", "монет"], l: ["Лайки", "лайков"], m: ["Сообщения", "сообщений"], v: ["Зрители", "зрителей"]};
+
+function money(coins) {
+  if (!(RATE > 0) || !coins) return "";
+  const v = (coins * RATE).toLocaleString("ru-RU", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+  return ["$", "€", "£"].includes(CURRENCY) ? CURRENCY + v : v + " " + CURRENCY;
+}
+
+async function loadList() {
+  const d = await (await fetch("/api/stats/list", {cache: "no-store"})).json();
+  const opts = [];
+  if (d.live) opts.push(`<option value="current">🔴 Текущий эфир</option>`);
+  for (const r of d.items) opts.push(`<option value="${esc(r.id)}">${esc(dt(r.started))} · ${esc(dur(r.duration))} · ${num(r.coins)} 💎</option>`);
+  $("pick").innerHTML = opts.join("") || `<option value="">эфиров пока нет</option>`;
+  if (!d.live && CUR === "current") CUR = d.items.length ? d.items[0].id : "";
+  $("pick").value = CUR;
+}
+
+async function choose(id) { CUR = id; await loadReport(); }
+
+async function loadReport() {
+  if (!CUR) { REP = null; render(); return; }
+  try {
+    const d = await (await fetch("/api/stats/get?id=" + encodeURIComponent(CUR), {cache: "no-store"})).json();
+    if (!d.ok) {                                   // эфир только что закончился — его отчёт уже в списке
+      if (CUR === "current") { await loadList(); if (CUR !== "current") return loadReport(); }
+      REP = null;
+    } else { REP = d.report; RATE = Number(d.money_rate); CURRENCY = d.currency || "$"; }
+  } catch (e) { $("msg").textContent = "✗ Нет связи с программой"; return; }
+  render();
+}
+
+function kpi(v, l, x, hero) {
+  return `<div class="kpi${hero ? " hero" : ""}"><div class="v">${v}</div><div class="l">${l}</div>${x ? `<div class="x">${x}</div>` : ""}</div>`;
+}
+
+function topTable(rows, unit) {
+  if (!rows.length) return `<div class="empty">пока никого</div>`;
+  return `<table><tr><th></th><th>Зритель</th><th class="n">${unit}</th></tr>` +
+    rows.map((r, i) => `<tr><td class="r">${i + 1}</td><td>${esc(r.user)}</td><td class="n">${num(r.amount)}</td></tr>`).join("") + `</table>`;
+}
+
+function render() {
+  $("liveMark").innerHTML = REP && REP.live ? `<span class="live"><i></i>идёт сейчас</span>` : "";
+  if (!REP) {
+    $("body").innerHTML = `<div class="card empty">Здесь появятся итоги, когда подключишься к эфиру.<br>
+      Статистика считается с подключения и до «⏹ Отключиться», а потом сохраняется — старые эфиры в списке сверху.</div>`;
+    return;
+  }
+  const t = REP.totals, m = money(t.coins);
+  const end = REP.ended || (REP.started + REP.duration);
+  $("body").innerHTML = `
+    <div class="sub" style="margin-bottom:10px">@${esc(REP.nick || "—")} · ${esc(dt(REP.started))}–${esc(hm(end))}</div>
+    <div class="kpis">
+      ${kpi(num(t.coins), "💎 монет", m ? "≈ " + m + " стримеру" : "", true)}
+      ${kpi(esc(dur(REP.duration)), "🕒 длительность", "")}
+      ${kpi(num(REP.viewers_max), "👀 зрителей максимум", "")}
+      ${kpi(num(REP.gifters_n), "🎁 дарителей", num(t.gifts) + " подарков")}
+      ${kpi(num(t.likes), "❤ лайков", "")}
+      ${kpi(num(t.comments), "💬 сообщений", num(REP.chatters_n) + " писали в чат")}
+      ${kpi(num(t.follows), "➕ фолловов", "")}
+      ${kpi(num(t.subs), "⭐ подписок", "")}
+    </div>
+    <div class="card">
+      <h2>Активность по ходу эфира
+        <span class="seg">${Object.entries(METRICS).map(([k, [n]]) => `<span class="${k === METRIC ? "on" : ""}" onclick="setMetric('${k}')">${n}</span>`).join("")}</span></h2>
+      <div class="chart" id="chart"></div>
+    </div>
+    <div class="two">
+      <div class="card"><h2>🏆 Топ дарителей</h2>${topTable(REP.top_gifters, "монет")}</div>
+      <div class="card"><h2>❤ Топ по лайкам</h2>${topTable(REP.top_likers, "лайков")}</div>
+    </div>
+    <div class="card"><h2>🎁 Какие подарки дарили</h2>
+      ${REP.gifts.length ? `<table><tr><th>Подарок</th><th class="n">Штук</th><th class="n">Монет</th><th>Что сработало</th></tr>` +
+        REP.gifts.map(g => `<tr><td>${esc(g.name)}</td><td class="n">${num(g.count)}</td><td class="n">${num(g.coins)}</td>
+          <td class="card-t">${g.card ? esc(g.card) : "—"}</td></tr>`).join("") + `</table>`
+        : `<div class="empty">подарков не было</div>`}
+      <div class="note">Деньги — примерная оценка: ${esc(money(1000) || "—")} за 1 000 монет. Точную сумму показывает TikTok в разделе «Доходы».</div>
+    </div>`;
+  drawChart();
+}
+
+function setMetric(k) { METRIC = k; render(); }
+
+// Столбики по минутам (по 5 или 10 минут, если эфир длинный); зрители — линией, это уровень, а не сумма
+function drawChart() {
+  const box = $("chart");
+  const mins = REP.minutes || [];
+  if (!mins.length) { box.innerHTML = `<div class="empty">данных пока нет</div>`; return; }
+  const step = mins.length <= 90 ? 1 : mins.length <= 450 ? 5 : 10;
+  const B = [];
+  for (let i = 0; i < mins.length; i += step) {
+    const part = mins.slice(i, i + step);
+    B.push({from: i, to: i + part.length, val: METRIC === "v" ? Math.max(...part.map(p => p.v || 0)) : part.reduce((s, p) => s + (p[METRIC] || 0), 0)});
+  }
+  const W = Math.max(320, box.clientWidth || 900), H = 240, L = 46, R = 10, T = 12, Bm = 26;
+  const pw = W - L - R, ph = H - T - Bm;
+  const max = Math.max(1, ...B.map(b => b.val));
+  // целые «круглые» деления: 0, 5, 10… или 0, 500, 1 000… — не больше 5 линий
+  const raw = max / 4, p10 = Math.pow(10, Math.floor(Math.log10(raw)));
+  const tick = Math.max(1, [1, 2, 5, 10].map(k => k * p10).find(v => v >= raw));
+  const nice = tick * Math.ceil(max / tick);
+  const y = v => T + ph - v / nice * ph, bw = pw / B.length;
+  let g = "";
+  for (let v = 0; v <= nice + 1e-9; v += tick) {
+    const yy = y(v);
+    g += `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/>` +
+         `<text x="${L - 8}" y="${yy + 4}" text-anchor="end" font-size="11" fill="var(--mut)">${num(v)}</text>`;
+  }
+  const lbl = Math.max(1, Math.ceil(B.length / 8));
+  B.forEach((b, i) => { if (i % lbl === 0) g += `<text x="${L + i * bw + bw / 2}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--mut)">${esc(hm(REP.started + b.from * 60))}</text>`; });
+  let marks = "";
+  if (METRIC === "v") {
+    const pts = B.map((b, i) => `${L + i * bw + bw / 2},${y(b.val)}`).join(" ");
+    marks = `<polyline points="${pts}" fill="none" stroke="var(--cyan)" stroke-width="2" stroke-linejoin="round"/>`;
+  } else {
+    const w = Math.max(1.5, bw - Math.min(6, bw * 0.3));
+    B.forEach((b, i) => {
+      if (!b.val) return;
+      const x = L + i * bw + (bw - w) / 2, top = y(b.val), h = T + ph - top, r = Math.min(4, w / 2, h);
+      marks += `<path d="M${x} ${T + ph}V${top + r}Q${x} ${top} ${x + r} ${top}H${x + w - r}Q${x + w} ${top} ${x + w} ${top + r}V${T + ph}Z" fill="var(--cyan)"/>`;
+    });
+  }
+  const hits = B.map((b, i) => `<rect x="${L + i * bw}" y="${T}" width="${bw}" height="${ph}" fill="transparent" data-i="${i}"/>`).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(METRICS[METRIC][0])} по ходу эфира">${g}
+    <line x1="${L}" x2="${W - R}" y1="${T + ph}" y2="${T + ph}" stroke="var(--border2)"/>${marks}
+    <line id="cross" x1="0" x2="0" y1="${T}" y2="${T + ph}" stroke="var(--border2)" visibility="hidden"/>${hits}</svg>`;
+  const svg = box.querySelector("svg"), tip = $("tip"), cross = box.querySelector("#cross");
+  svg.addEventListener("mousemove", e => {
+    const i = e.target.dataset && e.target.dataset.i;
+    if (i === undefined) { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); return; }
+    const b = B[+i], cx = L + (+i) * bw + bw / 2;
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx); cross.setAttribute("visibility", "visible");
+    const span = step === 1 ? hm(REP.started + b.from * 60) : `${hm(REP.started + b.from * 60)}–${hm(REP.started + b.to * 60)}`;
+    tip.innerHTML = `${esc(span)} · <b>${num(b.val)}</b> ${METRICS[METRIC][1]}`;
+    tip.style.left = e.pageX + "px"; tip.style.top = (e.pageY - 12) + "px"; tip.style.display = "block";
+  });
+  svg.addEventListener("mouseleave", () => { tip.style.display = "none"; cross.setAttribute("visibility", "hidden"); });
+}
+
+function dlText() { if (CUR) location.href = "/api/stats/text?id=" + encodeURIComponent(CUR); }
+
+async function sendSummary(btn) {
+  if (!CUR) return;
+  btn.disabled = true;
+  $("msg").textContent = "Отправляю…";
+  try {
+    const d = await (await fetch("/api/announce/summary", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                            body: JSON.stringify({id: CUR})})).json();
+    $("msg").textContent = d.ok ? "✓ Итоги отправлены: " + d.sent.join(", ") : "✗ " + d.error;
+  } catch (e) { $("msg").textContent = "✗ " + e.message; }
+  btn.disabled = false;
+}
+
+window.addEventListener("resize", () => { if (REP) drawChart(); });
+(async () => {
+  const want = new URLSearchParams(location.search).get("id");
+  if (want) CUR = want;
+  await loadList();
+  await loadReport();
+  timer = setInterval(async () => { if (CUR === "current") { await loadReport(); } }, 5000);
+})();
+</script>
+</body>
+</html>

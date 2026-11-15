@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0c13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="referrer" content="no-referrer">
+<title>Пульт TakyLive</title>
+<style>
+  :root {
+    --bg: #0a0c13; --panel: #161a26; --panel2: #1e2334; --border: rgba(99,108,140,0.22);
+    --text: #eef1f8; --dim: #97a0b8; --mut: #626c85;
+    --cyan: #22d3ee; --indigo: #6366f1; --green: #34d399; --red: #f87171; --gold: #fbbf24;
+    --grad: linear-gradient(135deg, var(--indigo), var(--cyan));
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { background: var(--bg); color: var(--text); font: 15px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
+         padding: max(14px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom)); }
+  .top { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .logo { font-weight: 700; font-size: 17px; background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--red); flex: none; }
+  .dot.on { background: var(--green); box-shadow: 0 0 10px rgba(52,211,153,.8); }
+  .st { color: var(--dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lost { display: none; background: rgba(248,113,113,.14); border: 1px solid rgba(248,113,113,.5); color: var(--text);
+          padding: 10px 12px; border-radius: 12px; margin-bottom: 12px; font-size: 13px; }
+  .lost.show { display: block; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .kpi { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 10px 12px; }
+  .kpi b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .kpi span { color: var(--dim); font-size: 12px; }
+  .sec { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 12px; margin-bottom: 12px; }
+  .sec h2 { font-size: 13px; font-weight: 600; color: var(--dim); margin-bottom: 10px; display: flex; gap: 8px; align-items: center; }
+  .sec h2 .r { margin-left: auto; font-weight: 400; color: var(--mut); }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  button { font: inherit; color: var(--text); background: var(--panel2); border: 1px solid var(--border);
+           border-radius: 12px; padding: 14px 10px; min-height: 52px; cursor: pointer; touch-action: manipulation; }
+  button:active { transform: scale(.97); background: #283048; }
+  button.big { font-weight: 600; font-size: 16px; min-height: 64px; word-break: break-word; }
+  button.ok { border-color: rgba(52,211,153,.55); background: rgba(52,211,153,.14); }
+  button.bad { border-color: rgba(248,113,113,.55); background: rgba(248,113,113,.12); }
+  button.done { border-color: var(--cyan); background: rgba(34,211,238,.18); }
+  .row { display: flex; gap: 8px; }
+  .row > button { flex: 1; }
+  .digits { font-size: 40px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; margin: 2px 0 10px; }
+  .digits.off { color: var(--mut); }
+  .hint { color: var(--mut); font-size: 13px; }
+  .feed { list-style: none; max-height: 340px; overflow: auto; }
+  .feed li { display: flex; gap: 8px; padding: 7px 2px; border-top: 1px solid var(--border); font-size: 14px; }
+  .feed li:first-child { border-top: none; }
+  .feed .t { color: var(--mut); font-size: 12px; flex: none; padding-top: 2px; font-variant-numeric: tabular-nums; }
+  .feed .u { font-weight: 600; }
+</style>
+</head>
+<body>
+  <div class="top">
+    <span class="logo">TakyLive</span><span class="dot" id="dot"></span>
+    <span class="st" id="st">подключаюсь к программе…</span>
+  </div>
+  <div class="lost" id="lost">⚠ Нет связи с программой на компьютере. Телефон и компьютер должны быть в одной сети Wi-Fi, программа — запущена.</div>
+
+  <div class="kpis" id="kpis">
+    <div class="kpi"><b id="kCoins">—</b><span>💎 монет</span></div>
+    <div class="kpi"><b id="kLikes">—</b><span>❤ лайков</span></div>
+    <div class="kpi"><b id="kViewers">—</b><span>👀 зрителей</span></div>
+  </div>
+
+  <div class="sec">
+    <h2>🎛 Кнопки панели <span class="r" id="tab"></span></h2>
+    <div class="grid" id="buttons"><div class="hint">загружаю…</div></div>
+  </div>
+
+  <div class="sec">
+    <h2>🔊 Озвучка чата</h2>
+    <div class="row">
+      <button id="ttsBtn" onclick="ttsToggle()">🔊</button>
+      <button onclick="act('tts_skip', {}, this)">⏭ Дальше</button>
+      <button onclick="act('tts_stop', {}, this)">⏹ Стоп</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>⏱ Таймер-челлендж</h2>
+    <div class="digits off" id="timer">00:00</div>
+    <div class="row">
+      <button class="ok" onclick="act('timer', {action: 'start'}, this)">▶</button>
+      <button onclick="act('timer', {action: 'pause'}, this)">⏸</button>
+      <button onclick="act('timer', {action: 'add'}, this)">+1 мин</button>
+      <button class="bad" onclick="act('timer', {action: 'reset'}, this)">⟲</button>
+    </div>
+  </div>
+
+  <div class="sec">
+    <h2>🎰 Случайное событие</h2>
+    <button style="width:100%" onclick="act('random_fire', {}, this)">🎲 Запустить сейчас</button>
+  </div>
+
+  <div class="sec">
+    <h2>📜 Что происходит</h2>
+    <ul class="feed" id="feed"><li class="hint">пока тихо</li></ul>
+  </div>
+
+<script>
+let S = null, busy = false;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
+const num = n => Number(n || 0).toLocaleString("ru-RU");
+const mmss = s => { s = Math.max(0, s | 0); const h = Math.floor(s / 3600), m = String(Math.floor(s % 3600 / 60)).padStart(2, "0"),
+                    x = String(s % 60).padStart(2, "0"); return (h ? h + ":" : "") + m + ":" + x; };
+
+async function load() {
+  if (busy) return;
+  busy = true;
+  try {
+    const r = await fetch("api/state", {cache: "no-store"});
+    if (r.status === 404) { $("lost").textContent = "⚠ Ссылка устарела — отсканируй новый QR-код в программе (🎛 Панель → 📱 Пульт)."; $("lost").classList.add("show"); return; }
+    S = await r.json();
+    $("lost").classList.remove("show");
+    render();
+  } catch (e) {
+    $("lost").classList.add("show");
+  } finally { busy = false; }
+}
+
+let lastButtons = "";
+function render() {
+  $("dot").classList.toggle("on", S.connected);
+  $("st").textContent = S.connected ? `В эфире @${S.nick}` + (S.stats ? ` · ${mmss(S.stats.duration)}` : "") : "Не подключено к эфиру";
+  $("kCoins").textContent = S.stats ? num(S.stats.coins) : "—";
+  $("kLikes").textContent = S.stats ? num(S.stats.likes) : "—";
+  $("kViewers").textContent = S.stats && S.stats.viewers ? num(S.stats.viewers) : "—";
+  $("tab").textContent = S.tab ? "вкладка «" + S.tab + "»" : "";
+  const key = JSON.stringify(S.buttons);
+  if (key !== lastButtons) {                       // не перерисовываем, пока нажимают
+    lastButtons = key;
+    $("buttons").innerHTML = S.buttons.length
+      ? S.buttons.map((t, i) => `<button class="big" onclick="act('panel_fire', {index: ${i}}, this)">${esc(t)}</button>`).join("")
+      : `<div class="hint" style="grid-column: 1 / -1">Кнопок нет. На компьютере: «+ Создать событие» → «🎛 Кнопка панели».</div>`;
+  }
+  $("ttsBtn").textContent = S.tts_on ? "🔊 Вкл" : "🔇 Выкл";
+  $("ttsBtn").className = S.tts_on ? "ok" : "";
+  $("timer").textContent = mmss(S.timer.remaining);
+  $("timer").classList.toggle("off", !S.timer.running);
+  $("feed").innerHTML = S.feed.length
+    ? S.feed.map(e => `<li><span class="t">${esc(e.time.slice(0, 5))}</span><span>${esc(e.icon)} ${e.user ? `<span class="u">${esc(e.user)}</span> ` : ""}${esc(e.text)}</span></li>`).join("")
+    : '<li class="hint">пока тихо</li>';
+}
+
+async function act(name, body, btn) {
+  if (navigator.vibrate) navigator.vibrate(12);
+  const old = btn ? btn.innerHTML : "", oldCls = btn ? btn.className : "";
+  try {
+    const r = await fetch("api/" + name, {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const d = await r.json().catch(() => ({}));
+    if (btn) { btn.classList.add(d.ok === false ? "bad" : "done"); if (d.ok === false && d.error) btn.textContent = "✗ " + d.error; }
+  } catch (e) {
+    if (btn) btn.textContent = "✗ нет связи";
+  }
+  if (btn) setTimeout(() => { btn.className = oldCls; btn.innerHTML = old; }, 900);
+  load();
+}
+
+function ttsToggle() { if (S) act("tts", {on: !S.tts_on}, null); }
+
+load();
+setInterval(load, 1500);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+</script>
+</body>
+</html>

@@ -41,9 +41,10 @@ def _ensure_deps():
     import subprocess
     checks = (
         ("aiohttp", "aiohttp"),        # веб-сервер
-        ("TikTokLive", "TikTokLive"),  # события TikTok Live
+        ("TikTokLive", "TikTokLive==7.0.1"),  # события TikTok Live (версия проверена — новые могут ломать события)
         ("edge_tts", "edge-tts"),      # озвучка чата (нейроголоса)
         ("imageio_ffmpeg", "imageio-ffmpeg"),  # ffmpeg — чинит видео из Telegram, iPhone и т.п.
+        ("segno", "segno"),            # QR-код для пульта с телефона
     )
     need = []
     for module, package in checks:
@@ -104,7 +105,10 @@ try:
     try:
         from TikTokLive.events import SubscribeEvent
     except ImportError:
-        SubscribeEvent = None
+        try:                                 # TikTokLive 7: подписка ⭐ пришла как SubNotifyEvent
+            from TikTokLive.events import SubNotifyEvent as SubscribeEvent
+        except ImportError:
+            SubscribeEvent = None
     try:
         from TikTokLive.events import FollowEvent
     except ImportError:
@@ -113,6 +117,14 @@ try:
         from TikTokLive.events import ShareEvent
     except ImportError:
         ShareEvent = None
+    try:                                     # сколько зрителей сейчас — для итогов эфира
+        from TikTokLive.events import RoomUserSeqEvent
+    except ImportError:
+        RoomUserSeqEvent = None
+    try:                                     # стример закончил эфир в TikTok
+        from TikTokLive.events import LiveEndEvent
+    except ImportError:
+        LiveEndEvent = None
 except ImportError:
     MISSING.append("TikTokLive")
 # RCON реализован через встроенный socket — доп. библиотека не нужна
@@ -386,6 +398,15 @@ class State:
             "gift_icons_online": True,        # брать иконки подарков с серверов TikTok
             "minecraft_nick": "",
             "active_profile": "default",
+            "coin_value": 0.005,              # итоги эфира: сколько примерно получает стример за 1 монету
+            "coin_currency": "$",
+            "ann_tg_on": False, "ann_tg_token": "", "ann_tg_chat": "",     # анонсы в Telegram
+            "ann_dc_on": False, "ann_dc_webhook": "",                      # анонсы в Discord
+            "ann_start_on": True,             # «Я в эфире!» при подключении
+            "ann_start_text": "🔴 Я в эфире на TikTok! Заходи: {link}",
+            "ann_end_on": True,               # итоги после эфира
+            "remote_on": False,               # 📱 пульт с телефона
+            "remote_port": 8766,
         }
         # profiles = { "Выживание": {gifts:[], likes:[], subs:[], follows:[]}, ... }
         self.profiles = {}
@@ -889,7 +910,7 @@ async def mc_ping():
             return True, "Связь по RCON есть!" + (f" ({out})" if out else "")
         except PermissionError as e:
             return False, f"{e} (rcon.password в server.properties)"
-        except (ConnectionRefusedError, OSError, asyncio.TimeoutError) as e:
+        except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
             return False, ("RCON не отвечает — проверь IP, порт и что в server.properties "
                            "стоит enable-rcon=true")
         except Exception as e:
@@ -2151,11 +2172,28 @@ def tiktok_worker():
         STATE.log("СИСТЕМА", f"✅ Подключено к @{username}")
         asyncio.ensure_future(fetch_ru_gift_names(client))     # русские названия — в фоне
         asyncio.ensure_future(fetch_room_gift_catalog(client))  # все подарки региона — в каталог
+        if STATE.stats.on_connect(username) and STATE.config.get("ann_start_on", True):
+            on_web(announce_send(announce_start_text()))        # «Я в эфире!» — только в начале эфира
 
     @client.on(DisconnectEvent)
     async def on_disconnect(event):
         STATE.connected = False
         STATE.log("СИСТЕМА", "❌ Отключено от TikTok")
+        STATE.stats.on_disconnect(manual=STATE.stop_requested)
+
+    if LiveEndEvent is not None:
+        @client.on(LiveEndEvent)
+        async def on_live_end(event):
+            STATE.log("СИСТЕМА", "Эфир в TikTok закончился")
+            STATE.stats.end("эфир закончился")
+
+    if RoomUserSeqEvent is not None:
+        @client.on(RoomUserSeqEvent)
+        async def on_viewers(event):
+            try:
+                STATE.stats.viewers(int(getattr(event, "total", 0) or 0))
+            except Exception:
+                pass
 
     def _names(event):
         """Возвращает (uid, красивое_имя) из события TikTok."""
@@ -2210,6 +2248,9 @@ def tiktok_worker():
                 if not getattr(event, "repeat_end", 1):
                     return
             handle_gift(name, gid, count, display, diamonds)
+            act = find_gift_action(name, gid)
+            STATE.stats.gift(display, name, int(count), int(diamonds or 0) * int(count),
+                             str(act.get("title") or "").strip() if act and _is_enabled(act) else "")
         except Exception as e:
             STATE.log("ОШИБКА", f"gift: {e}")
 
@@ -2226,6 +2267,7 @@ def tiktok_worker():
                  or getattr(event, "likeCount", None)
                  or 1)
             handle_like(int(n), display)
+            STATE.stats.like(display, int(n))
         except Exception as e:
             STATE.log("ОШИБКА", f"like: {e}")
 
@@ -2249,6 +2291,8 @@ def tiktok_worker():
                 if (st or 0) >= 1 and "follower" not in roles:
                     roles.append("follower")
                 handle_comment(uid, text, display, is_follower=(st or 0) >= 1, acc=acc, roles=roles)
+                if time.time() - STATE.connected_at > 3.0:          # история чата при подключении — не считаем
+                    STATE.stats.comment(display)
             except Exception as e:
                 STATE.log("ОШИБКА", f"comment: {e}")
 
@@ -2260,6 +2304,7 @@ def tiktok_worker():
             try:
                 uid, display = _names(event)
                 handle_sub(display)
+                STATE.stats.sub()
             except Exception as e:
                 STATE.log("ОШИБКА", f"sub: {e}")
 
@@ -2271,6 +2316,7 @@ def tiktok_worker():
             try:
                 uid, display = _names(event)
                 handle_follow(display)
+                STATE.stats.follow()
             except Exception as e:
                 STATE.log("ОШИБКА", f"follow: {e}")
 
@@ -2317,6 +2363,181 @@ async def stop_tiktok():
             pass
     STATE.connected = False
     STATE.log("СИСТЕМА", "Остановлено")
+    STATE.stats.on_disconnect(manual=True)                    # нажал «Отключиться» — эфир окончен, итоги
+
+
+# ── Итоги эфира, анонсы в Telegram / Discord, пульт с телефона ───────────────
+def on_web(coro):
+    """Запустить в цикле веб-сервера — он живёт всё время, в отличие от цикла TikTok."""
+    loop = STATE.web_loop
+    if loop and loop.is_running():
+        asyncio.run_coroutine_threadsafe(coro, loop)
+    else:
+        coro.close()
+
+
+def announce_start_text():
+    import announce
+    return announce.start_text(STATE.config)
+
+
+async def announce_send(text, only=None):
+    import announce
+    return await announce.send(STATE.config, text, STATE.log, only=only)
+
+
+def _stats_ended(rep):
+    """Эфир окончен: итоги — в Telegram / Discord (если включено)."""
+    import streamstats
+    if STATE.config.get("ann_end_on", True) and (STATE.config.get("ann_tg_on") or STATE.config.get("ann_dc_on")):
+        on_web(announce_send(streamstats.summary_text(rep, STATE.config)))
+
+
+def _stats_report(rid):
+    """Текущий эфир (rid пустой или «current») или сохранённый отчёт."""
+    if not rid or rid == "current":
+        return STATE.stats.current()
+    return STATE.stats.load(rid)
+
+
+async def h_stats_current(request):
+    return web.json_response({"report": STATE.stats.current(), "money_rate": STATE.config.get("coin_value", 0.005),
+                              "currency": STATE.config.get("coin_currency", "$")})
+
+
+async def h_stats_list(request):
+    return web.json_response({"items": STATE.stats.list(), "live": STATE.stats.current() is not None})
+
+
+async def h_stats_get(request):
+    rep = _stats_report(request.query.get("id", ""))
+    if rep is None:
+        return web.json_response({"ok": False, "error": "такого отчёта нет"}, status=404)
+    return web.json_response({"ok": True, "report": rep, "money_rate": STATE.config.get("coin_value", 0.005),
+                              "currency": STATE.config.get("coin_currency", "$")})
+
+
+async def h_stats_text(request):
+    import streamstats
+    from urllib.parse import quote
+    rep = _stats_report(request.query.get("id", ""))
+    if rep is None:
+        return web.Response(status=404, text="такого отчёта нет")
+    text = streamstats.summary_text(rep, STATE.config)
+    if rep.get("top_likers"):
+        text += "\n\n❤ Топ по лайкам:\n" + "\n".join(f"{i + 1}. {x['user']} — {x['amount']}"
+                                                     for i, x in enumerate(rep["top_likers"][:10]))
+    fname = "итоги_" + time.strftime("%Y-%m-%d_%H-%M", time.localtime(rep["started"])) + ".txt"
+    return web.Response(text=text + "\n", content_type="text/plain", charset="utf-8",
+                        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"})
+
+
+async def h_announce_test(request):
+    """Проверка канала: tg / dc. Пример текста — «Я в эфире»."""
+    d = await request.json()
+    ch = str(d.get("ch") or "")
+    if ch not in ("tg", "dc"):
+        return web.json_response({"ok": False, "error": "неизвестный канал"})
+    res = await announce_send("🧪 Проверка из TakyLive. Так будет выглядеть анонс:\n\n" + announce_start_text(), only=ch)
+    name, ok, err = res[0]
+    return web.json_response({"ok": ok, "error": err})
+
+
+async def h_announce_summary(request):
+    """Отправить итоги выбранного эфира в включённые каналы (кнопка на странице итогов)."""
+    import streamstats
+    d = await request.json()
+    rep = _stats_report(str(d.get("id") or ""))
+    if rep is None:
+        return web.json_response({"ok": False, "error": "такого отчёта нет"})
+    if not (STATE.config.get("ann_tg_on") or STATE.config.get("ann_dc_on")):
+        return web.json_response({"ok": False, "error": "включи Telegram или Discord: Настройки → 📣 Анонсы"})
+    res = await announce_send(streamstats.summary_text(rep, STATE.config))
+    bad = [f"{n}: {e}" for n, ok, e in res if not ok]
+    return web.json_response({"ok": not bad, "error": "; ".join(bad),
+                              "sent": [n for n, ok, _ in res if ok]})
+
+
+async def h_announce_tg_chats(request):
+    import announce
+    d = await request.json()
+    try:
+        chats = await announce.tg_chats(d.get("token") or STATE.config.get("ann_tg_token"))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    return web.json_response({"ok": True, "chats": chats})
+
+
+async def h_remote_status(request):
+    return web.json_response(STATE.remote.status())
+
+
+async def h_remote_set(request):
+    d = await request.json()
+    on = bool(d.get("on"))
+    STATE.config["remote_on"] = on
+    save_config()
+    if on:
+        await STATE.remote.start()
+    else:
+        await STATE.remote.stop()
+    return web.json_response(STATE.remote.status())
+
+
+async def h_remote_reset(request):
+    """🔄 Новая ссылка — старая (и уже отсканированный QR) перестаёт работать."""
+    import secrets as _sec
+    STATE.config["remote_token"] = _sec.token_urlsafe(12)
+    save_config()
+    if STATE.remote.runner:
+        await STATE.remote.restart()
+    STATE.log("ПУЛЬТ", "Ссылка пульта заменена — старая больше не работает")
+    return web.json_response(STATE.remote.status())
+
+
+async def h_remote_state(request):
+    """Всё, что показывает пульт: эфир, кнопки панели эфирной вкладки, таймер, лента, итоги."""
+    prof = active_profile()
+    rep = STATE.stats.current()
+    return web.json_response({
+        "connected": STATE.connected, "nick": STATE.config.get("tiktok_username", ""),
+        "tab": STATE.config.get("active_profile", ""),
+        "buttons": [str(a.get("title") or f"Кнопка {i + 1}") for i, a in enumerate(prof.get("panel", []))],
+        "tts_on": bool(STATE.config.get("tts_enabled")),
+        "random_on": bool(STATE.config.get("random_enabled")),
+        "timer": {"running": STATE.timer["running"], "remaining": int(_timer_remaining())},
+        "feed": [{"icon": e.get("icon", ""), "user": e.get("user", ""), "text": e.get("text", ""),
+                  "time": e.get("time", "")} for e in STATE.recent_feed[:20]],
+        "stats": {"coins": rep["totals"]["coins"], "likes": rep["totals"]["likes"],
+                  "viewers": rep["viewers_now"], "duration": rep["duration"]} if rep else None,
+    })
+
+
+async def h_remote_tts(request):
+    """Пульт: озвучка вкл/выкл."""
+    d = await request.json()
+    STATE.config["tts_enabled"] = bool(d.get("on"))
+    save_config()
+    if not STATE.config["tts_enabled"]:
+        await h_tts_stop(request)
+    STATE.log("ПУЛЬТ", "Озвучка " + ("включена" if STATE.config["tts_enabled"] else "выключена"))
+    return web.json_response({"ok": True, "tts_on": STATE.config["tts_enabled"]})
+
+
+async def h_remote_timer(request):
+    """Пульт: таймер — только управление, без смены настроек."""
+    d = await request.json()
+    act = str(d.get("action") or "")
+    if act not in ("start", "pause", "reset", "add"):
+        return web.json_response({"ok": False, "error": "неизвестное действие"})
+
+    class _Req:                                   # тот же обработчик, что у кнопок на «Панели»
+        method = "POST"
+
+        @staticmethod
+        async def json():
+            return {"action": act, "seconds": 60}
+    return await h_timer(_Req())
 
 
 # ── Веб-сервер (API + отдача редактора) ──────────────────────────────────────
@@ -2345,8 +2566,13 @@ async def h_get_log(request):
     return web.json_response({"log": STATE.event_log[-80:], "seen_gifts": gifts})
 
 
+SERVER_ONLY_KEYS = ("remote_on", "remote_token")      # меняются только своими кнопками, не общим сохранением
+
+
 async def h_save_config(request):
     data = await request.json()
+    for k in SERVER_ONLY_KEYS:                          # в окне могла остаться старая копия настроек
+        data.pop(k, None)
     STATE.config.update(data)
     save_config()
     return web.json_response({"ok": True})
@@ -2373,6 +2599,8 @@ async def h_disconnect(request):
 async def h_test_rcon(request):
     """Проверка связи с Minecraft (ServerTap или RCON — что выбрано)."""
     data = await request.json()
+    for k in SERVER_ONLY_KEYS:
+        data.pop(k, None)
     STATE.config.update(data)
     save_config()
     ok, msg = await mc_ping()
@@ -2950,8 +3178,8 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.66.1"
-APP_DATE = "2026-11-11"
+APP_VERSION = "1.67"
+APP_DATE = "2026-11-15"
 
 
 def load_changelog():
@@ -3028,7 +3256,7 @@ async def h_game_try(request):
 async def h_game_ping(request):
     data = await request.json()
     game = str(data.get("game", ""))
-    cfg_part = {k: v for k, v in data.items() if k != "game"}
+    cfg_part = {k: v for k, v in data.items() if k != "game" and k not in SERVER_ONLY_KEYS}
     if cfg_part:
         STATE.config.update(cfg_part)
         save_config()
@@ -3128,7 +3356,7 @@ async def h_tts_skip(request):
 # ── Перенос данных из старой папки программы (портативная версия → установленная) ──
 MIGRATE_FILES = ["config.json", "profiles.json", "viewer_voices.json", "fish_key.txt", "gift_icons_live.json",
                  "gift_names_ru.json", "gift_catalog.json"]
-MIGRATE_DIRS = ["servers", "java", "steamcmd"]
+MIGRATE_DIRS = ["servers", "java", "steamcmd", "reports"]
 
 
 def _is_app_folder(path):
@@ -3698,7 +3926,6 @@ def make_app():
         STATE.web_loop = asyncio.get_event_loop()
 
         async def _background():
-            import random as _rnd
             while True:
                 await asyncio.sleep(1)
                 try:
@@ -3716,6 +3943,7 @@ def make_app():
                             await run_chain({"commands": [cmd], "delays": [0]},
                                             count=1,
                                             user=STATE.config.get("minecraft_nick", ""))
+                    STATE.stats.tick()                    # связи нет 5 минут — эфир окончен, итоги
                     # Случайные события
                     if (STATE.config.get("random_enabled") and STATE.connected):
                         try:
@@ -3729,8 +3957,14 @@ def make_app():
                     STATE.log("ОШИБКА", f"фоновая задача: {e}")
 
         asyncio.get_event_loop().create_task(_background())
+        if STATE.config.get("remote_on"):                  # пульт был включён — поднимаем снова
+            await STATE.remote.start()
+
+    async def _on_shutdown(app_):
+        await STATE.remote.stop()
 
     app.on_startup.append(_on_startup)
+    app.on_shutdown.append(_on_shutdown)
 
     # Middleware: запрещаем браузеру кешировать страницу и скрипты редактора,
     # чтобы после обновления программы всегда грузилась свежая версия.
@@ -3744,6 +3978,34 @@ def make_app():
             resp.headers["Expires"] = "0"
         return resp
 
+    # Middleware: программой управляет только её окно (и OBS, и мод GTA). Любой открытый сайт
+    # в браузере мог тайком слать сюда запросы — менять настройки, жать клавиши в игре.
+    # Пускаем только адреса этого компьютера; запросы с чужих сайтов — отказ.
+    from urllib.parse import urlsplit
+    LOCAL_NAMES = ("127.0.0.1", "localhost", "::1")
+
+    def _is_local(url):
+        try:
+            return (urlsplit(url if "//" in url else "//" + url).hostname or "") in LOCAL_NAMES
+        except ValueError:
+            return False
+
+    @web.middleware
+    async def local_only(request, handler):
+        if not _is_local(request.host or ""):           # подмена адреса (DNS rebinding)
+            return web.Response(status=403, text="TakyLive открывается только по адресу 127.0.0.1 или localhost")
+        origin = request.headers.get("Origin")
+        site = request.headers.get("Sec-Fetch-Site", "")
+        if request.method not in ("GET", "HEAD", "OPTIONS"):
+            if (origin and not _is_local(origin)) or (not origin and site == "cross-site"):
+                return web.json_response({"ok": False, "error": "запрос с чужого сайта отклонён"}, status=403)
+        elif site == "cross-site" and request.path.startswith(("/api/", "/media/")):
+            src = origin or request.headers.get("Referer", "")
+            if not (src and _is_local(src)):             # localhost ↔ 127.0.0.1 — свои, пускаем
+                return web.json_response({"ok": False, "error": "запрос с чужого сайта отклонён"}, status=403)
+        return await handler(request)
+
+    app.middlewares.append(local_only)
     app.middlewares.append(no_cache)
     app.router.add_get("/", h_index)
     app.router.add_get("/api/state", h_get_state)
@@ -3786,6 +4048,22 @@ def make_app():
     app.router.add_post("/api/game/ping", h_game_ping)
     app.router.add_get("/api/templates", h_templates)
     app.router.add_get("/api/version", h_version)
+    # ── Итоги эфира, анонсы, пульт с телефона ──
+    app.router.add_get("/api/stats/current", h_stats_current)
+    app.router.add_get("/api/stats/list", h_stats_list)
+    app.router.add_get("/api/stats/get", h_stats_get)
+    app.router.add_get("/api/stats/text", h_stats_text)
+    app.router.add_post("/api/announce/test", h_announce_test)
+    app.router.add_post("/api/announce/summary", h_announce_summary)
+    app.router.add_post("/api/announce/tg_chats", h_announce_tg_chats)
+    app.router.add_get("/api/remote/status", h_remote_status)
+    app.router.add_post("/api/remote/set", h_remote_set)
+    app.router.add_post("/api/remote/reset", h_remote_reset)
+    import remote as _remote
+    STATE.remote = _remote.Remote(WEB_DIR, STATE.log, lambda: STATE.config, save_config, {
+        "state": ("GET", h_remote_state), "panel_fire": ("POST", h_panel_fire),
+        "tts_skip": ("POST", h_tts_skip), "tts_stop": ("POST", h_tts_stop), "tts": ("POST", h_remote_tts),
+        "timer": ("POST", h_remote_timer), "random_fire": ("POST", h_random_fire)})
     # ── Локальные серверы Minecraft (servers.py) ──
     import servers as _servers
     local_rcon = _RconClient()
@@ -3869,6 +4147,9 @@ def main():
     STATE.gift_names_ru.update(load_gift_names_ru())
     import giftcatalog as _gc
     STATE.gift_catalog = _gc.GiftCatalog(os.path.join(BASE_DIR, "gift_catalog.json"), STATE.log)
+    import streamstats as _ss
+    STATE.stats = _ss.StreamStats(BASE_DIR, STATE.log)
+    STATE.stats.on_end = _stats_ended
     STATE.viewer_voices.update(load_viewer_voices())
     STATE.live_gift_icons.update(load_live_icons())
     if STATE.live_gift_icons:

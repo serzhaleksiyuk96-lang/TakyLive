@@ -28,7 +28,7 @@ API = "https://api.github.com"
 # что никогда не трогаем при обновлении — это данные пользователя
 KEEP_FILES = ["config.json", "profiles.json", "viewer_voices.json", "fish_key.txt", "gift_icons_live.json",
               "gift_names_ru.json", "gift_catalog.json"]
-KEEP_DIRS = ["servers", "java", "steamcmd", "vault", "tts", "_thumbs", "_backup", "_update", "_проверка"]
+KEEP_DIRS = ["servers", "java", "steamcmd", "reports", "vault", "tts", "_thumbs", "_backup", "_update", "_проверка"]
 WIN = sys.platform == "win32"
 
 
@@ -330,7 +330,7 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
         """Режим «ставить при запуске»: тихо скачать и проверить заранее."""
         self.job = {"state": "downloading", "progress": 0.0, "error": "", "version": self.info["version"], "prefetch": True}
         try:
-            new_dir = await self._fetch()
+            await self._fetch()
             self.ready = {"version": self.info["version"]}
             with open(os.path.join(self.base, "_update", "ready.json"), "w", encoding="utf-8") as f:
                 json.dump(self.ready, f)

@@ -6,7 +6,6 @@
 к эфиру (список своего региона) и подарками, пришедшими в эфире.
 """
 import json
-import os
 import time
 
 # Регионы, где есть TikTok LIVE с подарками (как в каталоге Stream To Earn)

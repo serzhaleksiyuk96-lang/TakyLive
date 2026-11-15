@@ -29,7 +29,7 @@ jobs:
           grep -q "APP_VERSION = \"$V\"" app.py || { echo "::error::В app.py другая версия, а метка $GITHUB_REF_NAME"; exit 1; }
 
       - name: Библиотеки
-        run: python -m pip install -U pyinstaller aiohttp TikTokLive "edge-tts>=7.3.1" imageio-ffmpeg
+        run: python -m pip install -U pyinstaller aiohttp "TikTokLive==7.0.1" "edge-tts>=7.3.1" imageio-ffmpeg segno
 
       - name: Сборка TakyLive.exe
         run: >

@@ -132,7 +132,10 @@ function renderProfiles() {
     const chip = document.createElement("div");
     const isLive = DATA.connected && name === liveProfile();
     chip.className = "profile-chip" + (name === activeProfile ? " active" : "") + (isLive ? " live" : "");
-    chip.innerHTML = `<span onclick="selectProfile('${esc(name)}')">${isLive ? "🔴 " : ""}${esc(name)}</span>`;
+    const label = document.createElement("span");          // без onclick в тексте — имя с ' не ломает клик
+    label.textContent = (isLive ? "🔴 " : "") + name;
+    label.onclick = () => selectProfile(name);
+    chip.appendChild(label);
     if (isLive) chip.title = "Эта вкладка сейчас работает в эфире";
     if (Object.keys(DATA.profiles).length > 1) {
       const x = document.createElement("span");
@@ -1957,6 +1960,13 @@ async function refreshState() {
   const r = await fetch("/api/state");
   const s = await r.json();
   DATA.connected = s.connected;
+  // озвучку могли включить или выключить с пульта на телефоне — не затираем это старым значением
+  if (s.config && s.config.tts_enabled !== DATA.config.tts_enabled) {
+    DATA.config.tts_enabled = s.config.tts_enabled;
+    const cb = document.getElementById("cfg_tts_on");
+    if (cb) cb.checked = !!s.config.tts_enabled;
+    if (typeof ttsTopRender === "function") ttsTopRender();
+  }
   updateStatus();
 }
 
@@ -2008,6 +2018,7 @@ function fillSettings() {
   document.getElementById("cfg_tts_coins").value = c.tts_filter_coins ?? 1;
   document.getElementById("cfg_tts_likes").value = c.tts_filter_likes ?? 100;
   ttsFilterUI();
+  if (typeof annFill === "function") annFill();
   updSxDots();
 }
 
@@ -2061,6 +2072,7 @@ function collectSettings() {
   DATA.config.tts_filter_list = document.getElementById("cfg_tts_list").value;
   DATA.config.tts_filter_coins = parseInt(document.getElementById("cfg_tts_coins").value) || 1;
   DATA.config.tts_filter_likes = parseInt(document.getElementById("cfg_tts_likes").value) || 100;
+  if (typeof annCollect === "function") annCollect();
 }
 
 async function saveSettings() { await saveCfgNow(); }   // совместимость
@@ -2075,6 +2087,7 @@ const SX_META = {
   filter: ["🛡 Кого озвучивать", "Фильтр, чтобы не читать спам"],
   guard:  ["🧹 Защита от спама", "Мат, растяжки, флуд и повторы не попадут в озвучку"],
   vvoices:["🎭 Голоса зрителей", "Зритель пишет команду — и его читают выбранным голосом"],
+  announce:["📣 Анонсы и итоги", "«Я в эфире!» и итоги эфира — в Telegram и Discord"],
 };
 
 function sxGo(s) {
@@ -2869,7 +2882,8 @@ setInterval(pollTimer, 1000);
 function renderPanelButtons() {
   const box = document.getElementById("panelButtons");
   if (!box) return;
-  const items = (DATA.profiles[activeProfile] || {}).panel || [];
+  // кнопки — из эфирной вкладки: программа жмёт именно их, даже если сейчас открыта другая
+  const items = (DATA.profiles[liveProfile()] || {}).panel || [];
   if (!items.length) {
     box.innerHTML = '<div class="hint pb-empty">Кнопок пока нет — на главной нажми «+ Создать событие» → «🎛 Кнопка панели»</div>';
     return;

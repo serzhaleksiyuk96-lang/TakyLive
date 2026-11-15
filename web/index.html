@@ -84,13 +84,14 @@
   button.icon { padding: 6px 9px; }
 
   /* ── Поля ввода ── */
-  input, select {
+  input, select, textarea {
     background: rgba(10,12,19,0.6); border: 1px solid var(--border2);
     color: var(--text); padding: 9px 12px; border-radius: var(--radius);
     font-size: 13px; font-family: inherit; width: 100%;
     transition: border-color .15s, box-shadow .15s;
   }
-  input:focus, select:focus {
+  textarea { resize: vertical; line-height: 1.45; }
+  input:focus, select:focus, textarea:focus {
     outline: none; border-color: var(--indigo);
     box-shadow: 0 0 0 3px rgba(99,102,241,0.18);
   }
@@ -1002,6 +1003,22 @@
     display: flex; flex-direction: column; gap: 10px;
   }
   .dash-tile.tile-timer { border-color: rgba(34,211,238,0.3); }
+  .dash.dash2 { grid-template-columns: 1.4fr 1fr; }
+  @media (max-width: 900px) { .dash.dash2 { grid-template-columns: 1fr; } }
+  .lv-kpis { display: flex; gap: 18px; flex-wrap: wrap; }
+  .lv-kpi b { display: block; font-size: 20px; font-variant-numeric: tabular-nums; }
+  .lv-kpi span { color: var(--text-dim); font-size: 12px; }
+  .rm-wrap { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .rm-qr { width: 216px; height: 216px; flex: none; border-radius: 12px; background: rgba(255,255,255,0.04);
+           display: flex; align-items: center; justify-content: center; text-align: center; padding: 10px; }
+  .rm-qr svg { width: 100%; height: 100%; border-radius: 8px; }
+  .rm-info { flex: 1; min-width: 260px; }
+  .rm-steps { padding-left: 18px; color: var(--text); }
+  .rm-steps li { margin-bottom: 4px; }
+  .rm-url { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.05); word-break: break-all; font-size: 12.5px; }
+  .ann-h { margin: 18px 0 2px; font-weight: 600; color: var(--text); }
+  #lvEndBtn.on { border-color: rgba(52,211,153,0.6); background: rgba(52,211,153,0.12); }
+  .ann-chat { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
   .dt-head { display: flex; align-items: center; gap: 10px; }
   .dt-name { font-size: 14px; font-weight: 600; }
   .dt-head .ph-badge { margin-left: auto; }
@@ -1260,6 +1277,7 @@
         <div class="sx-it" data-s="filter" onclick="sxGo('filter')">🛡 Кого озвучивать<span class="sx-dot" id="sxDot_filter"></span></div>
         <div class="sx-it" data-s="guard" onclick="sxGo('guard')">🧹 Защита от спама<span class="sx-dot" id="sxDot_guard"></span></div>
         <div class="sx-it" data-s="vvoices" onclick="sxGo('vvoices')">🎭 Голоса зрителей<span class="sx-dot" id="sxDot_vvoices"></span></div>
+        <div class="sx-it" data-s="announce" onclick="sxGo('announce')">📣 Анонсы и итоги<span class="sx-dot" id="sxDot_announce"></span></div>
       </nav>
       <div class="sx-main" id="sxMain" data-tr="servertap">
         <div class="sx-head"><b id="sxTitle">🎵 TikTok</b><span class="ev-saved" id="cfgSaveHint">✓ Сохранено</span></div>
@@ -1557,6 +1575,67 @@
         <div class="sx-note" id="guardStats">Отфильтровано за этот запуск: пока ничего.</div>
         </section>
 
+        <section class="sx-sec hidden" data-s="announce">
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">«Я в эфире!» при подключении</div><div class="d">уходит один раз в начале эфира, не при каждом переподключении</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_ann_start_on" checked> Анонс</label>
+        </div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Текст анонса</div><div class="d">{link} — ссылка на твой эфир, {nick} — ник</div></div>
+          <textarea id="cfg_ann_start_text" class="sx-in" rows="2" placeholder="🔴 Я в эфире на TikTok! Заходи: {link}"></textarea>
+        </div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Итоги после эфира</div><div class="d">монеты, топ дарителей, лайки — после «⏹ Отключиться»</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_ann_end_on" checked> Итоги</label>
+        </div>
+
+        <div class="ann-h">✈ Telegram</div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Писать в Telegram</div><div class="d">через своего бота — канал или личка</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_ann_tg_on"> Telegram</label>
+        </div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Токен бота</div><div class="d">@BotFather → /newbot → скопируй токен</div></div>
+          <input id="cfg_ann_tg_token" class="sx-in" type="password" placeholder="123456789:AA…">
+        </div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Куда писать</div><div class="d">@имя_канала (бот — админ канала) или номер чата</div></div>
+          <input id="cfg_ann_tg_chat" class="sx-in" placeholder="@my_channel">
+        </div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Проверка</div><div class="d">«Найти чат» покажет, кому бот может писать</div></div>
+          <span class="sx-ok" id="annTgHint"></span>
+          <button class="small" onclick="annFindChats()">🔎 Найти чат</button>
+          <button class="small" onclick="annTest('tg')">📨 Проверить</button>
+        </div>
+        <div id="annChats"></div>
+        <div class="sx-note">Как настроить: в Telegram открой <b>@BotFather</b> → <code>/newbot</code> → придумай имя → скопируй токен сюда.
+          Для канала добавь бота в администраторы канала и впиши <code>@имя_канала</code>. Для лички — напиши своему боту <code>/start</code>
+          и нажми «🔎 Найти чат».</div>
+
+        <div class="ann-h">🎮 Discord</div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Писать в Discord</div><div class="d">через вебхук канала</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_ann_dc_on"> Discord</label>
+        </div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Ссылка вебхука</div><div class="d">Настройки канала → Интеграции → Вебхуки</div></div>
+          <input id="cfg_ann_dc_webhook" class="sx-in" type="password" placeholder="https://discord.com/api/webhooks/…">
+        </div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Проверка</div><div class="d">отправит пример анонса в канал</div></div>
+          <span class="sx-ok" id="annDcHint"></span>
+          <button class="small" onclick="annTest('dc')">📨 Проверить</button>
+        </div>
+
+        <div class="ann-h">💎 Деньги в итогах</div>
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Стример получает за 1 монету ≈</div><div class="d">примерно $0.005 — это оценка; точную сумму показывает TikTok. 0 — не показывать деньги</div></div>
+          <input id="cfg_coin_value" class="sx-in sx-short" type="number" min="0" step="0.0001" placeholder="0.005">
+          <input id="cfg_coin_currency" class="sx-in sx-short" style="width:60px" placeholder="$">
+        </div>
+        </section>
+
         <section class="sx-sec hidden" data-s="vvoices">
         <div class="sx-row "><div class="sx-l"><div class="t">Зрители выбирают голос</div><div class="d">пишут команду в чат — и дальше их сообщения читаются этим голосом</div></div>
           <label class="chk"><input type="checkbox" id="cfg_voice_on"> Вкл</label>
@@ -1619,7 +1698,7 @@
       <div class="row" style="margin-bottom:12px">
         <h3 style="margin:0">📋 События в реальном времени</h3>
         <div class="spacer"></div>
-        <button class="small" onclick="window.location='/api/stream_report'">📊 Скачать итоги стрима</button>
+        <button class="small" onclick="openReport()">📊 Итоги эфира</button>
         <button class="small" onclick="simulateMenu()">🧪 Симулировать событие</button>
       </div>
       <div class="log-box" id="logBox"></div>
@@ -1665,6 +1744,52 @@
         <div class="dt-btns">
           <button class="small" onclick="openOv('ov9')">👁 Открыть</button>
           <button class="small" onclick="togglePanelCfg('scSettings',this)">⚙ Настроить</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="dash dash2">
+      <div class="dash-tile">
+        <div class="dt-head">
+          <span class="dt-name">📊 Итоги эфира</span>
+          <span class="ph-badge" id="stBadge">нет эфира</span>
+        </div>
+        <div class="lv-kpis" id="stKpis"><span class="hint">Статистика считается с подключения к эфиру до «⏹ Отключиться» и сохраняется.</span></div>
+        <div class="dt-btns">
+          <button class="small primary" onclick="openReport()">📊 Открыть итоги</button>
+          <button class="small" id="lvEndBtn" onclick="lvEndToggle()" title="Отправлять итоги в Telegram / Discord после «⏹ Отключиться»">📣 Итоги в чаты</button>
+        </div>
+      </div>
+      <div class="dash-tile">
+        <div class="dt-head">
+          <span class="dt-name">📱 Пульт с телефона</span>
+          <span class="ph-badge" id="rmBadge">выключен</span>
+        </div>
+        <div class="dt-status"><span class="dt-dot" id="rmDot"></span><span id="rmStatus">кнопки панели, озвучка и таймер — с телефона</span></div>
+        <div class="dt-btns">
+          <button class="small" id="rmToggle" onclick="rmSet(!RM.running)">Включить</button>
+          <button class="small" onclick="togglePanelCfg('rmCard',this)">📷 QR-код</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="rmCard">
+      <h3>📱 Пульт с телефона</h3>
+      <div class="rm-wrap">
+        <div class="rm-qr" id="rmQr"><span class="hint">включи пульт — появится QR-код</span></div>
+        <div class="rm-info">
+          <ol class="rm-steps">
+            <li>Телефон и этот компьютер — в <b>одной сети Wi-Fi</b>.</li>
+            <li>Наведи камеру телефона на QR-код и открой ссылку. Можно добавить её на главный экран.</li>
+            <li>Если Windows спросит про доступ к сети для TakyLive — нажми <b>«Разрешить»</b> (частные сети).</li>
+          </ol>
+          <div class="rm-url mono" id="rmUrl"></div>
+          <div class="row" style="gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="small" onclick="rmCopy(this)">📋 Копировать ссылку</button>
+            <button class="small" onclick="rmReset()">🔄 Новая ссылка</button>
+            <span class="hint" id="rmHint"></span>
+          </div>
+          <div class="hint" style="margin-top:10px">Ссылка секретная: по ней можно жать кнопки панели. Отправил не тому — нажми «Новая ссылка», старая перестанет работать. Настройки, ключи и пароли через пульт не видны.</div>
         </div>
       </div>
     </div>
@@ -2031,5 +2156,6 @@
 <script src="/web/update.js?v=__VERSION__"></script>
 <script src="/web/mediapick.js?v=__VERSION__"></script>
 <script src="/web/showcase-ui.js?v=__VERSION__"></script>
+<script src="/web/live.js?v=__VERSION__"></script>
 </body>
 </html>
