@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>ИИ-соведущий</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: transparent; overflow: hidden; font-family: "Inter", "Segoe UI", Roboto, sans-serif; color: #fff; }
+  #card { position: fixed; left: 20px; bottom: 20px; width: 660px; display: flex; gap: 14px; align-items: flex-end;
+          opacity: 0; transform: translateY(24px) scale(.96); transition: all .45s cubic-bezier(.2,1.3,.4,1); }
+  #card.show { opacity: 1; transform: none; }
+  .ava { width: 74px; height: 74px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 38px;
+         background: radial-gradient(circle at 35% 30%, #2a3150, #0b0e18); position: relative;
+         box-shadow: 0 0 0 3px #0b0e18, 0 0 0 6px #818cf8, 0 0 26px rgba(34,211,238,.6); }
+  .talking .ava { animation: talk .35s ease-in-out infinite alternate; }
+  @keyframes talk { to { box-shadow: 0 0 0 3px #0b0e18, 0 0 0 6px #22d3ee, 0 0 40px rgba(34,211,238,.9); } }
+  .bub { position: relative; flex: 1; padding: 14px 20px 16px; border-radius: 20px 20px 20px 6px;
+         background: rgba(14,17,28,.86); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.14);
+         box-shadow: 0 14px 40px rgba(0,0,0,.5); }
+  .bub::before { content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
+                 background: linear-gradient(135deg, #6366f1, #22d3ee, #ec4899);
+                 -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+                 -webkit-mask-composite: xor; mask-composite: exclude; }
+  .name { font-size: 14px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase;
+          background: linear-gradient(90deg, #a5b4fc, #67e8f9); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .txt { font-size: 24px; font-weight: 600; line-height: 1.3; margin-top: 4px; min-height: 31px; text-shadow: 0 1px 4px rgba(0,0,0,.4); }
+  .cur { display: inline-block; width: 3px; height: 1em; background: #22d3ee; margin-left: 2px; vertical-align: -3px; animation: blink .8s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+</style>
+</head>
+<body>
+<div id="card"><div class="ava">🤖</div><div class="bub"><div class="name" id="name">Таки</div><div class="txt"><span id="txt"></span><span class="cur" id="cur"></span></div></div></div>
+<script>
+const $ = id => document.getElementById(id);
+const DEMO = new URLSearchParams(location.search).has("demo");
+let since = null, queue = [], busy = false;
+
+async function show(ev) {
+  busy = true;
+  $("name").textContent = ev.user || "Соведущий";
+  $("txt").textContent = ""; $("cur").style.display = "";
+  $("card").classList.add("show", "talking");
+  const text = String(ev.text || "");
+  for (let i = 1; i <= text.length; i++) {                // печатается, пока звучит
+    $("txt").textContent = text.slice(0, i);
+    await new Promise(r => setTimeout(r, 38));
+  }
+  $("card").classList.remove("talking"); $("cur").style.display = "none";
+  await new Promise(r => setTimeout(r, DEMO ? 1e9 : Math.max(4000, text.length * 55)));
+  $("card").classList.remove("show");
+  await new Promise(r => setTimeout(r, 500));
+  busy = false;
+  if (queue.length) show(queue.shift());
+}
+
+async function poll() {
+  try {
+    const d = await (await fetch("/api/overlay?since=" + (since ?? 0), {cache: "no-store"})).json();
+    if (since === null) { since = d.seq; return; }        // старое при загрузке не показываем
+    since = d.seq;
+    for (const e of d.new_events) if (e.type === "ai") queue.push(e);
+    if (queue.length > 3) queue = queue.slice(-3);
+    if (!busy && queue.length) show(queue.shift());
+  } catch (e) {}
+}
+if (DEMO) show({user: "Таки", text: "Аня, спасибо за розу! Лови зомби — надеюсь, стример успеет убежать 😄"});
+else { poll(); setInterval(poll, 700); }
+</script>
+</body>
+</html>

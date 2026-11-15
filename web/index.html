@@ -2033,6 +2033,47 @@
       <button class="small" onclick="whAdd()">+ Сектор</button>
     </div>
 
+    <!-- 🤖 ИИ-соведущий -->
+    <div class="card ia-card">
+      <div class="ia-head">
+        <h3>🤖 ИИ-соведущий</h3>
+        <label class="chk"><input type="checkbox" id="ai_on" onchange="iaSetBool('ai_on', this)"> Включено</label>
+        <span class="hint" id="aiState"></span>
+        <div class="spacer"></div>
+        <button class="small primary" onclick="aiTest(this)">🧪 Проверить</button>
+      </div>
+      <div class="hint">Отвечает зрителям, которые к нему обращаются, и благодарит за подарки — своим голосом.
+        Только говорит, команды в игру не запускает. Оверлей «🤖 ИИ-соведущий» — в «📺 Оверлеи OBS».</div>
+      <div class="ia-opts">
+        <label>Сервис <select id="ai_provider" style="width:auto" onchange="aiProvider(this.value)"></select></label>
+        <label>Модель <input id="ai_model" class="ia-txt" oninput="iaSetStr('ai_model', this)"></label>
+        <label id="aiKeyRow">Ключ API <input id="ai_key" type="password" class="ia-txt" style="width:230px" oninput="iaSetStr('ai_key', this)"></label>
+        <label id="aiUrlRow">Адрес <input id="ai_url" class="ia-txt" style="width:260px" oninput="iaSetStr('ai_url', this)"></label>
+      </div>
+      <div class="hint" id="aiHint" style="margin-top:-4px"></div>
+      <div class="ia-opts">
+        <label>Имя <input id="ai_name" class="ia-txt" style="width:120px" oninput="iaSetStr('ai_name', this)"></label>
+        <label>Голос <span id="aiVoiceBtn"></span></label>
+        <label class="chk"><input type="checkbox" id="ai_speak" onchange="iaSetBool('ai_speak', this)"> Говорить голосом</label>
+      </div>
+      <div class="ia-lbl">Характер — каким ему быть (пара предложений)</div>
+      <textarea id="ai_persona" rows="2" style="width:100%" oninput="iaSetStr('ai_persona', this)"></textarea>
+      <div class="ia-opts">
+        <label class="chk"><input type="checkbox" id="ai_on_mention" onchange="iaSetBool('ai_on_mention', this)"> Отвечать, когда зовут</label>
+        <label>по словам <input id="ai_triggers" class="ia-txt" style="width:180px" oninput="iaSetStr('ai_triggers', this)"></label>
+        <label class="chk"><input type="checkbox" id="ai_on_gift" onchange="iaSetBool('ai_on_gift', this)"> Благодарить за подарки</label>
+        <label>от <input type="number" min="1" id="ai_gift_min" class="ia-num" oninput="iaSetNum('ai_gift_min', this, 1)"> монет</label>
+        <label class="chk"><input type="checkbox" id="ai_on_sub" onchange="iaSetBool('ai_on_sub', this)"> За подписку ⭐</label>
+        <label class="chk"><input type="checkbox" id="ai_on_follow" onchange="iaSetBool('ai_on_follow', this)"> За фоллов</label>
+      </div>
+      <div class="ia-opts">
+        <label title="Пауза между репликами, чтобы не болтал без остановки">Не чаще раза в <input type="number" min="2" id="ai_cooldown" class="ia-num" oninput="iaSetNum('ai_cooldown', this, 2)"> сек</label>
+        <label title="Один зритель может позвать соведущего не чаще">одному зрителю — раз в <input type="number" min="0" id="ai_user_cd" class="ia-num" oninput="iaSetNum('ai_user_cd', this, 0)"> сек</label>
+        <label>Длина ответа до <input type="number" min="60" max="400" id="ai_max_chars" class="ia-num" oninput="iaSetNum('ai_max_chars', this, 60)"> символов</label>
+      </div>
+      <div class="ia-score" id="aiOut"></div>
+    </div>
+
     <!-- 💎 Очки зрителей -->
     <div class="card ia-card">
       <div class="ia-head">

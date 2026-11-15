@@ -410,7 +410,8 @@ class State:
         }
         import copy as _copy
         import interactive as _ia                    # очки, битва команд, колесо — настройки по умолчанию
-        for _d in (_ia.PTS_DEFAULTS, _ia.BATTLE_DEFAULTS, _ia.WHEEL_DEFAULTS):
+        import cohost as _ch                         # ИИ-соведущий — настройки по умолчанию
+        for _d in (_ia.PTS_DEFAULTS, _ia.BATTLE_DEFAULTS, _ia.WHEEL_DEFAULTS, _ch.DEFAULTS):
             for _k, _v in _d.items():
                 self.config.setdefault(_k, _copy.deepcopy(_v))
         # profiles = { "Выживание": {gifts:[], likes:[], subs:[], follows:[]}, ... }
@@ -1522,6 +1523,7 @@ def handle_gift(gift_name, gift_id, count, user, diamonds=0):
         icon="🎁", color="#00d4ff", amount=(diamonds or 1) * count, media=media)
     check_goals()
     ia_gift(user, gift_name, gift_id, count, diamonds)     # очки, битва команд, колесо
+    ai_gift(user, gift_name, gift_id, count, diamonds)     # ИИ-соведущий благодарит
     # Случайное событие при любом подарке (если включено)
     if STATE.config.get("random_enabled") and STATE.config.get("random_on_gift"):
         schedule(fire_random_event("подарок"))
@@ -1588,6 +1590,7 @@ def handle_sub(user):
     check_goals()
     if STATE.config.get("pts_on"):
         STATE.points.on_sub(STATE.config, ia_key(user), user)
+    ai_event("sub", user, f"{user} оформил платную подписку ⭐ на стримера. Поблагодари.", "ai_on_sub")
     for a in subs:
         fire_action(a, count=1, user=user)
 
@@ -1603,6 +1606,7 @@ def handle_follow(user):
     check_goals()
     if STATE.config.get("pts_on"):
         STATE.points.on_follow(STATE.config, ia_key(user), user)
+    ai_event("follow", user, f"{user} подписался на профиль стримера. Коротко поприветствуй.", "ai_on_follow")
     for a in follows:
         fire_action(a, count=1, user=user)
 
@@ -2144,6 +2148,7 @@ def handle_comment(user, text, display=None, is_follower=False, acc=None, roles=
             schedule(tts_speak(display, say, voice=viewer_voice(user, acc, roles)))
     # Чат-команды зрителей (!моб, !дроп и т.д.) — работают для каждого сообщения
     if fresh and not vc:
+        ai_chat(user, display, text)                  # ИИ-соведущий: запоминает чат, отвечает на обращения
         if not ia_chat(user, display, text):          # !очки, !красные, !колесо — свои команды
             check_chat_command(text, display, uid=user)
     if user in STATE.seen_users:
@@ -2580,6 +2585,99 @@ async def h_remote_timer(request):
         async def json():
             return {"action": act, "seconds": 60}
     return await h_timer(_Req())
+
+
+# ── 🤖 ИИ-соведущий ──────────────────────────────────────────────────────────
+def ai_mentioned(text):
+    msg = str(text or "").strip().lower()
+    for t in re.split(r"[,;\n]", str(STATE.config.get("ai_triggers") or "")):
+        t = t.strip().lower()
+        if not t:
+            continue
+        if t.startswith("!") and (msg == t or msg.startswith(t + " ")):
+            return True
+        if not t.startswith("!") and re.search(r"(^|[\s,.!?:;(])" + re.escape(t) + r"($|[\s,.!?:;)])", msg):
+            return True
+    return False
+
+
+def ai_chat(uid, display, text):
+    text = str(text or "").strip()
+    if not text:
+        return
+    STATE.cohost.note(f"{display}: {text[:140]}")
+    cfg = STATE.config
+    if cfg.get("ai_on") and cfg.get("ai_on_mention", True) and ai_mentioned(text):
+        if STATE.cohost.push(cfg, "mention", display, f"Зритель {display} пишет тебе в чате: «{text[:300]}»", key=uid):
+            STATE.log("ИИ", f"{display} обратился к соведущему")
+
+
+def ai_gift(user, gift_name, gift_id, count, diamonds):
+    count = max(1, int(count or 1))
+    coins = int(diamonds or 0) * count
+    STATE.cohost.note(f"{user} подарил «{gift_name}» x{count} ({coins} монет)")
+    cfg = STATE.config
+    try:
+        need = int(cfg.get("ai_gift_min", 10) or 0)
+    except (TypeError, ValueError):
+        need = 10
+    if not (cfg.get("ai_on") and cfg.get("ai_on_gift", True)) or coins < max(1, need):
+        return
+    act = find_gift_action(gift_name, gift_id)
+    card = str(act.get("title") or "").strip() if act and _is_enabled(act) else ""
+    STATE.cohost.push(cfg, "gift", user, f"{user} подарил «{gift_name}» x{count} ({coins} монет)"
+                      + (f" — в игре от этого будет «{card}»" if card else "") + ". Коротко и весело поблагодари.")
+
+
+def ai_event(kind, user, text, flag):
+    STATE.cohost.note(text.split(".")[0])
+    if STATE.config.get("ai_on") and STATE.config.get(flag):
+        STATE.cohost.push(STATE.config, kind, user, text)
+
+
+def ai_context():
+    prof = active_profile()
+    g = str(prof.get("game") or "")
+    names = {"minecraft": "Minecraft", "keyboard": "", **SERVER_GAMES, **MOD_GAMES,
+             "cs2": "CS2", "valheim": "Valheim"}
+    return STATE.config.get("tiktok_username", ""), names.get(g, g)
+
+
+async def ai_say(task, text):
+    """Реплика соведущего: в лог, в оверлей и голосом."""
+    import cohost
+    import textfilter as _tf
+    cfg = STATE.config
+    if cfg.get("tts_profanity", "beep") != "off":
+        text = _tf.censor(text, [w for w in str(cfg.get("tts_bad_words", "")).split(",") if w.strip()])[0]
+    name = str(cfg.get("ai_name") or "Соведущий")
+    STATE.log("ИИ", f"🤖 {name}: {text}")
+    STATE.push_overlay("ai", name, text, icon="🤖", color="#a78bfa")
+    if cfg.get("ai_speak", True):
+        await tts_speak(name, cohost.speakable(text), voice=cfg.get("ai_voice") or None, read_name=False)
+
+
+async def h_ai_test(request):
+    """🧪 Проверить: спросить ИИ прямо сейчас (без очереди) и сказать ответ."""
+    import cohost
+    d = await request.json() if request.can_read_body else {}
+    cfg = dict(STATE.config)
+    cfg.update({k: v for k, v in (d or {}).items() if k.startswith("ai_")})
+    task = {"kind": "test", "user": "", "text": str(d.get("text") or
+            "Это проверка связи перед эфиром. Коротко поздоровайся со зрителями и представься.")[:300]}
+    nick, game = ai_context()
+    try:
+        text = await cohost.ask(cfg, STATE.cohost.messages(cfg, task, nick, game), int(cfg.get("ai_max_chars") or 180))
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+    await ai_say(task, text)
+    return web.json_response({"ok": True, "text": text})
+
+
+async def h_ai_presets(request):
+    import cohost
+    return web.json_response({"presets": cohost.PRESETS, "busy": STATE.cohost.busy,
+                              "queue": len(STATE.cohost.queue), "last": STATE.cohost.last_reply})
 
 
 # ── 💎 Очки зрителей, ⚔ битва команд, 🎡 колесо фортуны ────────────────────
@@ -3417,7 +3515,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.68"
+APP_VERSION = "1.69"
 APP_DATE = "2026-11-16"
 
 
@@ -4197,6 +4295,7 @@ def make_app():
                     STATE.log("ОШИБКА", f"фоновая задача: {e}")
 
         asyncio.get_event_loop().create_task(_background())
+        asyncio.get_event_loop().create_task(STATE.cohost.run(lambda: STATE.config, ai_context, ai_say))
         if STATE.config.get("remote_on"):                  # пульт был включён — поднимаем снова
             await STATE.remote.start()
 
@@ -4297,6 +4396,8 @@ def make_app():
     app.router.add_post("/api/announce/test", h_announce_test)
     app.router.add_post("/api/announce/summary", h_announce_summary)
     app.router.add_post("/api/announce/tg_chats", h_announce_tg_chats)
+    app.router.add_post("/api/ai/test", h_ai_test)
+    app.router.add_get("/api/ai/presets", h_ai_presets)
     app.router.add_get("/api/battle", h_battle)
     app.router.add_post("/api/battle/start", h_battle_start)
     app.router.add_post("/api/battle/stop", h_battle_stop)
@@ -4401,6 +4502,8 @@ def main():
     import streamstats as _ss
     STATE.stats = _ss.StreamStats(BASE_DIR, STATE.log)
     STATE.stats.on_end = _stats_ended
+    import cohost as _cohost
+    STATE.cohost = _cohost.CoHost(STATE.log)
     import interactive as _ia
     STATE.points = _ia.Points(os.path.join(BASE_DIR, "viewer_points.json"), STATE.log)
     STATE.battle = _ia.Battle(STATE.log)
