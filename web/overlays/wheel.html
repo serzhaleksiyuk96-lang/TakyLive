@@ -5,131 +5,287 @@
 <title>Колесо фортуны</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: transparent; overflow: hidden; font-family: "Segoe UI", Roboto, sans-serif; color: #fff; }
+  body { background: transparent; overflow: hidden; font-family: "Inter", "Segoe UI", Roboto, sans-serif; color: #fff; }
   #wrap { position: fixed; left: 50%; top: 10px; transform: translateX(-50%) scale(1); width: 580px;
-          display: flex; flex-direction: column; align-items: center; transition: opacity .5s, transform .5s; }
-  #wrap.hide { opacity: 0; transform: translateX(-50%) scale(.7); }
-  .who { font-size: 24px; position: relative; z-index: 2; font-weight: 800; padding: 6px 18px; border-radius: 14px; margin-bottom: 8px; min-height: 46px;
-         background: rgba(10,12,19,.8); border: 2px solid rgba(255,255,255,.25); text-shadow: 0 2px 8px rgba(0,0,0,.7);
-         max-width: 560px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+          display: flex; flex-direction: column; align-items: center; transition: opacity .5s, transform .5s cubic-bezier(.2,1.2,.4,1); }
+  #wrap.hide { opacity: 0; transform: translateX(-50%) scale(.75); }
+  .pill { position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 10px; max-width: 560px;
+          padding: 9px 20px 9px 12px; margin-bottom: 10px; border-radius: 999px; font-size: 21px; font-weight: 700;
+          background: rgba(14,17,28,.78); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.12);
+          box-shadow: 0 8px 30px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.08); }
+  .pill .ic { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 16px;
+              background: linear-gradient(135deg, #6366f1, #22d3ee); box-shadow: 0 0 14px rgba(34,211,238,.6); flex: none; }
+  .pill span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .box { position: relative; width: 560px; height: 560px; }
-  canvas { position: absolute; inset: 0; width: 560px; height: 560px; }
-  .ptr { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); width: 0; height: 0;
-         border-left: 22px solid transparent; border-right: 22px solid transparent; border-top: 44px solid #fbbf24;
-         filter: drop-shadow(0 3px 6px rgba(0,0,0,.6)); }
-  /* оправа-картинка: обод с лампочками, медальон в центре, стрелка с рубином */
+  canvas#cv { position: absolute; inset: 0; width: 560px; height: 560px; }
+  canvas#fx { position: fixed; inset: 0; width: 100vw; height: 100vh; pointer-events: none; z-index: 5; }
+  .res { position: relative; z-index: 2; margin-top: 12px; max-width: 560px; padding: 12px 26px 12px 22px; border-radius: 20px;
+         display: flex; align-items: center; gap: 14px; opacity: 0; transform: translateY(12px) scale(.9);
+         background: rgba(14,17,28,.82); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.14);
+         box-shadow: 0 14px 40px rgba(0,0,0,.5); transition: all .5s cubic-bezier(.2,1.4,.4,1); }
+  .res.show { opacity: 1; transform: none; }
+  .res .bar { width: 6px; align-self: stretch; border-radius: 3px; flex: none; }
+  .res small { display: block; font-size: 13px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; opacity: .6; }
+  .res b { display: block; font-size: 32px; font-weight: 800; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 480px; }
+  .q { margin-top: 8px; font-size: 14px; font-weight: 600; opacity: .8; text-shadow: 0 1px 6px rgba(0,0,0,.9); min-height: 20px; }
+  /* «золотой» стиль — картинки обода, медальона и стрелки */
   .skin { position: absolute; pointer-events: none; display: none; }
-  .skinned .skin { display: block; }
-  .skinned .ptr { display: none; }
+  .gold .skin { display: block; }
   .rim { inset: 0; width: 560px; height: 560px; filter: drop-shadow(0 10px 28px rgba(0,0,0,.65)); }
-  .hub { left: 50%; top: 50%; width: 118px; height: 118px; transform: translate(-50%, -50%);
-         filter: drop-shadow(0 4px 10px rgba(0,0,0,.6)); }
-  .gem { left: 50%; top: 28px; height: 112px; transform: translateX(-50%); transform-origin: 50% 12%;
-         filter: drop-shadow(0 4px 8px rgba(0,0,0,.6)); }
-  .spinning .rim { animation: bulbs .28s steps(2) infinite; }
-  .spinning .gem { animation: tick .14s ease-in-out infinite alternate; }
-  @keyframes bulbs { 0% { filter: drop-shadow(0 10px 28px rgba(0,0,0,.65)) brightness(1); }
-                     100% { filter: drop-shadow(0 10px 28px rgba(0,0,0,.65)) drop-shadow(0 0 18px rgba(255,214,120,.55)) brightness(1.18); } }
-  @keyframes tick { from { transform: translateX(-50%) rotate(-7deg); } to { transform: translateX(-50%) rotate(5deg); } }
-  .res { margin-top: 10px; font-size: 34px; font-weight: 900; padding: 8px 26px; border-radius: 18px; opacity: 0;
-         background: rgba(10,12,19,.85); border: 4px solid #fbbf24; transform: scale(.6); transition: all .45s cubic-bezier(.2,1.4,.4,1);
-         white-space: nowrap; max-width: 560px; overflow: hidden; text-overflow: ellipsis; }
-  .res.show { opacity: 1; transform: scale(1); }
-  .q { margin-top: 6px; font-size: 15px; font-weight: 600; opacity: .85; text-shadow: 0 1px 6px rgba(0,0,0,.9); min-height: 20px; }
+  .hub { left: 50%; top: 50%; width: 118px; height: 118px; transform: translate(-50%, -50%); filter: drop-shadow(0 4px 10px rgba(0,0,0,.6)); }
+  .gem { left: 50%; top: 28px; height: 112px; transform: translateX(-50%); transform-origin: 50% 12%; filter: drop-shadow(0 4px 8px rgba(0,0,0,.6)); }
+  .gold.spinning .rim { animation: bulbs .28s steps(2) infinite; }
+  @keyframes bulbs { 100% { filter: drop-shadow(0 10px 28px rgba(0,0,0,.65)) drop-shadow(0 0 18px rgba(255,214,120,.55)) brightness(1.18); } }
 </style>
 </head>
 <body>
 <div id="wrap" class="hide">
-  <div class="who" id="who">🎡 Колесо фортуны</div>
-  <div class="box" id="box"><canvas id="cv" width="1120" height="1120"></canvas><div class="ptr"></div>
-    <img class="skin rim" id="rim" src="wheel/rim.webp" alt="">
-    <img class="skin hub" src="wheel/hub.webp" alt="">
-    <img class="skin gem" src="wheel/pointer.webp" alt=""></div>
-  <div class="res" id="res"></div>
+  <div class="pill"><div class="ic">🎡</div><span id="who">Колесо фортуны</span></div>
+  <div class="box" id="box">
+    <canvas id="cv" width="1120" height="1120"></canvas>
+    <img class="skin rim" id="rim" alt=""><img class="skin hub" id="hub" alt=""><img class="skin gem" id="gem" alt="">
+  </div>
+  <div class="res" id="res"><div class="bar" id="resBar"></div><div><small>Выпало</small><b id="resText"></b></div></div>
   <div class="q" id="q"></div>
 </div>
+<canvas id="fx"></canvas>
 
 <script>
 const $ = id => document.getElementById(id);
 const Q = new URLSearchParams(location.search);
 const DEMO = Q.has("demo"), ALWAYS = Q.has("always");
-const cv = $("cv"), ctx = cv.getContext("2d"), C = 560;
-let SECT = [], angle = 0, spinId = 0, anim = null;
-// Оправа загрузилась — секторы прячутся под обод (дыра в ободе ≈ 29.5% ширины). Нет — рисуем простое колесо
-let SKIN = false, R = 540;
-$("rim").onload = () => { SKIN = true; R = 0.318 * 1120; $("box").classList.add("skinned"); draw(); };
-$("rim").onerror = () => { SKIN = false; R = 540; };
+const cv = $("cv"), ctx = cv.getContext("2d"), C = 560, TAU = Math.PI * 2;
+let SECT = [], angle = 0, spinId = 0, anim = null, STYLE = "", winner = -1, winT = 0;
+let ptrKick = 0, lastIdx = -1, lights = 0, spinning = false;
 
+// ── цвета ──
+function hex2rgb(h) { h = String(h).replace("#", ""); if (h.length === 3) h = h.replace(/./g, "$&$&");
+  const n = parseInt(h, 16) || 0; return [n >> 16 & 255, n >> 8 & 255, n & 255]; }
+function mix(h, t) {                       // t > 0 — светлее, t < 0 — темнее
+  const [r, g, b] = hex2rgb(h), k = Math.abs(t), to = t > 0 ? 255 : 0;
+  return `rgb(${Math.round(r + (to - r) * k)},${Math.round(g + (to - g) * k)},${Math.round(b + (to - b) * k)})`;
+}
+
+// ── стиль: современный (по умолчанию) или золотой; ?style= в ссылке главнее настройки ──
+function setStyle(st) {
+  st = (Q.get("style") || st) === "gold" ? "gold" : "modern";
+  if (st === STYLE) return;
+  STYLE = st;
+  $("box").classList.toggle("gold", st === "gold");
+  if (st === "gold" && !$("rim").getAttribute("src")) {
+    $("rim").onload = draw;
+    $("rim").src = "wheel/rim.webp"; $("hub").src = "wheel/hub.webp"; $("gem").src = "wheel/pointer.webp";
+  }
+  draw();
+}
+const geo = () => STYLE === "gold" ? {R: 0.318 * 1120, inner: 128, pad: 30, big: 40} : {R: 470, inner: 118, pad: 66, big: 48};
+
+// ── колесо ──
 function draw() {
   ctx.clearRect(0, 0, cv.width, cv.height);
   const n = SECT.length;
   if (!n) return;
-  const step = Math.PI * 2 / n;
+  const {R, inner, pad, big} = geo(), step = TAU / n, modern = STYLE !== "gold";
+  if (modern) drawRing();
   ctx.save();
   ctx.translate(C, C);
   ctx.rotate(angle);
   for (let i = 0; i < n; i++) {
-    const a0 = -Math.PI / 2 + i * step;                // сектор 0 начинается сверху, по часовой
+    const a0 = -Math.PI / 2 + i * step, col = SECT[i].color;
     ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, a0, a0 + step); ctx.closePath();
-    ctx.fillStyle = SECT[i].color; ctx.fill();
-    ctx.lineWidth = 6; ctx.strokeStyle = "rgba(10,12,19,.9)"; ctx.stroke();
+    if (modern) {
+      const g = ctx.createRadialGradient(0, 0, inner * 0.6, 0, 0, R);
+      g.addColorStop(0, mix(col, -0.45)); g.addColorStop(0.55, col); g.addColorStop(1, mix(col, 0.18));
+      ctx.fillStyle = g;
+    } else ctx.fillStyle = col;
+    ctx.fill();
+    if (winner >= 0 && i !== winner) { ctx.fillStyle = `rgba(6,8,14,${0.55 * Math.min(1, winT)})`; ctx.fill(); }
+    ctx.lineWidth = modern ? 5 : 6; ctx.strokeStyle = modern ? "rgba(9,11,19,.95)" : "rgba(10,12,19,.9)"; ctx.stroke();
+    // надпись по радиусу, от края к центру; длинная — в две строки
     ctx.save();
     ctx.rotate(a0 + step / 2);
     ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
-    const inner = SKIN ? 128 : 140, pad = SKIN ? 30 : 40;   // от медальона до края сектора
+    ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2;
     const room = R - inner - pad, label = SECT[i].label;
-    const fit = (text, big, small) => {                     // самый крупный шрифт, при котором влезает
-      let fs = big;
-      ctx.font = `800 ${fs}px Segoe UI, Roboto, sans-serif`;
-      while (ctx.measureText(text).width > room && fs > small) { fs -= 2; ctx.font = `800 ${fs}px Segoe UI, Roboto, sans-serif`; }
-      return fs;
-    };
-    ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 8;
-    let fs = fit(label, SKIN ? 40 : 52, 26);
+    const font = fs => `800 ${fs}px Inter, Segoe UI, Roboto, sans-serif`;
+    const fit = (t, hi, lo) => { let fs = hi; ctx.font = font(fs);
+      while (ctx.measureText(t).width > room && fs > lo) { fs -= 2; ctx.font = font(fs); } return fs; };
+    let fs = fit(label, big, 26);
     const sp = label.indexOf(" ") > 0 ? [...label.matchAll(/ /g)].map(m => m.index)
       .sort((a, b) => Math.abs(a - label.length / 2) - Math.abs(b - label.length / 2))[0] : -1;
-    if (ctx.measureText(label).width > room && sp > 0) {    // длинное — в две строки
+    if (ctx.measureText(label).width > room && sp > 0) {
       const a = label.slice(0, sp), b = label.slice(sp + 1);
-      fs = Math.min(fit(a, 34, 16), fit(b, 34, 16));
-      ctx.font = `800 ${fs}px Segoe UI, Roboto, sans-serif`;
-      ctx.fillText(a, R - pad, -fs * 0.55);
-      ctx.fillText(b, R - pad, fs * 0.6);
+      fs = Math.min(fit(a, 36, 16), fit(b, 36, 16)); ctx.font = font(fs);
+      ctx.fillText(a, R - pad, -fs * 0.55); ctx.fillText(b, R - pad, fs * 0.6);
     } else {
       if (ctx.measureText(label).width > room) fs = fit(label, fs, 16);
       ctx.fillText(label, R - pad, 0);
     }
     ctx.restore();
   }
+  if (modern) {
+    // глубина: тень по краю
+    const sh = ctx.createRadialGradient(0, 0, R * 0.62, 0, 0, R);
+    sh.addColorStop(0, "rgba(0,0,0,0)"); sh.addColorStop(1, "rgba(0,0,0,.32)");
+    ctx.beginPath(); ctx.arc(0, 0, R, 0, TAU); ctx.fillStyle = sh; ctx.fill();
+  }
+  // подсветка выигравшего сектора
+  if (winner >= 0) {
+    const a0 = -Math.PI / 2 + winner * step, pulse = 0.55 + 0.45 * Math.sin(performance.now() / 180);
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R - 3, a0, a0 + step); ctx.closePath();
+    ctx.lineWidth = 8; ctx.strokeStyle = `rgba(255,255,255,${0.5 + 0.5 * pulse})`;
+    ctx.shadowColor = SECT[winner].color; ctx.shadowBlur = 40; ctx.stroke(); ctx.shadowBlur = 0;
+  }
   ctx.restore();
-  if (SKIN) return;                                    // обод и центр — картинками поверх
-  ctx.beginPath(); ctx.arc(C, C, R, 0, Math.PI * 2); ctx.lineWidth = 14; ctx.strokeStyle = "#fbbf24"; ctx.stroke();
-  ctx.beginPath(); ctx.arc(C, C, 70, 0, Math.PI * 2); ctx.fillStyle = "#0a0c13"; ctx.fill();
-  ctx.lineWidth = 8; ctx.strokeStyle = "#fbbf24"; ctx.stroke();
-  ctx.font = "800 64px Segoe UI, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("🎡", C, C + 4);
+  if (modern) { drawGloss(R); drawHub(); drawPointer(R); }
 }
 
-// Сектор i оказывается под стрелкой сверху, когда поворот = −(центр сектора); плюс 6 полных оборотов
+function ringGradient(r) {
+  if (ctx.createConicGradient) {
+    const g = ctx.createConicGradient(lights * 0.02, C, C);
+    g.addColorStop(0, "#6366f1"); g.addColorStop(0.33, "#22d3ee"); g.addColorStop(0.66, "#ec4899"); g.addColorStop(1, "#6366f1");
+    return g;
+  }
+  const g = ctx.createLinearGradient(C - r, C - r, C + r, C + r);
+  g.addColorStop(0, "#6366f1"); g.addColorStop(0.5, "#22d3ee"); g.addColorStop(1, "#ec4899");
+  return g;
+}
+
+function drawRing() {
+  const {R} = geo(), r = R + 26;
+  ctx.save();                                         // мягкое свечение вокруг
+  ctx.beginPath(); ctx.arc(C, C, r, 0, TAU);
+  ctx.shadowColor = "rgba(34,211,238,.55)"; ctx.shadowBlur = 50;
+  ctx.lineWidth = 34; ctx.strokeStyle = ringGradient(r); ctx.stroke();
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(C, C, r, 0, TAU); ctx.lineWidth = 22; ctx.strokeStyle = "rgba(9,11,19,.92)"; ctx.stroke();
+  const N = 32;                                       // огоньки: во время вращения бегут по кругу
+  for (let k = 0; k < N; k++) {
+    const a = -Math.PI / 2 + k * TAU / N, x = C + Math.cos(a) * r, y = C + Math.sin(a) * r;
+    const on = spinning ? ((k + Math.floor(lights)) % 4 === 0) : (k % 2 === 0);
+    ctx.beginPath(); ctx.arc(x, y, on ? 6.5 : 4.5, 0, TAU);
+    ctx.fillStyle = on ? "#fff" : "rgba(255,255,255,.28)";
+    if (on) { ctx.shadowColor = "#a5f3fc"; ctx.shadowBlur = 16; }
+    ctx.fill(); ctx.shadowBlur = 0;
+  }
+}
+
+function drawGloss(R) {
+  ctx.save();
+  ctx.beginPath(); ctx.arc(C, C, R, 0, TAU); ctx.clip();
+  const g = ctx.createRadialGradient(C - R * 0.25, C - R * 0.95, R * 0.05, C - R * 0.1, C - R * 0.6, R * 1.15);
+  g.addColorStop(0, "rgba(255,255,255,.20)"); g.addColorStop(0.45, "rgba(255,255,255,.06)"); g.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = g; ctx.fillRect(C - R, C - R, 2 * R, 2 * R);
+  ctx.restore();
+}
+
+function drawHub() {
+  const r = 92;
+  ctx.save();
+  ctx.beginPath(); ctx.arc(C, C, r + 10, 0, TAU);
+  ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 30; ctx.fillStyle = ringGradient(r); ctx.fill();
+  ctx.restore();
+  const g = ctx.createRadialGradient(C - 26, C - 30, 8, C, C, r);
+  g.addColorStop(0, "#2a3150"); g.addColorStop(1, "#0b0e18");
+  ctx.beginPath(); ctx.arc(C, C, r, 0, TAU); ctx.fillStyle = g; ctx.fill();
+  const pulse = spinning ? 0.75 + 0.25 * Math.sin(performance.now() / 90) : 0.85;   // светящийся центр
+  const c = ctx.createRadialGradient(C, C, 0, C, C, 34);
+  c.addColorStop(0, `rgba(255,255,255,${pulse})`); c.addColorStop(0.35, `rgba(34,211,238,${0.9 * pulse})`); c.addColorStop(1, "rgba(34,211,238,0)");
+  ctx.beginPath(); ctx.arc(C, C, 34, 0, TAU); ctx.fillStyle = c; ctx.fill();
+  ctx.beginPath(); ctx.arc(C, C, r - 1, 0, TAU); ctx.lineWidth = 2; ctx.strokeStyle = "rgba(255,255,255,.12)"; ctx.stroke();
+}
+
+function drawPointer(R) {
+  const top = C - R - 62;
+  ctx.save();
+  ctx.translate(C, top);
+  ctx.rotate(ptrKick * Math.PI / 180);
+  ctx.scale(1.4, 1.4);
+  // скруглённый треугольник остриём вниз: градиент, белая обводка, неоновое свечение
+  const tri = () => {
+    ctx.beginPath();
+    ctx.moveTo(-34, 0);
+    ctx.quadraticCurveTo(-44, 0, -38, 10);
+    ctx.lineTo(-6, 76);
+    ctx.quadraticCurveTo(0, 86, 6, 76);
+    ctx.lineTo(38, 10);
+    ctx.quadraticCurveTo(44, 0, 34, 0);
+    ctx.closePath();
+  };
+  tri();
+  ctx.shadowColor = "rgba(34,211,238,.95)"; ctx.shadowBlur = 30;
+  const g = ctx.createLinearGradient(0, 0, 0, 84);
+  g.addColorStop(0, "#818cf8"); g.addColorStop(1, "#22d3ee");
+  ctx.fillStyle = g; ctx.fill();
+  ctx.shadowBlur = 0; ctx.lineWidth = 5; ctx.strokeStyle = "#ffffff"; ctx.stroke();
+  tri(); ctx.save(); ctx.clip();                      // блик на левой грани
+  const h = ctx.createLinearGradient(-40, 0, 20, 0);
+  h.addColorStop(0, "rgba(255,255,255,.45)"); h.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = h; ctx.fillRect(-44, 0, 50, 86); ctx.restore();
+  ctx.restore();
+}
+
+// ── вращение: сектор i оказывается под стрелкой сверху; стрелка щёлкает на каждой границе ──
 function spin(s) {
-  const n = SECT.length, step = Math.PI * 2 / n;
+  const n = SECT.length, step = TAU / n;
   const jitter = (Math.random() - 0.5) * step * 0.7;
   const target = -((s.result + 0.5) * step + jitter);
-  const from = angle % (Math.PI * 2);
-  let to = target - Math.PI * 2 * 6;
-  while (to > from - Math.PI * 2 * 5) to -= Math.PI * 2;
+  const from = angle % TAU;
+  let to = target - TAU * 6;
+  while (to > from - TAU * 5) to -= TAU;
   const dur = s.secs * 1000, t0 = performance.now() - Math.min(s.ago, s.secs) * 1000;
   if (anim) cancelAnimationFrame(anim);
   const ease = t => 1 - Math.pow(1 - t, 4);
+  winner = -1; spinning = true;
   $("box").classList.add("spinning");
   const frame = now => {
     const t = Math.min(1, (now - t0) / dur);
+    const prev = angle;
     angle = from + (to - from) * ease(t);
+    const idx = Math.floor((((-angle) % TAU) + TAU) % TAU / step);
+    if (idx !== lastIdx) { lastIdx = idx; ptrKick = -16; }
+    ptrKick *= 0.82;
+    lights += Math.min(1.2, Math.abs(angle - prev) * 6) + 0.05;
     draw();
-    if (t < 1) anim = requestAnimationFrame(frame); else { anim = null; $("box").classList.remove("spinning"); }
+    if (STYLE === "gold") $("gem").style.transform = `translateX(-50%) rotate(${ptrKick}deg)`;
+    if (t < 1) anim = requestAnimationFrame(frame);
+    else { anim = null; spinning = false; $("box").classList.remove("spinning"); }
   };
   anim = requestAnimationFrame(frame);
 }
 
+// ── конфетти цветами секторов ──
+const fx = $("fx"), fxc = fx.getContext("2d");
+let bits = [], fxAnim = null;
+function confetti(color) {
+  fx.width = innerWidth; fx.height = innerHeight;
+  const box = $("box").getBoundingClientRect(), cx = box.left + box.width / 2, cy = box.top + 60;
+  const cols = [color, "#ffffff", "#22d3ee", "#6366f1", "#fbbf24", "#ec4899"];
+  for (let i = 0; i < 160; i++) {
+    const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.4, v = 6 + Math.random() * 11;
+    bits.push({x: cx, y: cy, vx: Math.cos(a) * v, vy: Math.sin(a) * v, r: Math.random() * TAU, vr: (Math.random() - 0.5) * 0.4,
+               w: 6 + Math.random() * 8, h: 3 + Math.random() * 5, c: cols[i % cols.length], life: 1});
+  }
+  if (!fxAnim) fxAnim = requestAnimationFrame(fxFrame);
+}
+function fxFrame() {
+  fxc.clearRect(0, 0, fx.width, fx.height);
+  for (const b of bits) {
+    b.vy += 0.32; b.vx *= 0.99; b.x += b.vx; b.y += b.vy; b.r += b.vr; b.life -= 0.006;
+    fxc.save(); fxc.globalAlpha = Math.max(0, Math.min(1, b.life * 1.5)); fxc.translate(b.x, b.y); fxc.rotate(b.r);
+    fxc.fillStyle = b.c; fxc.fillRect(-b.w / 2, -b.h / 2, b.w, b.h); fxc.restore();
+  }
+  bits = bits.filter(b => b.life > 0 && b.y < fx.height + 40);
+  fxAnim = bits.length ? requestAnimationFrame(fxFrame) : null;
+  if (!fxAnim) fxc.clearRect(0, 0, fx.width, fx.height);
+}
+
+// пульс подсветки победителя
+setInterval(() => { if (winner >= 0 && !anim) { winT = Math.min(1, winT + 0.08); draw(); } }, 50);
+
+let shownDone = 0;
 function render(d) {
+  setStyle(d.style);
   const s = d.spin;
   if (!s || s.id !== spinId) SECT = d.sectors;
   $("wrap").classList.toggle("hide", !(d.visible || ALWAYS || DEMO));
@@ -137,24 +293,29 @@ function render(d) {
   if (s && s.id !== spinId) {
     spinId = s.id;
     $("res").classList.remove("show");
-    $("who").textContent = s.user ? `🎡 Крутит ${s.user}` : "🎡 Колесо фортуны";
+    $("who").textContent = s.user ? `Крутит ${s.user}` : "Колесо фортуны";
     spin(s);
   }
-  if (s && s.done) {
-    $("res").textContent = "Выпало: " + s.label;
-    $("res").style.fontSize = s.label.length > 18 ? "24px" : s.label.length > 12 ? "28px" : "";
-    $("res").style.borderColor = (SECT[s.result] || {}).color || "#fbbf24";
+  if (s && s.done && shownDone !== s.id && !anim) {
+    shownDone = s.id;
+    const col = (SECT[s.result] || {}).color || "#fbbf24";
+    winner = s.result; winT = 0;
+    $("resText").textContent = s.label;
+    $("resText").style.fontSize = s.label.length > 18 ? "24px" : s.label.length > 12 ? "28px" : "";
+    $("resBar").style.background = `linear-gradient(${col}, ${mix(col, 0.35)})`;
+    $("resBar").style.boxShadow = `0 0 16px ${col}`;
     $("res").classList.add("show");
+    if (s.ago < s.secs + 2) confetti(col);
   }
-  if (!s) { $("res").classList.remove("show"); if (!anim) draw(); }
+  if (!s) { $("res").classList.remove("show"); winner = -1; if (!anim) draw(); }
 }
 
 async function poll() {
   if (DEMO) {
     SECT = [["Зомби","#6366f1"],["Ничего 😅","#22d3ee"],["Взрыв","#f59e0b"],["Подарок","#ef4444"],["Ночь","#10b981"],["Джекпот","#ec4899"]]
       .map(([label, color]) => ({label, color}));
-    $("wrap").classList.remove("hide"); $("who").textContent = "🎡 Крутит Аня"; draw();
-    $("rim").addEventListener("load", draw);
+    setStyle("modern");
+    $("wrap").classList.remove("hide"); $("who").textContent = "Крутит Аня"; angle = -0.3; draw();
     return;
   }
   try { render(await (await fetch("/api/wheel", {cache: "no-store"})).json()); } catch (e) {}

@@ -358,6 +358,7 @@ WHEEL_DEFAULTS = {
     "wheel_pts_cost": 0,         # или за очки по команде (0 — выкл)
     "wheel_cmd": "!колесо",
     "wheel_secs": 7,
+    "wheel_style": "modern",     # вид колеса в оверлее: modern — неоновое, gold — золотое казино
     "wheel_sectors": [
         {"label": "Зомби", "weight": 3, "commands": ""},
         {"label": "Ничего 😅", "weight": 3, "commands": ""},
@@ -434,4 +435,5 @@ class Wheel:
                         "ago": round(now - c["started"], 2), "done": c["fired"],
                         "label": c["sectors"][c["result"]]["label"]}
             return {"sectors": [{"label": s["label"], "color": s["color"]} for s in (c["sectors"] if c else secs)],
-                    "spin": spin, "queue": len(self.queue), "visible": bool(c)}
+                    "spin": spin, "queue": len(self.queue), "visible": bool(c),
+                    "style": "gold" if cfg.get("wheel_style") == "gold" else "modern"}

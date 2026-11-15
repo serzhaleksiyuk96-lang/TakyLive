@@ -21,6 +21,7 @@ function iaOpen() {
   // 🎡
   iaChk("wh_on", c.wheel_on); iaVal("wh_gift", c.wheel_gift); iaVal("wh_min", c.wheel_min_coins ?? 0);
   iaVal("wh_cost", c.wheel_pts_cost ?? 0); iaVal("wh_cmd", c.wheel_cmd ?? "!колесо"); iaVal("wh_secs", c.wheel_secs ?? 7);
+  iaVal("wh_style", c.wheel_style === "gold" ? "gold" : "modern");
   const dl = document.getElementById("iaGiftList");
   if (dl && !dl.children.length && typeof GIFT_LIBRARY !== "undefined")
     dl.innerHTML = GIFT_LIBRARY.map(([n, coins]) => `<option value="${esc(n)}">${coins} монет</option>`).join("");

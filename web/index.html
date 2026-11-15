@@ -2025,6 +2025,8 @@
         <label title="0 — за очки не крутится">или за <input type="number" min="0" id="wh_cost" class="ia-num" oninput="iaSetNum('wheel_pts_cost', this, 0)"> очков по команде
           <input id="wh_cmd" class="ia-txt" style="width:110px" oninput="iaSetStr('wheel_cmd', this)"></label>
         <label>Крутится <input type="number" min="3" max="20" id="wh_secs" class="ia-num" oninput="iaSetNum('wheel_secs', this, 3)"> сек</label>
+        <label>Вид <select id="wh_style" style="width:auto" onchange="iaSetStr('wheel_style', this)">
+          <option value="modern">✨ Современное (неон)</option><option value="gold">🎰 Золотое казино</option></select></label>
       </div>
       <datalist id="iaGiftList"></datalist>
       <div id="whSectors"></div>
