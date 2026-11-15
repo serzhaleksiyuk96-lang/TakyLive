@@ -91,8 +91,12 @@
   </div>
 
   <div class="sec">
-    <h2>🎰 Случайное событие</h2>
-    <button style="width:100%" onclick="act('random_fire', {}, this)">🎲 Запустить сейчас</button>
+    <h2>🎮 Интерактив <span class="r" id="btInfo"></span></h2>
+    <div class="row" style="margin-bottom:8px">
+      <button id="btBtn" onclick="btToggle(this)">⚔ Начать битву</button>
+      <button id="whBtn" onclick="act('wheel_spin', {}, this)">🎡 Крутить колесо</button>
+    </div>
+    <button style="width:100%" onclick="act('random_fire', {}, this)">🎲 Случайное событие</button>
   </div>
 
   <div class="sec">
@@ -137,6 +141,14 @@ function render() {
       ? S.buttons.map((t, i) => `<button class="big" onclick="act('panel_fire', {index: ${i}}, this)">${esc(t)}</button>`).join("")
       : `<div class="hint" style="grid-column: 1 / -1">Кнопок нет. На компьютере: «+ Создать событие» → «🎛 Кнопка панели».</div>`;
   }
+  const bt = S.battle;
+  if (bt) {
+    const m = Math.floor(bt.left / 60), x = String(bt.left % 60).padStart(2, "0");
+    $("btBtn").textContent = bt.running ? "⏹ Стоп битвы" : "⚔ Начать битву";
+    $("btBtn").className = bt.running ? "bad" : "";
+    $("btInfo").textContent = bt.running ? `${bt.teams[0].score} : ${bt.teams[1].score} · ${m}:${x}` : "";
+  }
+  $("whBtn").style.display = S.wheel_on ? "" : "none";
   $("ttsBtn").textContent = S.tts_on ? "🔊 Вкл" : "🔇 Выкл";
   $("ttsBtn").className = S.tts_on ? "ok" : "";
   $("timer").textContent = mmss(S.timer.remaining);
@@ -159,6 +171,8 @@ async function act(name, body, btn) {
   if (btn) setTimeout(() => { btn.className = oldCls; btn.innerHTML = old; }, 900);
   load();
 }
+
+function btToggle(btn) { act(S && S.battle && S.battle.running ? "battle_stop" : "battle_start", {}, btn); }
 
 function ttsToggle() { if (S) act("tts", {on: !S.tts_on}, null); }
 

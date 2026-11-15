@@ -106,8 +106,8 @@
     border: 1px solid var(--border); border-radius: 14px; padding: 5px;
   }
   .tab {
-    padding: 9px 18px; border-radius: 10px; cursor: pointer;
-    font-size: 13px; font-weight: 500; color: var(--text-dim);
+    padding: 9px 13px; border-radius: 10px; cursor: pointer;
+    font-size: 13px; font-weight: 500; color: var(--text-dim); white-space: nowrap;
     transition: all .18s;
   }
   .tab:hover { color: var(--text); }
@@ -1017,6 +1017,34 @@
   .rm-steps li { margin-bottom: 4px; }
   .rm-url { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.05); word-break: break-all; font-size: 12.5px; }
   .ann-h { margin: 18px 0 2px; font-weight: 600; color: var(--text); }
+  .ia-card { margin-bottom: 16px; padding: 18px 20px; }
+  #rmCard { padding: 16px 20px; }
+  #rmCard h3 { margin: 0 0 12px; }
+  .ia-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
+  .ia-head h3 { margin: 0; }
+  .ia-head .spacer { flex: 1; }
+  .ia-opts, .ia-rates { display: flex; flex-wrap: wrap; gap: 10px 22px; align-items: center; margin: 12px 0; color: var(--text-dim); font-size: 13.5px; }
+  .ia-opts label, .ia-rates label { display: inline-flex; align-items: center; gap: 6px; }
+  .ia-num { width: 72px !important; padding: 6px 8px !important; }
+  .ia-txt { width: 170px; padding: 6px 10px !important; }
+  .ia-score { display: flex; gap: 14px; align-items: center; margin: 10px 0; font-size: 15px; min-height: 22px; }
+  .ia-teams { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .ia-teams { grid-template-columns: 1fr; } }
+  .ia-team { border: 1px solid var(--border); border-radius: 12px; padding: 12px; border-left-width: 4px; }
+  .ia-team .row2 { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .ia-team input[type=color] { width: 40px; height: 34px; padding: 2px; flex: none; }
+  .ia-team textarea, .ia-sec textarea { width: 100%; font-family: var(--mono, monospace); font-size: 12.5px; }
+  .ia-lbl { color: var(--text-dim); font-size: 12.5px; margin: 6px 0 4px; display: flex; gap: 8px; align-items: center; }
+  .ia-lbl select { width: auto; max-width: 220px; padding: 3px 6px; font-size: 12px; }
+  .ia-sec { display: grid; grid-template-columns: 14px 170px 74px 1fr 32px; gap: 8px; align-items: start;
+            padding: 8px 0; border-top: 1px solid var(--border); }
+  .ia-sec .sw { width: 14px; height: 34px; border-radius: 4px; }
+  .ia-sec .pct { color: var(--text-dim); font-size: 11.5px; text-align: center; margin-top: 2px; }
+  .ia-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  .ia-tbl th { text-align: left; color: var(--text-dim); font-weight: 500; font-size: 12px; padding: 6px; border-bottom: 1px solid var(--border); }
+  .ia-tbl td { padding: 5px 6px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .ia-tbl td.n, .ia-tbl th.n { text-align: right; }
+  .ia-tbl input { width: 90px; padding: 4px 6px; text-align: right; }
   #lvEndBtn.on { border-color: rgba(52,211,153,0.6); background: rgba(52,211,153,0.12); }
   .ann-chat { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
   .dt-head { display: flex; align-items: center; gap: 10px; }
@@ -1151,6 +1179,7 @@
     <div class="tab" data-view="settings" onclick="switchView('settings')">⚙ Настройки</div>
     <div class="tab" data-view="log" onclick="switchView('log')">📋 Лог событий</div>
     <div class="tab" data-view="panel" onclick="switchView('panel')">🎛 Панель</div>
+    <div class="tab" data-view="interactive" onclick="switchView('interactive')">🎮 Интерактив</div>
     <div class="tab" data-view="overlays" onclick="switchView('overlays')">📺 Оверлеи OBS</div>
     <div class="tab" data-view="servers" onclick="switchView('servers')">🖥 Серверы</div>
   </div>
@@ -1954,6 +1983,87 @@
   </div>
 
   <!-- ════════════ ВКЛАДКА: ОВЕРЛЕИ ════════════ -->
+  <div id="view-interactive" class="hidden">
+    <!-- ⚔ Битва команд -->
+    <div class="card ia-card">
+      <div class="ia-head">
+        <h3>⚔ Битва команд</h3>
+        <span class="ph-badge" id="btBadge">не идёт</span>
+        <div class="spacer"></div>
+        <button class="small primary" id="btStart" onclick="btStart()">▶ Начать раунд</button>
+        <button class="small danger" id="btStop" onclick="btStop()">⏹ Остановить</button>
+      </div>
+      <div class="hint">Зрители пишут в чат команду своей стороны, их подарки (монеты) наполняют полосу команды.
+        Когда время выйдет, команда-победитель запускает свою подлянку. Оверлей «⚔ Битва команд» — в «📺 Оверлеи OBS».</div>
+      <div class="ia-score" id="btScore"></div>
+      <div class="ia-teams">
+        <div class="ia-team" data-t="0"></div>
+        <div class="ia-team" data-t="1"></div>
+      </div>
+      <div class="ia-opts">
+        <label>Раунд <input type="number" min="10" max="3600" id="bt_secs" class="ia-num" oninput="iaSetNum('battle_secs', this, 10)"> сек</label>
+        <label title="0 — лайки в битве не считаются">1 очко битвы за <input type="number" min="0" id="bt_like_n" class="ia-num" oninput="iaSetNum('battle_like_n', this, 0)"> лайков</label>
+        <label class="chk"><input type="checkbox" id="bt_auto" onchange="iaSetBool('battle_auto', this)"> Подарил без команды — в отстающую</label>
+        <label class="chk"><input type="checkbox" id="bt_say" onchange="iaSetBool('battle_say', this)"> Объявить победителя голосом</label>
+      </div>
+    </div>
+
+    <!-- 🎡 Колесо фортуны -->
+    <div class="card ia-card">
+      <div class="ia-head">
+        <h3>🎡 Колесо фортуны</h3>
+        <label class="chk"><input type="checkbox" id="wh_on" onchange="iaSetBool('wheel_on', this)"> Включено</label>
+        <span class="hint" id="whState"></span>
+        <div class="spacer"></div>
+        <button class="small primary" onclick="whSpin(this)">🎡 Крутить</button>
+      </div>
+      <div class="hint">Подарок или очки крутят колесо на экране — что выпало, то и случится. Шанс сектора — его вес среди всех.
+        Оверлей «🎡 Колесо фортуны» — в «📺 Оверлеи OBS».</div>
+      <div class="ia-opts">
+        <label>Крутит подарок <input id="wh_gift" class="ia-txt" list="iaGiftList" placeholder="Rose или ID" oninput="iaSetStr('wheel_gift', this)"></label>
+        <label title="0 — выкл">или любой подарок от <input type="number" min="0" id="wh_min" class="ia-num" oninput="iaSetNum('wheel_min_coins', this, 0)"> монет</label>
+        <label title="0 — за очки не крутится">или за <input type="number" min="0" id="wh_cost" class="ia-num" oninput="iaSetNum('wheel_pts_cost', this, 0)"> очков по команде
+          <input id="wh_cmd" class="ia-txt" style="width:110px" oninput="iaSetStr('wheel_cmd', this)"></label>
+        <label>Крутится <input type="number" min="3" max="20" id="wh_secs" class="ia-num" oninput="iaSetNum('wheel_secs', this, 3)"> сек</label>
+      </div>
+      <datalist id="iaGiftList"></datalist>
+      <div id="whSectors"></div>
+      <button class="small" onclick="whAdd()">+ Сектор</button>
+    </div>
+
+    <!-- 💎 Очки зрителей -->
+    <div class="card ia-card">
+      <div class="ia-head">
+        <h3>💎 Очки зрителей</h3>
+        <label class="chk"><input type="checkbox" id="pt_on" onchange="iaSetBool('pts_on', this)"> Включено</label>
+        <span class="hint" id="ptCount"></span>
+      </div>
+      <div class="hint">Зрители копят очки за подарки, лайки, чат и активность и тратят на чат-команды:
+        у чат-команды в «🎁 Подарки и события» есть поле «💎 Цена». Очки сохраняются между эфирами.</div>
+      <div class="ia-rates">
+        <label>за 1 монету <input type="number" min="0" id="pt_coin" class="ia-num" oninput="iaSetNum('pts_coin', this, 0)"></label>
+        <label>1 очко за <input type="number" min="0" id="pt_likes_n" class="ia-num" oninput="iaSetNum('pts_likes_n', this, 0)"> лайков</label>
+        <label>за сообщение <input type="number" min="0" id="pt_msg" class="ia-num" oninput="iaSetNum('pts_msg', this, 0)">, не чаще раза в <input type="number" min="0" id="pt_msg_cd" class="ia-num" oninput="iaSetNum('pts_msg_cd', this, 0)"> сек</label>
+        <label>за фоллов <input type="number" min="0" id="pt_follow" class="ia-num" oninput="iaSetNum('pts_follow', this, 0)"></label>
+        <label>за подписку ⭐ <input type="number" min="0" id="pt_sub" class="ia-num" oninput="iaSetNum('pts_sub', this, 0)"></label>
+        <label>за репост <input type="number" min="0" id="pt_share" class="ia-num" oninput="iaSetNum('pts_share', this, 0)"></label>
+        <label title="Тем, кто писал, лайкал или дарил за последние 10 минут">раз в 5 мин активным <input type="number" min="0" id="pt_active" class="ia-num" oninput="iaSetNum('pts_active', this, 0)"></label>
+      </div>
+      <div class="ia-opts">
+        <label>Баланс <input id="pt_cmd_balance" class="ia-txt" oninput="iaSetStr('pts_cmd_balance', this)"></label>
+        <label>Топ-3 <input id="pt_cmd_top" class="ia-txt" style="width:90px" oninput="iaSetStr('pts_cmd_top', this)"></label>
+        <label>Называть <input id="pt_name" class="ia-txt" style="width:110px" oninput="iaSetStr('pts_name', this)"></label>
+        <label class="chk"><input type="checkbox" id="pt_say" onchange="iaSetBool('pts_say', this)"> Отвечать на баланс голосом</label>
+      </div>
+      <div class="ia-head" style="margin-top:14px">
+        <input id="ptSearch" class="ia-txt" style="width:220px" placeholder="🔎 найти зрителя" oninput="ptLoadSoon()">
+        <div class="spacer"></div>
+        <button class="small danger" onclick="ptReset()">🗑 Обнулить всех</button>
+      </div>
+      <div id="ptTable"></div>
+    </div>
+  </div>
+
   <div id="view-overlays" class="hidden">
     <div class="card">
       <h3>📺 Оверлеи для OBS</h3>
@@ -2157,5 +2267,6 @@
 <script src="/web/mediapick.js?v=__VERSION__"></script>
 <script src="/web/showcase-ui.js?v=__VERSION__"></script>
 <script src="/web/live.js?v=__VERSION__"></script>
+<script src="/web/interactive.js?v=__VERSION__"></script>
 </body>
 </html>

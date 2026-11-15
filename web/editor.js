@@ -114,7 +114,7 @@ function updateStatus() {
 function switchView(view) {
   document.querySelectorAll(".tab").forEach(t =>
     t.classList.toggle("active", t.dataset.view === view));
-  ["start", "events", "settings", "log", "overlays", "panel", "servers"].forEach(v =>
+  ["start", "events", "settings", "log", "overlays", "panel", "servers", "interactive"].forEach(v =>
     document.getElementById("view-" + v).classList.toggle("hidden", v !== view));
   if (typeof srvStart === "function") { if (view === "servers") srvStart(); else srvStop(); }
   if (view === "start") renderStart();
@@ -122,6 +122,7 @@ function switchView(view) {
   else stopLogPolling();
   if (view === "panel") { fillPanelCfg(); renderPanelButtons(); pollTimer(); }
   if (view === "overlays" && !overlaysLoaded) loadOverlayPreviews();
+  if (view === "interactive" && typeof iaOpen === "function") iaOpen();
 }
 
 // ── Профили (вкладки стримов) ────────────────────────────────
@@ -421,7 +422,11 @@ function buildCard(action, idx) {
       <span style="color:var(--text-dim);font-size:13px">Кулдаун</span>
       <input class="gift-id" type="number" min="0" value="${action.cooldown??10}"
              oninput="upd(${idx},'cooldown',parseFloat(this.value)||0)">
-      <span style="color:var(--text-dim);font-size:13px">сек</span>`;
+      <span style="color:var(--text-dim);font-size:13px">сек</span>
+      <span style="color:var(--text-dim);font-size:13px" title="Зритель платит очками за команду. 0 — бесплатно. Очки включаются во вкладке «🎮 Интерактив»">💎 Цена</span>
+      <input class="gift-id" type="number" min="0" value="${action.points_cost||0}"
+             title="0 — бесплатно; иначе спишется столько очков зрителя"
+             oninput="upd(${idx},'points_cost',Math.max(0,parseInt(this.value)||0))">`;
   } else if (activeSection === "goals") {
     head += `
       <span style="color:var(--text-dim);font-size:13px">Цель:</span>
@@ -3327,6 +3332,12 @@ const OVERLAYS = [
    w:1000, h:400, vw:720, vh:400},
   {id:"ov7", file:"goals.html",     icon:"🎯", name:"Цели стрима",
    desc:"Прогресс-бары целей: лайки, монеты, фолловеры", w:320,  h:400},
+  {id:"ov10", file:"battle.html",   icon:"⚔", name:"Битва команд",
+   desc:"Полоса перетягивания, счёт, таймер раунда и победитель. Видна только во время битвы", w:800, h:300, vw:800, vh:300},
+  {id:"ov11", file:"wheel.html",    icon:"🎡", name:"Колесо фортуны",
+   desc:"Крутится, когда зритель выиграл вращение, и показывает, что выпало. Остальное время скрыто", w:540, h:640, vw:540, vh:640},
+  {id:"ov12", file:"top.html?mode=points", icon:"💎", name:"Топ по очкам зрителей",
+   desc:"Таблица лидеров по очкам — за подарки, лайки, чат и активность", w:320, h:400},
   {id:"ov8", file:"timer.html",     icon:"⏱", name:"Таймер-челлендж",
    desc:"Большой обратный отсчёт, подарки добавляют время", w:420,  h:140},
   {id:"ov6", file:"tts.html",       icon:"🔊", name:"Озвучка чата (TTS)",
@@ -3349,7 +3360,7 @@ function renderOverlays() {
     const prev = o.novis
       ? `<div class="ov-prev novis" style="width:180px;height:110px">🔊<span>только звук</span></div>`
       : `<div class="ov-prev" style="width:${pw}px;height:${ph}px">
-           <iframe data-src="${url}?demo=1" style="width:${vw}px;height:${vh}px;
+           <iframe data-src="${url}${url.includes("?") ? "&" : "?"}demo=1" style="width:${vw}px;height:${vh}px;
                    transform:scale(${scale});transform-origin:0 0" scrolling="no"></iframe>
          </div>`;
     return `
@@ -3388,7 +3399,7 @@ function toggleVarsHelp(btn) {
 }
 
 function bigPreview(file, w, h) {
-  const url = `${window.location.origin}/web/overlays/${file}?demo=1`;
+  const url = `${window.location.origin}/web/overlays/${file}${file.includes("?") ? "&" : "?"}demo=1`;
   window.open(url, "_blank", `width=${Math.min(w + 40, 1200)},height=${Math.min(h + 60, 800)}`);
 }
 

@@ -408,6 +408,11 @@ class State:
             "remote_on": False,               # 📱 пульт с телефона
             "remote_port": 8766,
         }
+        import copy as _copy
+        import interactive as _ia                    # очки, битва команд, колесо — настройки по умолчанию
+        for _d in (_ia.PTS_DEFAULTS, _ia.BATTLE_DEFAULTS, _ia.WHEEL_DEFAULTS):
+            for _k, _v in _d.items():
+                self.config.setdefault(_k, _copy.deepcopy(_v))
         # profiles = { "Выживание": {gifts:[], likes:[], subs:[], follows:[]}, ... }
         self.profiles = {}
         self.connected = False        # подключён ли TikTok
@@ -1516,6 +1521,7 @@ def handle_gift(gift_name, gift_id, count, user, diamonds=0):
         f"подарил {gift_name}" + (f" x{count}" if count > 1 else ""),
         icon="🎁", color="#00d4ff", amount=(diamonds or 1) * count, media=media)
     check_goals()
+    ia_gift(user, gift_name, gift_id, count, diamonds)     # очки, битва команд, колесо
     # Случайное событие при любом подарке (если включено)
     if STATE.config.get("random_enabled") and STATE.config.get("random_on_gift"):
         schedule(fire_random_event("подарок"))
@@ -1551,6 +1557,10 @@ def handle_like(like_count, user):
     STATE.like_counter += like_count
     after = STATE.like_counter
     check_goals()
+    key = ia_key(user)
+    if STATE.config.get("pts_on"):
+        STATE.points.on_like(STATE.config, key, user, like_count)
+    STATE.battle.like(STATE.config, key, like_count)
     for a in like_actions:
         if not _is_enabled(a):
             continue
@@ -1576,6 +1586,8 @@ def handle_sub(user):
     media = _extract_media(subs[0]) if subs else None
     STATE.push_overlay("sub", user, "оформил подписку!", icon="⭐", color="#d29922", media=media)
     check_goals()
+    if STATE.config.get("pts_on"):
+        STATE.points.on_sub(STATE.config, ia_key(user), user)
     for a in subs:
         fire_action(a, count=1, user=user)
 
@@ -1589,6 +1601,8 @@ def handle_follow(user):
     media = _extract_media(follows[0]) if follows else None
     STATE.push_overlay("follow", user, "подписался на профиль!", icon="➕", color="#3fb950", media=media)
     check_goals()
+    if STATE.config.get("pts_on"):
+        STATE.points.on_follow(STATE.config, ia_key(user), user)
     for a in follows:
         fire_action(a, count=1, user=user)
 
@@ -1928,8 +1942,8 @@ async def _tts_speak_inner(msg, voice, epoch):
     return True
 
 
-def check_chat_command(text, display):
-    """Если сообщение — настроенная чат-команда (!моб), выполняет её с кулдауном."""
+def check_chat_command(text, display, uid=None):
+    """Если сообщение — настроенная чат-команда (!моб), выполняет её с кулдауном (и за очки, если есть цена)."""
     msg = str(text).strip().lower()
     if not msg:
         return
@@ -1949,6 +1963,20 @@ def check_chat_command(text, display):
         now = time.time()
         if now - STATE.cmd_last.get(key, 0) < cooldown:
             return  # на кулдауне — молча пропускаем
+        try:
+            cost = int(cc.get("points_cost", 0) or 0)
+        except (TypeError, ValueError):
+            cost = 0
+        if cost > 0 and STATE.config.get("pts_on"):
+            vk = ia_key(display, uid)
+            if not STATE.points.spend(vk, display, cost):
+                have = STATE.points.balance(vk)
+                STATE.log("ОЧКИ", f"{display} → {trig}: нужно {cost}, есть {have}")
+                if STATE.points.can_reply(vk, 15):
+                    STATE.push_overlay("points", display, f"на {trig} нужно {cost} 💎, у тебя {have}",
+                                       icon="💎", color="#a78bfa")
+                return
+            STATE.log("ОЧКИ", f"{display} потратил {cost} на {trig}")
         STATE.cmd_last[key] = now
         STATE.log("ЧАТ-КОМАНДА", f"{display} → {trig}")
         STATE.push_overlay("chatcmd", display, f"использовал {trig}",
@@ -2116,7 +2144,8 @@ def handle_comment(user, text, display=None, is_follower=False, acc=None, roles=
             schedule(tts_speak(display, say, voice=viewer_voice(user, acc, roles)))
     # Чат-команды зрителей (!моб, !дроп и т.д.) — работают для каждого сообщения
     if fresh and not vc:
-        check_chat_command(text, display)
+        if not ia_chat(user, display, text):          # !очки, !красные, !колесо — свои команды
+            check_chat_command(text, display, uid=user)
     if user in STATE.seen_users:
         return
     STATE.seen_users.add(user)
@@ -2320,6 +2349,17 @@ def tiktok_worker():
             except Exception as e:
                 STATE.log("ОШИБКА", f"follow: {e}")
 
+    if ShareEvent is not None:
+        @client.on(ShareEvent)
+        async def on_share(event):                       # поделился эфиром — очки зрителю
+            if STATE.stop_requested or not STATE.config.get("pts_on"):
+                return
+            try:
+                uid, display = _names(event)
+                STATE.points.on_share(STATE.config, ia_key(display, uid), display)
+            except Exception as e:
+                STATE.log("ОШИБКА", f"share: {e}")
+
     try:
         STATE.log("СИСТЕМА", f"Подключаюсь к @{username}...")
         client.run()
@@ -2505,6 +2545,8 @@ async def h_remote_state(request):
         "buttons": [str(a.get("title") or f"Кнопка {i + 1}") for i, a in enumerate(prof.get("panel", []))],
         "tts_on": bool(STATE.config.get("tts_enabled")),
         "random_on": bool(STATE.config.get("random_enabled")),
+        "battle": STATE.battle.snapshot(STATE.config),
+        "wheel_on": bool(STATE.config.get("wheel_on")),
         "timer": {"running": STATE.timer["running"], "remaining": int(_timer_remaining())},
         "feed": [{"icon": e.get("icon", ""), "user": e.get("user", ""), "text": e.get("text", ""),
                   "time": e.get("time", "")} for e in STATE.recent_feed[:20]],
@@ -2538,6 +2580,201 @@ async def h_remote_timer(request):
         async def json():
             return {"action": act, "seconds": 60}
     return await h_timer(_Req())
+
+
+# ── 💎 Очки зрителей, ⚔ битва команд, 🎡 колесо фортуны ────────────────────
+def ia_key(display, uid=None):
+    """Ключ зрителя для очков и команд: @юзернейм (если знаем), иначе имя."""
+    import interactive
+    return interactive.vkey(uid or STATE.last_uid.get(str(display), "") or display)
+
+
+def ia_say(text):
+    if STATE.config.get("tts_enabled"):
+        schedule(tts_speak("", text, read_name=False))
+
+
+def ia_gift(user, gift_name, gift_id, count, diamonds):
+    """Подарок: очки дарителю, очки битвы его команде, колесо — если это «колёсный» подарок."""
+    cfg = STATE.config
+    key = ia_key(user)
+    count = max(1, int(count or 1))
+    coins = int(diamonds or 0) * count
+    if cfg.get("pts_on"):
+        STATE.points.on_gift(cfg, key, user, coins)
+    team = STATE.battle.gift(cfg, key, user, coins)
+    if team is not None:
+        STATE.log("БИТВА", f"{user} +{coins} → {(cfg.get('battle_names') or ['', ''])[team] or team + 1}")
+    if not cfg.get("wheel_on"):
+        return
+    spins = 0
+    wg = str(cfg.get("wheel_gift") or "").strip()
+    if wg:
+        names = {norm_gift(gift_name)} | ({norm_gift(STATE.gift_names_ru[str(gift_id)])}
+                                          if STATE.gift_names_ru.get(str(gift_id)) else set())
+        if wg == str(gift_id).strip() or norm_gift(wg) in names:
+            spins = min(count, 5)
+    try:
+        need = int(cfg.get("wheel_min_coins") or 0)
+    except (TypeError, ValueError):
+        need = 0
+    if not spins and need > 0 and int(diamonds or 0) >= need:
+        spins = 1
+    for _ in range(spins):
+        ia_wheel_request(user, f"подарок {gift_name}")
+
+
+def ia_wheel_request(user, reason):
+    pos = STATE.wheel.request(user, reason)
+    if pos < 0:
+        STATE.log("КОЛЕСО", "Очередь колеса полная (20) — вращение пропущено")
+    elif pos > 1:
+        STATE.log("КОЛЕСО", f"{user or 'стример'} в очереди колеса: {pos}-й")
+    return pos
+
+
+def ia_chat(uid, display, text):
+    """Свои чат-команды интерактива. → True, если сообщение было такой командой."""
+    import interactive as ia
+    cfg = STATE.config
+    key = ia_key(display, uid)
+    pts_on = cfg.get("pts_on")
+    if pts_on:
+        STATE.points.on_msg(cfg, key, display)
+    unit = cfg.get("pts_name") or "очки"
+    # ⚔ выбор команды
+    if STATE.battle.running:
+        for t, trig in enumerate((cfg.get("battle_join") or ["", ""])[:2]):
+            if ia.said(text, ia.triggers(trig)):
+                old = STATE.battle.join(key, display, t)
+                if old != t:
+                    name = (cfg.get("battle_names") or ["", ""])[t] or f"команда {t + 1}"
+                    STATE.log("БИТВА", f"{display} → {name}")
+                    STATE.push_overlay("battle", display, f"за команду «{name}»!", icon="⚔",
+                                       color=(cfg.get("battle_colors") or ["#ef4444", "#3b82f6"])[t])
+                return True
+    if pts_on:
+        if ia.said(text, ia.triggers(cfg.get("pts_cmd_balance"))):
+            if STATE.points.can_reply(key):
+                n = STATE.points.balance(key)
+                STATE.log("ОЧКИ", f"{display}: {n}")
+                STATE.push_overlay("points", display, f"{n} 💎 {unit}", icon="💎", color="#a78bfa")
+                if cfg.get("pts_say"):
+                    ia_say(f"{display}, у тебя {n} {unit}")
+            return True
+        if ia.said(text, ia.triggers(cfg.get("pts_cmd_top"))):
+            if STATE.points.can_reply("__top__", 30):
+                top = STATE.points.top(3)
+                line = ", ".join(f"{i + 1}. {r['user']} — {r['amount']}" for i, r in enumerate(top)) or "пока пусто"
+                STATE.push_overlay("points", "", f"🏆 Топ по очкам: {line}", icon="🏆", color="#a78bfa")
+            return True
+    # 🎡 колесо за очки
+    try:
+        cost = int(cfg.get("wheel_pts_cost") or 0)
+    except (TypeError, ValueError):
+        cost = 0
+    if cfg.get("wheel_on") and pts_on and cost > 0 and ia.said(text, ia.triggers(cfg.get("wheel_cmd"))):
+        if STATE.points.spend(key, display, cost):
+            STATE.log("ОЧКИ", f"{display} потратил {cost} на колесо")
+            ia_wheel_request(display, f"за {cost} очков")
+        elif STATE.points.can_reply(key, 15):
+            STATE.push_overlay("points", display, f"на колесо нужно {cost} 💎, у тебя {STATE.points.balance(key)}",
+                               icon="💎", color="#a78bfa")
+        return True
+    return False
+
+
+def ia_tick():
+    """Раз в секунду из фонового цикла."""
+    import interactive as ia
+    cfg = STATE.config
+    STATE.points.tick(cfg, STATE.connected and cfg.get("pts_on"))
+    res = STATE.battle.tick()
+    if res:
+        names = cfg.get("battle_names") or ["Команда 1", "Команда 2"]
+        s0, s1 = res["score"]
+        if res["winner"] < 0:
+            STATE.log("БИТВА", f"⚔ Ничья {s0}:{s1}")
+            STATE.push_overlay("battle", "", f"⚔ Ничья {s0}:{s1}!", icon="⚔", color="#fbbf24")
+            if cfg.get("battle_say", True):
+                ia_say(f"Ничья, {s0} на {s1}!")
+        else:
+            w = res["winner"]
+            name = names[w] if w < len(names) else f"Команда {w + 1}"
+            STATE.log("БИТВА", f"🏆 Победили «{name}» {s0}:{s1}" + (f", лучший — {res['mvp']}" if res["mvp"] else ""))
+            STATE.push_overlay("battle", res["mvp"], f"🏆 Победила команда «{name}»!", icon="🏆",
+                               color=(cfg.get("battle_colors") or ["#ef4444", "#3b82f6"])[w])
+            if cfg.get("battle_say", True):
+                ia_say(f"Победила команда {name}!")
+            act = ia.commands_of((cfg.get("battle_cmds") or ["", ""])[w])
+            if act["commands"]:
+                schedule(run_chain(act, user=res["mvp"]))
+    spun = STATE.wheel.tick(cfg)
+    if spun:
+        sector, user = spun
+        STATE.log("КОЛЕСО", f"🎡 {user or 'стример'}: выпало «{sector['label']}»")
+        STATE.push_overlay("wheel", user, f"🎡 выпало «{sector['label']}»", icon="🎡", color=sector["color"])
+        act = ia.commands_of(sector["commands"])
+        if act["commands"]:
+            schedule(run_chain(act, user=user))
+
+
+async def h_battle(request):
+    return web.json_response(STATE.battle.snapshot(STATE.config))
+
+
+async def h_battle_start(request):
+    d = await request.json() if request.can_read_body else {}
+    try:
+        secs = int(d.get("secs") or STATE.config.get("battle_secs") or 180)
+    except (TypeError, ValueError):
+        secs = 180
+    STATE.battle.start(secs)
+    n = STATE.config.get("battle_names") or ["Красные", "Синие"]
+    STATE.push_overlay("battle", "", f"⚔ Битва: {n[0]} против {n[1]}! Выбирай команду в чате", icon="⚔", color="#fbbf24")
+    return web.json_response({"ok": True, **STATE.battle.snapshot(STATE.config)})
+
+
+async def h_battle_stop(request):
+    STATE.battle.stop()
+    return web.json_response({"ok": True, **STATE.battle.snapshot(STATE.config)})
+
+
+async def h_wheel(request):
+    return web.json_response(STATE.wheel.snapshot(STATE.config))
+
+
+async def h_wheel_spin(request):
+    """Кнопка «Крутить» — как будто колесо выиграл стример."""
+    import interactive as ia
+    if not ia.wheel_sectors(STATE.config):
+        return web.json_response({"ok": False, "error": "добавь хотя бы один сектор"})
+    pos = ia_wheel_request("", "кнопка")
+    return web.json_response({"ok": pos >= 0, "queue": pos,
+                              "error": "" if pos >= 0 else "очередь полная — подожди"})
+
+
+async def h_points(request):
+    rows, total = STATE.points.search(request.query.get("q", ""), 100)
+    return web.json_response({"rows": rows, "total": total})
+
+
+async def h_points_set(request):
+    d = await request.json()
+    try:
+        n = int(d.get("amount"))
+    except (TypeError, ValueError):
+        return web.json_response({"ok": False, "error": "впиши число"})
+    STATE.points.set(str(d.get("key") or ""), n)
+    STATE.points.save()
+    STATE.log("ОЧКИ", f"Стример поставил {d.get('key')}: {n}")
+    return web.json_response({"ok": True})
+
+
+async def h_points_reset(request):
+    STATE.points.reset_all()
+    STATE.log("ОЧКИ", "Все очки зрителей обнулены")
+    return web.json_response({"ok": True})
 
 
 # ── Веб-сервер (API + отдача редактора) ──────────────────────────────────────
@@ -2668,6 +2905,8 @@ async def h_overlay_data(request):
         "feed": STATE.recent_feed[:15],
         "top": top_list,
         "top_likes": top_likes_list,
+        "top_points": STATE.points.top(10),
+        "points_name": STATE.config.get("pts_name") or "очки",
         "total_likes": STATE.total_likes,
         "connected": STATE.connected,
         "goals": [
@@ -3178,8 +3417,8 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.67"
-APP_DATE = "2026-11-15"
+APP_VERSION = "1.68"
+APP_DATE = "2026-11-16"
 
 
 def load_changelog():
@@ -3354,7 +3593,7 @@ async def h_tts_skip(request):
 
 
 # ── Перенос данных из старой папки программы (портативная версия → установленная) ──
-MIGRATE_FILES = ["config.json", "profiles.json", "viewer_voices.json", "fish_key.txt", "gift_icons_live.json",
+MIGRATE_FILES = ["config.json", "profiles.json", "viewer_voices.json", "viewer_points.json", "fish_key.txt", "gift_icons_live.json",
                  "gift_names_ru.json", "gift_catalog.json"]
 MIGRATE_DIRS = ["servers", "java", "steamcmd", "reports"]
 
@@ -3944,6 +4183,7 @@ def make_app():
                                             count=1,
                                             user=STATE.config.get("minecraft_nick", ""))
                     STATE.stats.tick()                    # связи нет 5 минут — эфир окончен, итоги
+                    ia_tick()                             # битва команд, колесо, очки за активность
                     # Случайные события
                     if (STATE.config.get("random_enabled") and STATE.connected):
                         try:
@@ -3962,6 +4202,7 @@ def make_app():
 
     async def _on_shutdown(app_):
         await STATE.remote.stop()
+        STATE.points.save()
 
     app.on_startup.append(_on_startup)
     app.on_shutdown.append(_on_shutdown)
@@ -4056,6 +4297,14 @@ def make_app():
     app.router.add_post("/api/announce/test", h_announce_test)
     app.router.add_post("/api/announce/summary", h_announce_summary)
     app.router.add_post("/api/announce/tg_chats", h_announce_tg_chats)
+    app.router.add_get("/api/battle", h_battle)
+    app.router.add_post("/api/battle/start", h_battle_start)
+    app.router.add_post("/api/battle/stop", h_battle_stop)
+    app.router.add_get("/api/wheel", h_wheel)
+    app.router.add_post("/api/wheel/spin", h_wheel_spin)
+    app.router.add_get("/api/points", h_points)
+    app.router.add_post("/api/points/set", h_points_set)
+    app.router.add_post("/api/points/reset", h_points_reset)
     app.router.add_get("/api/remote/status", h_remote_status)
     app.router.add_post("/api/remote/set", h_remote_set)
     app.router.add_post("/api/remote/reset", h_remote_reset)
@@ -4063,7 +4312,9 @@ def make_app():
     STATE.remote = _remote.Remote(WEB_DIR, STATE.log, lambda: STATE.config, save_config, {
         "state": ("GET", h_remote_state), "panel_fire": ("POST", h_panel_fire),
         "tts_skip": ("POST", h_tts_skip), "tts_stop": ("POST", h_tts_stop), "tts": ("POST", h_remote_tts),
-        "timer": ("POST", h_remote_timer), "random_fire": ("POST", h_random_fire)})
+        "timer": ("POST", h_remote_timer), "random_fire": ("POST", h_random_fire),
+        "battle_start": ("POST", h_battle_start), "battle_stop": ("POST", h_battle_stop),
+        "wheel_spin": ("POST", h_wheel_spin)})
     # ── Локальные серверы Minecraft (servers.py) ──
     import servers as _servers
     local_rcon = _RconClient()
@@ -4150,6 +4401,10 @@ def main():
     import streamstats as _ss
     STATE.stats = _ss.StreamStats(BASE_DIR, STATE.log)
     STATE.stats.on_end = _stats_ended
+    import interactive as _ia
+    STATE.points = _ia.Points(os.path.join(BASE_DIR, "viewer_points.json"), STATE.log)
+    STATE.battle = _ia.Battle(STATE.log)
+    STATE.wheel = _ia.Wheel(STATE.log)
     STATE.viewer_voices.update(load_viewer_voices())
     STATE.live_gift_icons.update(load_live_icons())
     if STATE.live_gift_icons:

@@ -41,11 +41,17 @@
   <div id="list"><div class="empty">Пока никто не подарил</div></div>
 </div>
 <script>
+// ?mode=points — топ по очкам зрителей вместо топа донатеров
+const POINTS = new URLSearchParams(location.search).get("mode") === "points";
+if (POINTS) {
+  document.querySelector(".title").textContent = "💎 ТОП ПО ОЧКАМ";
+  document.querySelector("#list .empty").textContent = "Пока ни у кого нет очков";
+}
 async function poll() {
   try {
     const r = await fetch("/api/overlay");
     const d = await r.json();
-    render(d.top || []);
+    render((POINTS ? d.top_points : d.top) || []);
   } catch(e) {}
 }
 let prev = null;
@@ -55,7 +61,7 @@ function render(top) {
   const prevArr = prev ? JSON.parse(prev) : [];
   prev = snap;
   const list = document.getElementById("list");
-  if (!top.length) { list.innerHTML = '<div class="empty">Пока никто не подарил</div>'; return; }
+  if (!top.length) { list.innerHTML = `<div class="empty">${POINTS ? "Пока ни у кого нет очков" : "Пока никто не подарил"}</div>`; return; }
   list.innerHTML = top.map((t,i) => {
     const was = prevArr[i];
     const changed = !was || was.user !== t.user || was.amount !== t.amount;

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Колесо фортуны</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: transparent; overflow: hidden; font-family: "Segoe UI", Roboto, sans-serif; color: #fff; }
+  #wrap { position: fixed; left: 50%; top: 10px; transform: translateX(-50%) scale(1); width: 520px;
+          display: flex; flex-direction: column; align-items: center; transition: opacity .5s, transform .5s; }
+  #wrap.hide { opacity: 0; transform: translateX(-50%) scale(.7); }
+  .who { font-size: 24px; font-weight: 800; padding: 6px 18px; border-radius: 14px; margin-bottom: 8px; min-height: 46px;
+         background: rgba(10,12,19,.8); border: 2px solid rgba(255,255,255,.25); text-shadow: 0 2px 8px rgba(0,0,0,.7);
+         max-width: 520px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .box { position: relative; width: 460px; height: 460px; }
+  canvas { width: 460px; height: 460px; filter: drop-shadow(0 8px 26px rgba(0,0,0,.6)); }
+  .ptr { position: absolute; left: 50%; top: -6px; transform: translateX(-50%); width: 0; height: 0;
+         border-left: 22px solid transparent; border-right: 22px solid transparent; border-top: 44px solid #fbbf24;
+         filter: drop-shadow(0 3px 6px rgba(0,0,0,.6)); }
+  .res { margin-top: 10px; font-size: 34px; font-weight: 900; padding: 8px 26px; border-radius: 18px; opacity: 0;
+         background: rgba(10,12,19,.85); border: 4px solid #fbbf24; transform: scale(.6); transition: all .45s cubic-bezier(.2,1.4,.4,1);
+         white-space: nowrap; max-width: 520px; overflow: hidden; text-overflow: ellipsis; }
+  .res.show { opacity: 1; transform: scale(1); }
+  .q { margin-top: 6px; font-size: 15px; font-weight: 600; opacity: .85; text-shadow: 0 1px 6px rgba(0,0,0,.9); min-height: 20px; }
+</style>
+</head>
+<body>
+<div id="wrap" class="hide">
+  <div class="who" id="who">🎡 Колесо фортуны</div>
+  <div class="box"><canvas id="cv" width="920" height="920"></canvas><div class="ptr"></div></div>
+  <div class="res" id="res"></div>
+  <div class="q" id="q"></div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const Q = new URLSearchParams(location.search);
+const DEMO = Q.has("demo"), ALWAYS = Q.has("always");
+const cv = $("cv"), ctx = cv.getContext("2d"), R = 450, C = 460;
+let SECT = [], angle = 0, spinId = 0, anim = null;
+
+function draw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+  const n = SECT.length;
+  if (!n) return;
+  const step = Math.PI * 2 / n;
+  ctx.save();
+  ctx.translate(C, C);
+  ctx.rotate(angle);
+  for (let i = 0; i < n; i++) {
+    const a0 = -Math.PI / 2 + i * step;                // сектор 0 начинается сверху, по часовой
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, R, a0, a0 + step); ctx.closePath();
+    ctx.fillStyle = SECT[i].color; ctx.fill();
+    ctx.lineWidth = 6; ctx.strokeStyle = "rgba(10,12,19,.9)"; ctx.stroke();
+    ctx.save();
+    ctx.rotate(a0 + step / 2);
+    ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
+    let fs = 44; const label = SECT[i].label;
+    ctx.font = `800 ${fs}px Segoe UI, Roboto, sans-serif`;
+    while (ctx.measureText(label).width > R - 120 && fs > 22) { fs -= 2; ctx.font = `800 ${fs}px Segoe UI, Roboto, sans-serif`; }
+    ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 8;
+    ctx.fillText(label, R - 34, 0);
+    ctx.restore();
+  }
+  ctx.restore();
+  ctx.beginPath(); ctx.arc(C, C, R, 0, Math.PI * 2); ctx.lineWidth = 14; ctx.strokeStyle = "#fbbf24"; ctx.stroke();
+  ctx.beginPath(); ctx.arc(C, C, 58, 0, Math.PI * 2); ctx.fillStyle = "#0a0c13"; ctx.fill();
+  ctx.lineWidth = 8; ctx.strokeStyle = "#fbbf24"; ctx.stroke();
+  ctx.font = "800 54px Segoe UI, sans-serif"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("🎡", C, C + 4);
+}
+
+// Сектор i оказывается под стрелкой сверху, когда поворот = −(центр сектора); плюс 6 полных оборотов
+function spin(s) {
+  const n = SECT.length, step = Math.PI * 2 / n;
+  const jitter = (Math.random() - 0.5) * step * 0.7;
+  const target = -((s.result + 0.5) * step + jitter);
+  const from = angle % (Math.PI * 2);
+  let to = target - Math.PI * 2 * 6;
+  while (to > from - Math.PI * 2 * 5) to -= Math.PI * 2;
+  const dur = s.secs * 1000, t0 = performance.now() - Math.min(s.ago, s.secs) * 1000;
+  if (anim) cancelAnimationFrame(anim);
+  const ease = t => 1 - Math.pow(1 - t, 4);
+  const frame = now => {
+    const t = Math.min(1, (now - t0) / dur);
+    angle = from + (to - from) * ease(t);
+    draw();
+    if (t < 1) anim = requestAnimationFrame(frame); else anim = null;
+  };
+  anim = requestAnimationFrame(frame);
+}
+
+function render(d) {
+  const s = d.spin;
+  if (!s || s.id !== spinId) SECT = d.sectors;
+  $("wrap").classList.toggle("hide", !(d.visible || ALWAYS || DEMO));
+  $("q").textContent = d.queue ? `в очереди ещё: ${d.queue}` : "";
+  if (s && s.id !== spinId) {
+    spinId = s.id;
+    $("res").classList.remove("show");
+    $("who").textContent = s.user ? `🎡 Крутит ${s.user}` : "🎡 Колесо фортуны";
+    spin(s);
+  }
+  if (s && s.done) {
+    $("res").textContent = "Выпало: " + s.label;
+    $("res").style.borderColor = (SECT[s.result] || {}).color || "#fbbf24";
+    $("res").classList.add("show");
+  }
+  if (!s) { $("res").classList.remove("show"); if (!anim) draw(); }
+}
+
+async function poll() {
+  if (DEMO) {
+    SECT = [["Зомби","#6366f1"],["Ничего 😅","#22d3ee"],["Взрыв","#f59e0b"],["Подарок","#ef4444"],["Ночь","#10b981"],["Джекпот","#ec4899"]]
+      .map(([label, color]) => ({label, color}));
+    $("wrap").classList.remove("hide"); $("who").textContent = "🎡 Крутит Аня"; draw();
+    return;
+  }
+  try { render(await (await fetch("/api/wheel", {cache: "no-store"})).json()); } catch (e) {}
+}
+poll();
+if (!DEMO) setInterval(poll, 500);
+</script>
+</body>
+</html>

@@ -11,6 +11,7 @@ servers/
 java/
 steamcmd/
 reports/
+viewer_points.json
 media/vault/
 media/_thumbs/
 media/tts/*

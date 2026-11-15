@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Битва команд</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: transparent; overflow: hidden; font-family: "Segoe UI", Roboto, sans-serif; color: #fff; }
+  #wrap { position: fixed; left: 50%; top: 20px; transform: translateX(-50%); width: 760px;
+          transition: opacity .5s, transform .5s; }
+  #wrap.hide { opacity: 0; transform: translateX(-50%) translateY(-30px); }
+  .head { display: flex; align-items: flex-end; justify-content: space-between; margin-bottom: 8px; }
+  .team { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .team.r { align-items: flex-end; text-align: right; }
+  .tname { font-size: 26px; font-weight: 800; letter-spacing: .5px; text-shadow: 0 2px 10px rgba(0,0,0,.7); }
+  .tsub { font-size: 14px; font-weight: 600; opacity: .9; text-shadow: 0 1px 6px rgba(0,0,0,.8); }
+  .clock { font-size: 30px; font-weight: 800; font-variant-numeric: tabular-nums; padding: 2px 16px;
+           border-radius: 12px; background: rgba(10,12,19,.75); border: 2px solid rgba(255,255,255,.25); }
+  .clock.hot { color: #fbbf24; border-color: #fbbf24; }
+  .bar { position: relative; height: 46px; border-radius: 23px; overflow: hidden; display: flex;
+         background: rgba(10,12,19,.75); border: 3px solid rgba(255,255,255,.35); box-shadow: 0 6px 24px rgba(0,0,0,.5); }
+  .fill { height: 100%; display: flex; align-items: center; transition: width .6s cubic-bezier(.2,.8,.2,1); min-width: 70px; }
+  .fill.a { justify-content: flex-start; padding-left: 18px; }
+  .fill.b { justify-content: flex-end; padding-right: 18px; }
+  .fill span { font-size: 22px; font-weight: 800; font-variant-numeric: tabular-nums; text-shadow: 0 2px 6px rgba(0,0,0,.6); }
+  .mid { position: absolute; top: -4px; bottom: -4px; width: 6px; background: #fff; border-radius: 3px;
+         box-shadow: 0 0 14px #fff; transition: left .6s cubic-bezier(.2,.8,.2,1); transform: translateX(-3px); }
+  .tops { display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px; font-weight: 600;
+          text-shadow: 0 1px 6px rgba(0,0,0,.9); }
+  .tops div { max-width: 48%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .win { position: fixed; left: 50%; top: 110px; transform: translateX(-50%) scale(.6); opacity: 0;
+         font-size: 46px; font-weight: 900; white-space: nowrap; padding: 14px 34px; border-radius: 22px;
+         background: rgba(10,12,19,.85); border: 4px solid #fbbf24; text-shadow: 0 3px 14px rgba(0,0,0,.7);
+         transition: all .5s cubic-bezier(.2,1.4,.4,1); text-align: center; }
+  .win.show { opacity: 1; transform: translateX(-50%) scale(1); }
+  .win small { display: block; font-size: 20px; font-weight: 600; opacity: .9; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div id="wrap" class="hide">
+  <div class="head">
+    <div class="team"><div class="tname" id="n0">Красные</div><div class="tsub" id="j0"></div></div>
+    <div class="clock" id="clock">3:00</div>
+    <div class="team r"><div class="tname" id="n1">Синие</div><div class="tsub" id="j1"></div></div>
+  </div>
+  <div class="bar">
+    <div class="fill a" id="f0"><span id="s0">0</span></div>
+    <div class="fill b" id="f1" style="flex:1"><span id="s1">0</span></div>
+    <div class="mid" id="mid" style="left:50%"></div>
+  </div>
+  <div class="tops"><div id="t0"></div><div id="t1"></div></div>
+</div>
+<div class="win" id="win"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[c]);
+const Q = new URLSearchParams(location.search);
+const DEMO = Q.has("demo"), ALWAYS = Q.has("always");
+const num = n => Number(n || 0).toLocaleString("ru-RU");
+
+function render(d) {
+  const [a, b] = d.teams;
+  $("wrap").classList.toggle("hide", !(d.running || ALWAYS || DEMO));
+  $("n0").textContent = a.name; $("n1").textContent = b.name;
+  $("n0").style.color = a.color; $("n1").style.color = b.color;
+  $("j0").textContent = (a.join ? "пиши " + a.join : "") + (a.members ? ` · ${a.members} в команде` : "");
+  $("j1").textContent = (b.members ? `${b.members} в команде · ` : "") + (b.join ? "пиши " + b.join : "");
+  $("s0").textContent = num(a.score); $("s1").textContent = num(b.score);
+  const tot = a.score + b.score, share = tot ? a.score / tot : 0.5;
+  const p = Math.max(0.08, Math.min(0.92, share)) * 100;
+  $("f0").style.width = p + "%";
+  $("f0").style.background = `linear-gradient(90deg, ${a.color}, ${a.color}cc)`;
+  $("f1").style.background = `linear-gradient(90deg, ${b.color}cc, ${b.color})`;
+  $("mid").style.left = p + "%";
+  const m = Math.floor(d.left / 60), s = String(d.left % 60).padStart(2, "0");
+  $("clock").textContent = d.running ? `${m}:${s}` : "⚔";
+  $("clock").classList.toggle("hot", d.running && d.left <= 10);
+  const top = t => t.top.length ? "🔥 " + t.top.map(x => `${esc(x.user)} ${num(x.amount)}`).join(" · ") : "";
+  $("t0").innerHTML = top(a); $("t1").innerHTML = top(b);
+  const r = d.result, win = $("win");
+  if (r) {
+    const w = r.winner >= 0 ? d.teams[r.winner] : null;
+    win.style.borderColor = w ? w.color : "#fbbf24";
+    win.innerHTML = w ? `🏆 Победили <span style="color:${w.color}">${esc(w.name)}</span>` +
+      `<small>${num(r.score[0])} : ${num(r.score[1])}${r.mvp ? " · лучший — " + esc(r.mvp) : ""}</small>`
+      : `🤝 Ничья!<small>${num(r.score[0])} : ${num(r.score[1])}</small>`;
+    win.classList.add("show");
+    $("wrap").classList.remove("hide");
+  } else win.classList.remove("show");
+}
+
+async function poll() {
+  if (DEMO) {
+    render({running: true, left: 94, result: null, teams: [
+      {name: "Красные", color: "#ef4444", join: "!красные", score: 1840, members: 12, top: [{user: "Аня", amount: 990}, {user: "Макс", amount: 450}]},
+      {name: "Синие", color: "#3b82f6", join: "!синие", score: 1230, members: 9, top: [{user: "Kirill", amount: 700}]}]});
+    return;
+  }
+  try { render(await (await fetch("/api/battle", {cache: "no-store"})).json()); } catch (e) {}
+}
+poll();
+if (!DEMO) setInterval(poll, 700);
+</script>
+</body>
+</html>
