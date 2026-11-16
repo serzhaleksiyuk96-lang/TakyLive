@@ -2923,6 +2923,43 @@ async def h_vc_upload(request):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+async def h_vc_hub_search(request):
+    try:
+        return web.json_response({"ok": True, "items": await STATE.vc.hub_search(request.query.get("q", ""))})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": _hub_err(e)})
+
+
+async def h_vc_hub_files(request):
+    try:
+        return web.json_response({"ok": True, **(await STATE.vc.hub_files(request.query.get("repo", "")))})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": _hub_err(e)})
+
+
+async def h_vc_hub_install(request):
+    d = await _json_body(request)
+    if STATE.vc.hub_busy():
+        return web.json_response({"ok": False, "error": "уже ставлю другой голос — подожди"})
+
+    async def run():
+        try:
+            await STATE.vc.hub_install(str(d.get("repo", "")), str(d.get("model", "")), str(d.get("index", "")),
+                                       str(d.get("zip", "")), name=str(d.get("name", "")))
+        except Exception as e:
+            STATE.log("ОШИБКА", f"ИИ-голос: библиотека — {_vc_err(e)}")
+            STATE.vc.hub_state["error"] = _vc_err(e)
+    asyncio.ensure_future(run())
+    return web.json_response({"ok": True})
+
+
+def _hub_err(e):
+    import aiohttp
+    if isinstance(e, (aiohttp.ClientConnectorError, ConnectionError, asyncio.TimeoutError)):
+        return "нет связи с Hugging Face — проверь интернет"
+    return str(e) or type(e).__name__
+
+
 async def h_vc_open(request):
     import webbrowser
     webbrowser.open(STATE.vc.url("/"))
@@ -4698,6 +4735,9 @@ def make_app():
     app.router.add_post("/api/vc/normal", h_vc_normal)
     app.router.add_post("/api/vc/upload", h_vc_upload)
     app.router.add_post("/api/vc/open", h_vc_open)
+    app.router.add_get("/api/vc/hub/search", h_vc_hub_search)
+    app.router.add_get("/api/vc/hub/files", h_vc_hub_files)
+    app.router.add_post("/api/vc/hub/install", h_vc_hub_install)
     app.router.add_get("/api/ai/presets", h_ai_presets)
     app.router.add_get("/api/battle", h_battle)
     app.router.add_post("/api/battle/start", h_battle_start)

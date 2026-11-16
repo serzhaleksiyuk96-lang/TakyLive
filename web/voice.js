@@ -208,3 +208,70 @@ async function vcOpenUi() {
   if (!VC || !VC.running) { alert("Сначала запусти голосовую программу (шаг 2)"); return; }
   await vcApi("open", {});
 }
+
+// ── 🔎 Библиотека голосов (модели RVC на Hugging Face) ─────────────────────────
+function vcHubToggle() {
+  const box = vcEl("vcHub");
+  box.classList.toggle("hidden");
+  if (!box.classList.contains("hidden")) vcEl("vcHubQ").focus();
+}
+
+function vcSize(b) { return !b ? "" : b > 1073741824 ? (b / 1073741824).toFixed(1) + " ГБ" : Math.max(1, Math.round(b / 1048576)) + " МБ"; }
+
+async function vcHubSearch() {
+  const q = vcEl("vcHubQ").value.trim(), list = vcEl("vcHubList"), hint = vcEl("vcHubHint");
+  if (q.length < 2) { hint.textContent = "Впиши, какой голос ищешь"; return; }
+  hint.textContent = "Ищу…"; list.innerHTML = "";
+  const r = await (await fetch("/api/vc/hub/search?q=" + encodeURIComponent(q))).json();
+  if (!r.ok) { hint.textContent = "✗ " + r.error; return; }
+  hint.textContent = r.items.length ? `Найдено: ${r.items.length}. Нажми «Открыть», чтобы выбрать голос` : "Ничего не нашлось — попробуй по-английски";
+  list.innerHTML = r.items.map((m, i) => `<div><div class="vc-hub-row"><span class="nm" title="${esc(m.id)}">${esc(m.id)}</span>
+      <span class="st">⬇ ${m.downloads} · ♥ ${m.likes}</span>
+      <button class="small" onclick="vcHubOpen(${i}, ${JSON.stringify(m.id).replace(/"/g, "&quot;")})">Открыть</button></div>
+      <div class="vc-hub-files" id="vcHubF${i}"></div></div>`).join("");
+}
+
+let VC_HUB = {};
+async function vcHubOpen(i, repo) {
+  const box = vcEl("vcHubF" + i);
+  if (box.innerHTML) { box.innerHTML = ""; return; }
+  box.innerHTML = `<span class="hint">Смотрю файлы…</span>`;
+  const r = await (await fetch("/api/vc/hub/files?repo=" + encodeURIComponent(repo))).json();
+  if (!r.ok) { box.innerHTML = `<span class="hint">✗ ${esc(r.error)}</span>`; return; }
+  VC_HUB[repo] = r;
+  const lic = r.license ? `Лицензия: <b>${esc(r.license)}</b>` : "Лицензия не указана — уточни у автора";
+  box.innerHTML = `<div class="hint">${lic} · <a href="${esc(r.url)}" target="_blank" rel="noopener">страница модели</a></div>` +
+    (r.candidates.length ? r.candidates.map((c, j) => `<div class="vc-hub-row">
+        <span class="nm">${c.zip ? "📦" : "🎙"} ${esc(c.label)}</span>
+        <span class="st">${c.zip ? "архив" : c.index ? ".pth + .index" : ".pth"} ${vcSize(c.size)}</span>
+        <button class="small primary" onclick="vcHubInstall(${JSON.stringify(repo).replace(/"/g, "&quot;")}, ${j})">⬇ Поставить</button></div>`).join("")
+      : `<span class="hint">В этой модели нет файлов голоса (.pth или .zip)</span>`);
+}
+
+async function vcHubInstall(repo, j) {
+  if (!VC || !VC.running) { alert("Сначала запусти голосовую программу (шаг 2)"); return; }
+  const c = VC_HUB[repo].candidates[j];
+  const name = prompt("Как назвать голос? (это имя пойдёт в команду voice:Имя:секунды)", c.label);
+  if (name === null) return;
+  const r = await (await fetch("/api/vc/hub/install", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({repo, model: c.model, index: c.index, zip: c.zip, name: name.trim() || c.label})})).json();
+  if (!r.ok) { alert(r.error); return; }
+  vcHubWatch();
+}
+
+let vcHubTimer = null;
+function vcHubWatch() {
+  clearInterval(vcHubTimer);
+  const hint = vcEl("vcUpHint");
+  vcHubTimer = setInterval(async () => {
+    const s = await vcApi("status");
+    const h = s.hub || {};
+    if (h.running) {
+      hint.textContent = h.stage + (h.total ? ` — ${Math.floor(h.done / h.total * 100)}%` : h.done ? ` — ${vcSize(h.done)}` : "");
+      return;
+    }
+    clearInterval(vcHubTimer);
+    hint.textContent = h.error ? "✗ " + h.error : h.ok || "Готово";
+    vcRefresh();
+  }, 1000);
+}

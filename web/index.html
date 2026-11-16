@@ -1036,6 +1036,14 @@
               border: 1px solid var(--border); background: var(--panel); font-size: 13px; }
   .vc-voice.on { border-color: #a855f7; box-shadow: 0 0 0 2px rgba(168,85,247,.3); }
   .vc-voice button { padding: 2px 8px; font-size: 12px; }
+  .vc-hub { margin: 6px 0 8px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; }
+  .vc-hub-warn { margin: 4px 0 8px; }
+  .vc-hub a { color: #93c5fd; }
+  .vc-hub-list { display: grid; gap: 6px; max-height: 340px; overflow: auto; }
+  .vc-hub-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--panel); }
+  .vc-hub-row .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .vc-hub-row .st { font-size: 12px; opacity: .7; white-space: nowrap; }
+  .vc-hub-files { padding: 4px 0 4px 18px; display: grid; gap: 4px; }
   #rmCard { padding: 16px 20px; }
   #rmCard h3 { margin: 0 0 12px; }
   .ia-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -2155,7 +2163,19 @@
               <button class="small" onclick="document.getElementById('vcModel').click()">➕ Добавить голос (.pth)</button>
               <input type="file" id="vcModel" accept=".pth,.onnx,.safetensors" style="display:none" onchange="vcPickModel(this)">
               <input type="file" id="vcIndex" accept=".index" style="display:none" onchange="vcUpload()">
-              <span class="hint" id="vcUpHint">Голос RVC — файл .pth (и, если есть, .index). Ищи на huggingface.co</span>
+              <button class="small" onclick="vcHubToggle()">🔎 Библиотека голосов</button>
+              <span class="hint" id="vcUpHint">Голос RVC — файл .pth (и, если есть, .index)</span>
+            </div>
+            <div id="vcHub" class="vc-hub hidden">
+              <div class="ia-opts">
+                <input id="vcHubQ" class="ia-txt" style="width:280px" placeholder="robot, demon, deep voice, girl, anime…"
+                       onkeydown="if(event.key==='Enter')vcHubSearch()">
+                <button class="small primary" onclick="vcHubSearch()">Найти</button>
+                <span class="hint" id="vcHubHint">Модели RVC с Hugging Face — их выкладывают сами пользователи.</span>
+              </div>
+              <div class="hint vc-hub-warn">⚠ Смотри лицензию модели. Голоса реальных людей (блогеров, артистов, политиков) без их
+                согласия не используй — за выдачу себя за другого TikTok может заблокировать.</div>
+              <div id="vcHubList" class="vc-hub-list"></div>
             </div>
             <div class="ia-opts">
               <label title="Каким голосом говорить, когда подарков нет">Обычный голос

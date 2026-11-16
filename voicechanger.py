@@ -20,6 +20,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 import zipfile
 
 import aiohttp
@@ -29,6 +30,9 @@ RELEASES_API = "https://api.github.com/repos/deiteris/voice-changer/releases/lat
 CABLE_URLS = ("https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip",
               "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip")
 CABLE_PAGE = "https://vb-audio.com/Cable/"
+HF_BASE = (os.environ.get("TAKY_HF_BASE") or "https://huggingface.co").rstrip("/")   # для автопроверки — подмена
+REPO_RE = re.compile(r"^[\w.\-]{1,96}/[\w.\-]{1,96}$")
+MAX_HUB_FILE = 2 << 30
 EXE_NAME = "MMVCServerSIO.exe" if IS_WIN else "MMVCServerSIO"
 MIN_DRIVER = (528, 33)
 
@@ -74,6 +78,7 @@ class VoiceChanger:
         self.active = None            # {"name", "slot", "user", "until"}
         self.lock = asyncio.Lock()
         self.nv = None
+        self.hub_state = {"running": False, "stage": "", "done": 0, "total": 0, "error": "", "ok": ""}
 
     # ── где лежит ────────────────────────────────────────────────────────────
     def dir(self):
@@ -486,6 +491,158 @@ class VoiceChanger:
             i += 1
         return i
 
+    # ── библиотека голосов: модели RVC на Hugging Face ──────────────────────
+    async def _hf_json(self, path, params=None):
+        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20),
+                                         headers={"User-Agent": "TakyLive"}) as s:
+            async with s.get(HF_BASE + path, params=params) as r:
+                if r.status != 200:
+                    raise RuntimeError(f"Hugging Face ответил {r.status}")
+                return await r.json(content_type=None)
+
+    async def hub_search(self, q):
+        """Ищет модели RVC на Hugging Face (по тегу rvc, самые скачиваемые сверху)."""
+        q = str(q or "").strip()[:60]
+        if len(q) < 2:
+            raise RuntimeError("впиши, какой голос ищешь")
+        base = {"sort": "downloads", "direction": "-1", "limit": "40"}
+        items = await self._hf_json("/api/models", dict(base, filter="rvc", search=q))
+        if not items and q:
+            raw = await self._hf_json("/api/models", dict(base, search=q, limit="80"))
+            items = [m for m in raw if "rvc" in str(m.get("id", "")).lower()
+                     or any("rvc" in str(t).lower() for t in m.get("tags") or [])]
+        out = []
+        for m in items[:40]:
+            rid = str(m.get("id") or m.get("modelId") or "")
+            if REPO_RE.match(rid):
+                out.append({"id": rid, "downloads": int(m.get("downloads") or 0), "likes": int(m.get("likes") or 0)})
+        return out
+
+    @staticmethod
+    def _is_voice_file(name):
+        base = os.path.basename(name)
+        low = base.lower()
+        if not low.endswith((".pth", ".onnx", ".safetensors")):
+            return False
+        # файлы обучения (G_/D_), предобученные основы и чекпоинты — не голоса
+        return not re.match(r"^(g_|d_|f0g|f0d|g\d|d\d)", low) and "pretrain" not in name.lower() \
+            and "hubert" not in low and "rmvpe" not in low
+
+    async def hub_files(self, repo):
+        """Что можно поставить из репозитория: пары .pth (+ .index) и .zip-архивы."""
+        if not REPO_RE.match(str(repo or "")):
+            raise RuntimeError("неверное имя модели")
+        d = await self._hf_json(f"/api/models/{repo}", {"blobs": "true"})
+        files = {str(f.get("rfilename")): int(f.get("size") or 0) for f in d.get("siblings") or [] if f.get("rfilename")}
+        card = d.get("cardData") or {}
+        lic = card.get("license") or next((t[8:] for t in d.get("tags") or [] if str(t).startswith("license:")), "")
+        indexes = [f for f in files if f.lower().endswith(".index")]
+        cands = []
+        for f in files:
+            if self._is_voice_file(f):
+                folder = os.path.dirname(f)
+                same = [i for i in indexes if os.path.dirname(i) == folder]
+                same.sort(key=lambda i: (not os.path.basename(i).lower().startswith("added"), len(i)))
+                idx = same[0] if same else (indexes[0] if len(indexes) == 1 else "")
+                cands.append({"label": os.path.splitext(os.path.basename(f))[0], "model": f, "index": idx,
+                              "zip": "", "size": files[f] + (files.get(idx) or 0)})
+            elif f.lower().endswith(".zip"):
+                cands.append({"label": os.path.splitext(os.path.basename(f))[0], "model": "", "index": "",
+                              "zip": f, "size": files[f]})
+        cands.sort(key=lambda c: c["label"].lower())
+        return {"repo": repo, "license": str(lic or ""), "url": f"{HF_BASE}/{repo}", "candidates": cands[:200],
+                "files": len(files)}
+
+    def hub_busy(self):
+        return self.hub_state.get("running")
+
+    async def hub_install(self, repo, model="", index="", zip_name="", slot=None, name=""):
+        """Скачивает голос с Hugging Face и загружает его в свободный слот голосовой программы."""
+        st = self.hub_state
+        if st.get("running"):
+            raise RuntimeError("уже ставлю другой голос — подожди")
+        st.update(running=True, stage="Проверяю…", done=0, total=0, error="", ok="")
+        tmp = tempfile.mkdtemp(prefix="taky_hf_")
+        try:
+            info = await self.hub_files(repo)
+            valid = {c["model"] for c in info["candidates"]} | {c["index"] for c in info["candidates"]} | \
+                    {c["zip"] for c in info["candidates"]}
+            for f in (model, index, zip_name):
+                if f and f not in valid:
+                    raise RuntimeError(f"в модели нет файла {f}")
+            if not (model or zip_name):
+                raise RuntimeError("выбери голос")
+            label = re.sub(r"[^\w\-]+", "_", str(name or os.path.splitext(os.path.basename(model or zip_name))[0]))
+            label = label.strip("_")[:60] or "voice"
+            todo = [f for f in (zip_name, model, index) if f]
+            got = {}
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=None, sock_read=120),
+                                             headers={"User-Agent": "TakyLive"}) as s:
+                for f in todo:
+                    url = f"{HF_BASE}/{repo}/resolve/main/" + "/".join(urllib.parse.quote(x) for x in f.split("/"))
+                    st.update(stage=f"Скачиваю {os.path.basename(f)}", done=0, total=0)
+                    path = os.path.join(tmp, re.sub(r"[^\w.\-]+", "_", os.path.basename(f)))
+                    async with s.get(url) as r:
+                        if r.status != 200:
+                            raise RuntimeError(f"не скачался {os.path.basename(f)}: {r.status}")
+                        st["total"] = int(r.headers.get("Content-Length") or 0)
+                        with open(path, "wb") as out:
+                            async for chunk in r.content.iter_chunked(1 << 20):
+                                st["done"] += len(chunk)
+                                if st["done"] > MAX_HUB_FILE:
+                                    raise RuntimeError("файл больше 2 ГБ")
+                                out.write(chunk)
+                    got[f] = path
+            if zip_name:
+                st.update(stage="Распаковываю…", done=0, total=0)
+                model_path, index_path = await asyncio.to_thread(self._from_zip, got[zip_name], tmp)
+            else:
+                model_path, index_path = got[model], got.get(index)
+            ext = os.path.splitext(model_path)[1]
+            nice = os.path.join(tmp, label + ext)                  # голос в программе называется по имени файла
+            if os.path.abspath(nice) != os.path.abspath(model_path):
+                os.replace(model_path, nice)
+            st.update(stage="Загружаю в голосовую программу…", done=0, total=0)
+            if slot in (None, "", "auto"):
+                await self.info()
+                slot = self.free_slot()
+            await self.upload_model(int(slot), nice, index_path)
+            st.update(stage="", ok=f"✓ Голос «{label}» добавлен (слот {slot})")
+            self.log("ГОЛОС", f"🎙 Из библиотеки: {repo} → «{label}»")
+            return {"slot": int(slot), "name": label}
+        except Exception as e:
+            st.update(stage="", error=str(e) or type(e).__name__)
+            raise
+        finally:
+            st["running"] = False
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def _from_zip(self, zpath, tmp):
+        out = os.path.join(tmp, "unz")
+        real = os.path.realpath(out)
+        model, index = None, None
+        with zipfile.ZipFile(zpath) as z:
+            for info in z.infolist():
+                n = info.filename
+                if info.is_dir() or info.file_size > MAX_HUB_FILE:
+                    continue
+                if not (self._is_voice_file(n) or n.lower().endswith(".index")):
+                    continue
+                dest = os.path.realpath(os.path.join(out, os.path.basename(n)))
+                if not dest.startswith(real + os.sep):
+                    continue
+                os.makedirs(out, exist_ok=True)
+                with z.open(info) as src, open(dest, "wb") as dst:
+                    shutil.copyfileobj(src, dst, 8 << 20)
+                if n.lower().endswith(".index"):
+                    if index is None or os.path.basename(n).lower().startswith("added"):
+                        index = dest
+                elif model is None or os.path.getsize(dest) > os.path.getsize(model):
+                    model = dest
+        if not model:
+            raise RuntimeError("в архиве нет голоса (.pth)")
+        return model, index
+
     # ── состояние для окна ───────────────────────────────────────────────────
     async def status(self):
         running = await self.alive()
@@ -497,6 +654,7 @@ class VoiceChanger:
             "starting": (not running) and self.proc_alive(),
             "ours": self.proc_alive(),
             "install": dict(self.install_state),
+            "hub": dict(self.hub_state),
             "nvidia": await self.nvidia(),
             "active": self.overlay(),
             "ui_url": self.url("/"),

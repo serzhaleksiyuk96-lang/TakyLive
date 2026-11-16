@@ -240,6 +240,66 @@ class MockVC(http.server.BaseHTTPRequestHandler):
         self._send({"detail": "Not Found"}, 404)
 
 
+# ── поддельный Hugging Face (библиотека голосов) ─────────────────────────────
+def _zip_bytes(files):
+    import io as _io
+    import zipfile as _zf
+    b = _io.BytesIO()
+    with _zf.ZipFile(b, "w") as z:
+        for n, data in files.items():
+            z.writestr(n, data)
+    return b.getvalue()
+
+
+MOCK_HF_FILES = {
+    "tester/robot-rvc": {"robot.pth": b"PTH-ROBOT" * 100, "added_IVF256_robot.index": b"IDX" * 100,
+                         "G_1000.pth": b"G" * 10, "README.md": b"# robot"},
+    "tester/pack-rvc": {"voices.zip": _zip_bytes({"pack/demon.pth": b"PTH-DEMON" * 50,
+                                                  "pack/added_demon.index": b"IDX" * 50, "pack/info.txt": b"hi"})},
+}
+MOCK_HF_PORT = 0
+
+
+class MockHF(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, obj, code=200, raw=None):
+        b = raw if raw is not None else json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/octet-stream" if raw is not None else "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def do_GET(self):
+        import urllib.parse as up
+        u = up.urlparse(self.path)
+        q = up.parse_qs(u.query)
+        if u.path == "/api/models":
+            term = (q.get("search") or [""])[0].lower()
+            items = [{"id": rid, "downloads": 100 - i, "likes": 5, "tags": ["rvc"]}
+                     for i, rid in enumerate(MOCK_HF_FILES) if term in rid]
+            return self._send(items)
+        m = re.match(r"^/api/models/([\w.\-]+/[\w.\-]+)$", u.path)
+        if m and m.group(1) in MOCK_HF_FILES:
+            files = MOCK_HF_FILES[m.group(1)]
+            return self._send({"id": m.group(1), "cardData": {"license": "mit"}, "tags": ["rvc"],
+                               "siblings": [{"rfilename": n, "size": len(b)} for n, b in files.items()]})
+        m = re.match(r"^/([\w.\-]+/[\w.\-]+)/resolve/main/(.+)$", u.path)
+        if m and m.group(1) in MOCK_HF_FILES and up.unquote(m.group(2)) in MOCK_HF_FILES[m.group(1)]:
+            return self._send(None, raw=MOCK_HF_FILES[m.group(1)][up.unquote(m.group(2))])
+        self._send({"error": "not found"}, 404)
+
+
+def start_mock_hf():
+    global MOCK_HF_PORT
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockHF)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    MOCK_HF_PORT = srv.server_address[1]
+    return srv
+
+
 def start_mock_vc():
     global MOCK_VC_PORT
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockVC)
@@ -620,6 +680,40 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     check("новый голос появился в списке", "Робот" in [v["name"] for v in st.get("info", {}).get("slots", [])])
     st, _ = api.req("/api/vc/upload", None, raw=True)
     check("GET на загрузку не принимается", st in (404, 405), f"код {st}")
+    # библиотека голосов (Hugging Face)
+    r = api.get("/api/vc/hub/search?q=" + urllib.request.quote("robot"))
+    check("поиск в библиотеке голосов находит модель", r.get("ok") and [m["id"] for m in r.get("items", [])] == ["tester/robot-rvc"],
+          str(r)[:200])
+    r = api.get("/api/vc/hub/search?q=x")
+    check("слишком короткий запрос — подсказка", r.get("ok") is False and "впиши" in r.get("error", ""), str(r))
+    f = api.get("/api/vc/hub/files?repo=tester/robot-rvc")
+    c = f.get("candidates", [])
+    check("в модели виден голос robot (.pth + .index), файлы обучения G_ скрыты, лицензия mit",
+          f.get("license") == "mit" and [x["label"] for x in c] == ["robot"] and c[0]["index"] == "added_IVF256_robot.index",
+          str(f)[:300])
+    r = api.get("/api/vc/hub/files?repo=../../etc")
+    check("чужой путь вместо модели не принимается", r.get("ok") is False)
+    n_up = len(MOCK_VC["loaded"])
+    r = api.post("/api/vc/hub/install", {"repo": "tester/robot-rvc", "model": c[0]["model"], "index": c[0]["index"],
+                                         "name": "Робот 2000"})
+    done = wait_until(lambda: len(MOCK_VC["loaded"]) > n_up and not api.get("/api/vc/status")["hub"]["running"], 15)
+    ld = MOCK_VC["loaded"][-1] if MOCK_VC["loaded"] else {}
+    check("«Поставить» качает .pth + .index и загружает голос под своим именем",
+          bool(done) and [x["name"] for x in ld.get("files", [])] == ["Робот_2000.pth", "added_IVF256_robot.index"],
+          f"{ld} {api.get('/api/vc/status')['hub']}")
+    r = api.post("/api/vc/hub/install", {"repo": "tester/robot-rvc", "model": "../../secret.pth"})
+    time.sleep(1)
+    check("файл не из модели — отказ", "нет файла" in api.get("/api/vc/status")["hub"].get("error", ""),
+          str(api.get("/api/vc/status")["hub"]))
+    f = api.get("/api/vc/hub/files?repo=tester/pack-rvc")
+    c = f.get("candidates", [])
+    n_up = len(MOCK_VC["loaded"])
+    api.post("/api/vc/hub/install", {"repo": "tester/pack-rvc", "zip": c[0]["zip"] if c else "", "name": "Демон"})
+    done = wait_until(lambda: len(MOCK_VC["loaded"]) > n_up and not api.get("/api/vc/status")["hub"]["running"], 15)
+    ld = MOCK_VC["loaded"][-1] if MOCK_VC["loaded"] else {}
+    check("голос из .zip-архива распаковывается и ставится",
+          bool(done) and [x["name"] for x in ld.get("files", [])] == ["Демон.pth", "added_demon.index"], str(ld))
+
     r = api.post("/api/vc/audio", {"off": True})
     check("«Выключить» останавливает ИИ-голос", r.get("ok") and S.get("serverAudioStated") == 0)
     st, _ = api.req("/web/overlays/voice.html", raw=True)
@@ -627,6 +721,7 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
 
     print("\n• Журнал без ошибок программы")
     bad = [e for e in api.log() if e["kind"] in ("ОШИБКА",) and "RCON" not in e["text"]
+           and "в модели нет файла ../../secret.pth" not in e["text"]                    # это проверяли нарочно
            and "Minecraft" not in e["text"] and "сервер" not in e["text"].lower()]
     check("в журнале нет неожиданных ошибок", not bad, json.dumps(bad[:5], ensure_ascii=False)[:400])
 
@@ -645,9 +740,11 @@ def main():
     port, rport = free_port(), free_port()
     print(f"Копия программы: {copy_dir}\nПорт копии: {port}, пульт: {rport}")
     start_mock_vc()
+    start_mock_hf()
     report_id = make_copy(copy_dir, rport)
 
-    env = dict(os.environ, TAKY_TEST="1", TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1")
+    env = dict(os.environ, TAKY_TEST="1", TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
+               TAKY_HF_BASE=f"http://127.0.0.1:{MOCK_HF_PORT}")
     out_path = os.path.join(tmp, "app_output.txt")
     out = open(out_path, "w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen([sys.executable, "app.py"], cwd=copy_dir, env=env, stdout=out, stderr=subprocess.STDOUT)
