@@ -48,8 +48,12 @@ jobs:
           # общий ключ Fish Audio (секрет репозитория FISH_API_KEY) — в коде его нет, только в сборке.
           # Программа берёт его, только если у человека нет своего ключа в настройках.
           if ($env:FISH_KEY) { $env:FISH_KEY.Trim() | Out-File -Encoding ascii -NoNewline "$d\fish_key.txt" }
+          # общий ключ OpenRouter для ИИ-соведущего (секрет OPENROUTER_API_KEY) — так же: только в сборке,
+          # работает, если человек не вписал свой; программа пускает его только на бесплатные модели
+          if ($env:OPENROUTER_KEY) { $env:OPENROUTER_KEY.Trim() | Out-File -Encoding ascii -NoNewline "$d\openrouter_key.txt" }
         env:
           FISH_KEY: ${{ secrets.FISH_API_KEY }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
 
       - name: Пакет обновления
         shell: pwsh

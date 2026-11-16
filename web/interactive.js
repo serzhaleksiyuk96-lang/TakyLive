@@ -206,16 +206,17 @@ async function whSpin(btn) {
 }
 
 // ── 🤖 ИИ-соведущий ──
-let AI_PRESETS = null;
+let AI_PRESETS = null, AI_SHARED = false;      // AI_SHARED — в программе есть общий ключ OpenRouter
 
 async function aiOpen() {
   const c = iaC();
   if (!AI_PRESETS) {
-    try { AI_PRESETS = (await (await fetch("/api/ai/presets")).json()).presets; } catch (e) { AI_PRESETS = {}; }
+    try { const r = await (await fetch("/api/ai/presets")).json(); AI_PRESETS = r.presets; AI_SHARED = !!r.shared; }
+    catch (e) { AI_PRESETS = {}; }
     document.getElementById("ai_provider").innerHTML = Object.entries(AI_PRESETS)
       .map(([k, p]) => `<option value="${k}">${esc(p.name)}</option>`).join("");
   }
-  iaChk("ai_on", c.ai_on); iaVal("ai_provider", c.ai_provider || "deepseek");
+  iaChk("ai_on", c.ai_on); iaVal("ai_provider", c.ai_provider || "openrouter");
   iaVal("ai_model", c.ai_model); iaVal("ai_key", c.ai_key); iaVal("ai_url", c.ai_url);
   iaVal("ai_name", c.ai_name ?? "Таки"); iaVal("ai_persona", c.ai_persona); iaChk("ai_speak", c.ai_speak !== false);
   iaChk("ai_on_mention", c.ai_on_mention !== false); iaVal("ai_triggers", c.ai_triggers ?? "!ии, @таки, таки");
@@ -229,13 +230,17 @@ async function aiOpen() {
 }
 
 function aiProviderUI() {
-  const c = iaC(), p = (AI_PRESETS || {})[c.ai_provider || "deepseek"] || {};
+  const c = iaC(), prov = c.ai_provider || "openrouter", p = (AI_PRESETS || {})[prov] || {};
+  const shared = AI_SHARED && prov === "openrouter" && !c.ai_url;       // можно без своего ключа
+  document.getElementById("ai_key").placeholder = shared ? "общий ключ программы (можно свой)" : "";
   document.getElementById("ai_model").placeholder = p.model || "название модели";
   document.getElementById("ai_url").placeholder = p.url || "https://…/v1";
   document.getElementById("aiKeyRow").style.display = p.key === false ? "none" : "";
   document.getElementById("aiUrlRow").style.display = (c.ai_provider === "custom" || c.ai_url) ? "" : "none";
-  document.getElementById("aiHint").textContent = p.hint || "";
-  const ok = c.ai_on && (p.key === false || String(c.ai_key || "").trim()) && (c.ai_model || p.model);
+  document.getElementById("aiHint").textContent = (shared && !String(c.ai_key || "").trim()
+    ? "Работает сразу, на общем ключе программы: бесплатные ответы на день делят все, кто им пользуется. Закончились — впиши свой ключ. " : "")
+    + (p.hint || "");
+  const ok = c.ai_on && (p.key === false || shared || String(c.ai_key || "").trim()) && (c.ai_model || p.model);
   document.getElementById("aiState").textContent = !c.ai_on ? "" : ok ? "готов" : "⚠ впиши ключ и модель";
 }
 

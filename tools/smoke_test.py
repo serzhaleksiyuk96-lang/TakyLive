@@ -131,6 +131,9 @@ def wait_until(fn, timeout=15, step=0.3):
 
 # ── поддельный ИИ в формате OpenAI ──────────────────────────────────────────────
 MOCK_LOG = []
+MOCK_AUTH = []                     # с каким ключом пришёл каждый запрос к ИИ
+MOCK_AI_PORT = 0
+SHARED_KEY = "sk-or-v1-" + "0" * 16 + "test"      # поддельный «общий ключ» — в openrouter_key.txt копии
 
 
 class MockAI(http.server.BaseHTTPRequestHandler):
@@ -145,6 +148,15 @@ class MockAI(http.server.BaseHTTPRequestHandler):
         if not self.path.endswith("/chat/completions"):
             return self._send(404, {"error": {"message": "not found"}})
         MOCK_LOG.append(d)
+        MOCK_AUTH.append(self.headers.get("Authorization", ""))
+        model = str(d.get("model") or "")
+        effort = (d.get("reasoning") or {}).get("effort")
+        if model.startswith("mustthink/") and effort == "none":         # модель, которой нельзя запретить размышлять
+            return self._send(400, {"error": {"message": "Reasoning is mandatory for this endpoint and cannot be disabled."}})
+        if model.startswith("deepthink/") and int(d.get("max_tokens") or 0) < 1000:   # всё место ушло на мысли
+            return self._send(200, {"choices": [{"message": {"role": "assistant", "content": "", "reasoning": "хм…"}}]})
+        if model.startswith("daily/"):
+            return self._send(429, {"error": {"message": "Rate limit exceeded: free-models-per-day. Add 10 credits to unlock 1000 free model requests per day"}})
         now = (d.get("messages") or [{}])[-1].get("content", "").split("Сейчас:")[-1]   # без истории чата
         if "подарил" in now:
             ans = "<think>коротко</think>**Аня**, спасибо за «Galaxy»! 🌌 Вот это щедрость!"
@@ -420,6 +432,8 @@ def make_copy(dst, remote_port):
         json.dump(profiles, f, ensure_ascii=False)
     with open(os.path.join(dst, "config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False)
+    with open(os.path.join(dst, "openrouter_key.txt"), "w", encoding="utf-8") as f:
+        f.write(SHARED_KEY + "\n")                    # общий ключ OpenRouter — как в сборке релиза
     # сохранённый отчёт прошлого эфира — для страницы итогов
     sys.path.insert(0, dst)
     import streamstats
@@ -709,11 +723,50 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
         check("пульт выключается", stt.get("running") is False)
 
     print("\n• ИИ-соведущий (поддельный ИИ на этом ПК)")
-    mock, mport = start_mock_ai()
+    mport = MOCK_AI_PORT
     murl = f"http://127.0.0.1:{mport}/v1"
     pr = api.get("/api/ai/presets")
     check("список сервисов ИИ (DeepSeek, OpenRouter, Ollama)",
           all(k in json.dumps(pr) for k in ("deepseek", "openrouter", "ollama")))
+    # общий ключ OpenRouter (как Fish): соведущий работает сразу, без своего ключа
+    stc = api.get("/api/state")["config"]
+    pr = api.get("/api/ai/presets")
+    check("по умолчанию — бесплатный OpenRouter с моделью Gemma, общий ключ в окно и настройки не попадает",
+          stc.get("ai_provider") == "openrouter" and not stc.get("ai_key") and pr.get("shared") is True
+          and pr["presets"]["openrouter"]["model"] == "google/gemma-4-31b-it:free"
+          and SHARED_KEY not in json.dumps(api.get("/api/state")) and SHARED_KEY not in json.dumps(pr), str(stc.get("ai_provider")))
+    orr = {"ai_provider": "openrouter", "ai_url": "", "ai_key": "", "ai_model": ""}
+    r = api.post("/api/ai/test", orr)
+    b = MOCK_LOG[-1] if MOCK_LOG else {}
+    check("без своего ключа «Проверить» отвечает на общем ключе: бесплатная модель, без размышлений, с запасной моделью",
+          r.get("ok") and MOCK_AUTH[-1] == "Bearer " + SHARED_KEY and b.get("model") == "google/gemma-4-31b-it:free"
+          and b.get("reasoning") == {"effort": "none"} and b.get("models") == ["openrouter/free"], f"{r} {str(b)[:200]}")
+    r = api.post("/api/ai/test", dict(orr, ai_model="openai/gpt-5"))
+    check("общий ключ не тратится на платные модели (подменяется бесплатной)",
+          r.get("ok") and MOCK_LOG[-1].get("model") == "google/gemma-4-31b-it:free", str(MOCK_LOG[-1].get("model")))
+    r = api.post("/api/ai/test", dict(orr, ai_key="sk-or-v1-mine", ai_model="gemma-4-31b-it"))
+    check("свой ключ главнее общего; ID без «google/» и «:free» исправляется сам",
+          r.get("ok") and MOCK_AUTH[-1] == "Bearer sk-or-v1-mine" and MOCK_LOG[-1].get("model") == "google/gemma-4-31b-it:free",
+          f"{MOCK_AUTH[-1][:20]} {MOCK_LOG[-1].get('model')}")
+    r = api.post("/api/ai/test", dict(orr, ai_key="sk-or-v1-mine", ai_model="openai/gpt-5"))
+    check("со своим ключом платная модель остаётся как выбрана, запасная бесплатная не подставляется",
+          r.get("ok") and MOCK_LOG[-1].get("model") == "openai/gpt-5" and "models" not in MOCK_LOG[-1], str(MOCK_LOG[-1])[:160])
+    n1 = len(MOCK_LOG)
+    r = api.post("/api/ai/test", dict(orr, ai_key="k", ai_model="mustthink/m:free"))
+    r2 = api.post("/api/ai/test", dict(orr, ai_key="k", ai_model="mustthink/m:free"))
+    check("модель не умеет без размышлений — запрос повторяется в простом виде, дальше сразу так (без лишних запросов)",
+          r.get("ok") and r2.get("ok") and len(MOCK_LOG) - n1 == 3 and MOCK_LOG[-1].get("reasoning") == {"exclude": True}
+          and MOCK_LOG[-1].get("max_tokens") == 1500, f"{r} запросов {len(MOCK_LOG) - n1}")
+    r = api.post("/api/ai/test", dict(orr, ai_key="k", ai_model="deepthink/m"))
+    check("модель потратила весь ответ на размышления — второй запрос с запасом места даёт ответ", r.get("ok"), str(r))
+    r = api.post("/api/ai/test", dict(orr, ai_model="daily/m:free"))
+    r2 = api.post("/api/ai/test", dict(orr, ai_key="k", ai_model="daily/m:free"))
+    check("дневной лимит: на общем ключе — «впиши свой ключ», на своём — про 50 и 1000 в день",
+          r.get("ok") is False and "общий ключ делят" in r.get("error", "") and "свой ключ" in r.get("error", "")
+          and r2.get("ok") is False and "1000" in r2.get("error", ""), f"{r} {r2}")
+    r = api.post("/api/ai/test", dict(orr, ai_provider="deepseek", ai_url=murl))
+    check("у другого сервиса общий ключ не используется", r.get("ok") is False and "ключ" in r.get("error", ""), str(r))
+
     ai = {"ai_provider": "custom", "ai_url": murl, "ai_key": "good", "ai_model": "mock-1"}
     r = api.post("/api/ai/test", ai)
     check("🧪 Проверить: ответ получен", r.get("ok") is True and "Таки" in r.get("text", ""), str(r))
@@ -805,7 +858,6 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
           od["ai"].get("avatar") == "/media/ai_avatar_test.png" and od["ai"].get("shape") == "free", str(od.get("ai")))
     api.cfg(ai_avatar="", ai_avatar_shape="circle")
     api.cfg(ai_on=False)
-    mock.shutdown()
 
     print("\n• 🎙 ИИ-голос (поддельная голосовая программа)")
     st = api.get("/api/vc/status")
@@ -1129,6 +1181,8 @@ def main():
     print(f"Копия программы: {copy_dir}\nПорт копии: {port}, пульт: {rport}")
     start_mock_vc()
     start_mock_hf()
+    global MOCK_AI_PORT
+    MOCK_AI_PORT = start_mock_ai()[1]
     report_id = make_copy(copy_dir, rport)
     MOCK_VC["logfile"] = os.path.join(copy_dir, "voice-changer", "voice_changer_log.txt")
     os.makedirs(os.path.dirname(MOCK_VC["logfile"]), exist_ok=True)
@@ -1137,7 +1191,8 @@ def main():
     with open(DEVSIG_FILE, "w", encoding="utf-8") as f:
         f.write("o:Динамики|o:Наушники|i:Микрофон")
 
-    env = dict(os.environ, TAKY_TEST="1", TAKY_FAKE_TIKTOK="1", TAKY_VC_DEVSIG=DEVSIG_FILE, TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
+    env = dict(os.environ, TAKY_TEST="1", TAKY_FAKE_TIKTOK="1", TAKY_VC_DEVSIG=DEVSIG_FILE, TAKY_PORT=str(port),
+               TAKY_OPENROUTER_BASE=f"http://127.0.0.1:{MOCK_AI_PORT}/v1", PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
                TAKY_HF_BASE=f"http://127.0.0.1:{MOCK_HF_PORT}",
                TAKY_PRESETS_URL=f"http://127.0.0.1:{MOCK_HF_PORT}/presets.json")
     out_path = os.path.join(tmp, "app_output.txt")

@@ -5,6 +5,7 @@ Ollama на этом же ПК или свой адрес. Только гово
 Сообщения зрителей идут в ИИ как реплики, а не как указания (защита от «забудь правила»).
 """
 import asyncio
+import os
 import re
 import threading
 import time
@@ -15,8 +16,10 @@ from aiohttp import ClientError, ClientSession, ClientTimeout
 PRESETS = {
     "deepseek":   {"name": "DeepSeek", "url": "https://api.deepseek.com", "model": "deepseek-v4-flash", "key": True,
                    "hint": "platform.deepseek.com → API keys. Дешёвый и хорошо говорит по-русски"},
-    "openrouter": {"name": "OpenRouter", "url": "https://openrouter.ai/api/v1", "model": "", "key": True,
-                   "hint": "openrouter.ai → Keys. Модель — скопируй ID со страницы openrouter.ai/models"},
+    "openrouter": {"name": "OpenRouter — бесплатно", "model": "google/gemma-4-31b-it:free", "key": True,
+                   "url": (os.environ.get("TAKY_OPENROUTER_BASE") or "https://openrouter.ai/api/v1").rstrip("/"),
+                   "hint": "Бесплатная модель Gemma. Свой ключ (тоже бесплатно): openrouter.ai → Keys. Другая модель — "
+                           "скопируй её ID со страницы openrouter.ai/models (бесплатные кончаются на :free)"},
     "ollama":     {"name": "Ollama — бесплатно на этом ПК", "url": "http://127.0.0.1:11434/v1", "model": "qwen2.5:7b",
                    "key": False, "hint": "Поставь Ollama (ollama.com) и скачай модель: ollama pull qwen2.5:7b. Нагружает видеокарту"},
     "custom":     {"name": "Свой адрес (формат OpenAI)", "url": "", "model": "", "key": True,
@@ -24,7 +27,7 @@ PRESETS = {
 }
 
 DEFAULTS = {
-    "ai_on": False, "ai_provider": "deepseek", "ai_url": "", "ai_key": "", "ai_model": "",
+    "ai_on": False, "ai_provider": "openrouter", "ai_url": "", "ai_key": "", "ai_model": "",
     "ai_name": "Таки",
     "ai_persona": "Весёлый и немного дерзкий, но добрый. Любит игры, шутит про происходящее на стриме, "
                   "подбадривает зрителей.",
@@ -65,13 +68,59 @@ def _int(v, d):
         return d
 
 
+# Общий ключ OpenRouter: лежит в openrouter_key.txt рядом с программой (кладётся при сборке релиза, в коде его нет).
+# Работает, только если человек не вписал свой ключ. В настройки и в окно не попадает.
+SHARED = {"openrouter": ""}
+FREE_FALLBACK = "openrouter/free"            # если бесплатная модель перегружена — любая другая бесплатная
+_PLAIN = {}                                  # (адрес, модель) → когда «строгий» запрос не подошёл
+MODEL_FIX = {"gemma-4-31b-it": "google/gemma-4-31b-it:free", "gemma-4-31b-it:free": "google/gemma-4-31b-it:free",
+             "gemma-4-31b": "google/gemma-4-31b-it:free"}     # частая ошибка: ID без «google/» и «:free»
+
+
+def load_shared_key(base_dir):
+    try:
+        with open(os.path.join(base_dir, "openrouter_key.txt"), encoding="utf-8-sig") as f:
+            key = f.read().strip()
+    except OSError:
+        key = ""
+    SHARED["openrouter"] = key if key.startswith("sk-or-") else ""
+    return bool(SHARED["openrouter"])
+
+
+def uses_shared(cfg):
+    """Соведущий работает на общем ключе программы (своего ключа у человека нет)."""
+    prov = cfg.get("ai_provider") or "openrouter"
+    return bool(prov == "openrouter" and SHARED["openrouter"] and not str(cfg.get("ai_key") or "").strip()
+                and not str(cfg.get("ai_url") or "").strip())
+
+
+def migrate(cfg):
+    """Раньше по умолчанию стоял DeepSeek (нужен свой платный ключ). Если ключа так и нет, а общий ключ
+    OpenRouter есть — переключаем на бесплатный OpenRouter, чтобы соведущий работал сразу. → True, если поменяли."""
+    if SHARED["openrouter"] and (cfg.get("ai_provider") or "deepseek") == "deepseek" \
+            and not str(cfg.get("ai_key") or "").strip() and not str(cfg.get("ai_url") or "").strip():
+        cfg["ai_provider"] = "openrouter"
+        if str(cfg.get("ai_model") or "").startswith("deepseek"):
+            cfg["ai_model"] = ""
+        return True
+    return False
+
+
 def endpoint(cfg):
-    p = PRESETS.get(cfg.get("ai_provider") or "deepseek", PRESETS["custom"])
+    prov = cfg.get("ai_provider") or "openrouter"
+    p = PRESETS.get(prov, PRESETS["custom"])
     url = (str(cfg.get("ai_url") or "").strip() or p["url"]).rstrip("/")
     model = str(cfg.get("ai_model") or "").strip() or p["model"]
+    key = str(cfg.get("ai_key") or "").strip()
+    if prov == "openrouter":
+        model = MODEL_FIX.get(model.lower(), model)
+        if uses_shared(cfg):
+            key = SHARED["openrouter"]
+            if not model.endswith(":free") and model != FREE_FALLBACK:    # общий ключ — только бесплатные модели
+                model = p["model"]
     if url and not url.endswith("/chat/completions"):
         url += "/chat/completions"
-    return url, model, str(cfg.get("ai_key") or "").strip(), p
+    return url, model, key, p
 
 
 def clean(text, limit):
@@ -122,8 +171,31 @@ def facts(cfg):
     return out
 
 
+async def _post(url, body, headers):
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=25)) as cs:
+            async with cs.post(url, json=body, headers=headers) as r:
+                return r.status, await r.json(content_type=None)
+    except asyncio.TimeoutError:
+        raise RuntimeError("ИИ думал дольше 25 секунд — попробуй модель побыстрее")
+    except (ClientError, OSError):
+        if "127.0.0.1" in url or "localhost" in url:
+            raise RuntimeError("Ollama не отвечает — она запущена? (значок в трее, или команда ollama serve)")
+        raise RuntimeError("нет связи с сервисом ИИ — проверь интернет и адрес")
+    except ValueError:
+        raise RuntimeError("сервис ответил не JSON — проверь адрес")
+
+
+def _answer(d):
+    try:
+        return str(((d.get("choices") or [{}])[0].get("message") or {}).get("content") or "")
+    except (AttributeError, IndexError, TypeError):
+        return ""
+
+
 async def ask(cfg, messages, max_chars=180):
     url, model, key, p = endpoint(cfg)
+    shared = uses_shared(cfg)
     if not url:
         raise RuntimeError("впиши адрес сервиса")
     if not model:
@@ -133,35 +205,51 @@ async def ask(cfg, messages, max_chars=180):
     headers = {"Content-Type": "application/json"}
     if key:
         headers["Authorization"] = "Bearer " + key
-    if "openrouter.ai" in url:
-        headers["X-Title"] = "TakyLive"
     body = {"model": model, "messages": messages, "max_tokens": 220, "temperature": 0.9, "stream": False}
-    try:
-        async with ClientSession(timeout=ClientTimeout(total=25)) as cs:
-            async with cs.post(url, json=body, headers=headers) as r:
-                status = r.status
-                d = await r.json(content_type=None)
-    except asyncio.TimeoutError:
-        raise RuntimeError("ИИ думал дольше 25 секунд — попробуй модель побыстрее")
-    except (ClientError, OSError):
-        if "127.0.0.1" in url or "localhost" in url:
-            raise RuntimeError("Ollama не отвечает — она запущена? (значок в трее, или команда ollama serve)")
-        raise RuntimeError("нет связи с сервисом ИИ — проверь интернет и адрес")
-    except ValueError:
-        raise RuntimeError(f"сервис ответил не JSON (код {status}) — проверь адрес")
+    openrouter = (cfg.get("ai_provider") or "openrouter") == "openrouter" or "openrouter.ai" in url
+    # «Простая» форма запроса: место под размышления модели, сами мысли в ответ не берём — её понимают все модели
+    plain = dict(body, max_tokens=1500, reasoning={"exclude": True})
+    strict = openrouter and time.time() - _PLAIN.get((url, model), 0) > 3600
+    if openrouter:
+        headers["X-Title"] = "TakyLive"
+        if strict:
+            body["reasoning"] = {"effort": "none"}      # без «размышлений»: они съедают лимит ответа и тянут время
+            if model.endswith(":free"):                 # бесплатная модель перегружена — ответит другая бесплатная
+                body["models"] = [FREE_FALLBACK]
+        else:
+            body = plain
+    status, d = await _post(url, body, headers)
+    if strict and (status == 400 or (status == 200 and isinstance(d, dict) and "choices" in d
+                                     and not clean(_answer(d), max_chars))):
+        _PLAIN[(url, model)] = time.time()              # эта модель так не умеет — час не пробуем, чтобы не тратить запросы
+        s2, d2 = await _post(url, plain, headers)
+        if status == 400 or s2 == 200:
+            status, d = s2, d2
+    if not isinstance(d, dict):
+        d = {}
     if status != 200 or "choices" not in d:
         msg = str(((d.get("error") or {}) if isinstance(d.get("error"), dict) else {"message": d.get("error")})
                   .get("message") or d.get("message") or "")[:160]
+        if key:
+            msg = msg.replace(key, "…")
+        low = msg.lower()
         if status == 401:
-            raise RuntimeError("ключ API не подходит — скопируй заново")
-        if status == 402 or "balance" in msg.lower() or "credit" in msg.lower():
+            raise RuntimeError("общий ключ программы больше не работает — впиши свой ключ OpenRouter (это бесплатно: "
+                               "openrouter.ai → Keys)" if shared else "ключ API не подходит — скопируй заново")
+        if status == 429 and ("per-day" in low or "per day" in low or "daily" in low):
+            raise RuntimeError(("бесплатные ответы на сегодня закончились — общий ключ делят все, кто пользуется "
+                                "программой. Впиши свой ключ OpenRouter (бесплатно: openrouter.ai → Keys)") if shared else
+                               "дневной лимит бесплатных запросов OpenRouter закончился (50 в день; 1000 — после "
+                               "пополнения счёта на $10)")
+        if status == 402 or "balance" in low or "credit" in low:
             raise RuntimeError("на счёте сервиса закончились деньги — пополни баланс")
-        if status == 404 or "model" in msg.lower():
+        if status == 404 or "model" in low:
             raise RuntimeError(f"модель «{model}» не найдена — проверь название" + (f" ({msg})" if msg else ""))
         if status == 429:
-            raise RuntimeError("слишком много запросов — сервис просит подождать")
+            raise RuntimeError("слишком много запросов — сервис просит подождать" +
+                               (" (общий ключ делят все пользователи программы — надёжнее вписать свой)" if shared else ""))
         raise RuntimeError(f"ошибка {status}: {msg or 'без подробностей'}")
-    text = clean(((d["choices"] or [{}])[0].get("message") or {}).get("content", ""), max_chars)
+    text = clean(_answer(d), max_chars)
     if not text:
         raise RuntimeError("ИИ вернул пустой ответ")
     return text

@@ -3226,7 +3226,8 @@ async def h_ai_test(request):
 
 async def h_ai_presets(request):
     import cohost
-    return web.json_response({"presets": cohost.PRESETS, "busy": STATE.cohost.busy,
+    return web.json_response({"presets": cohost.PRESETS, "shared": bool(cohost.SHARED["openrouter"]),
+                              "busy": STATE.cohost.busy,
                               "queue": len(STATE.cohost.queue), "last": STATE.cohost.last_reply})
 
 
@@ -5479,6 +5480,8 @@ def main():
     STATE.stats.on_end = _stats_ended
     import cohost as _cohost
     STATE.cohost = _cohost.CoHost(STATE.log)
+    if _cohost.load_shared_key(BASE_DIR) and _cohost.migrate(STATE.config):   # общий ключ OpenRouter — соведущий
+        save_config()                                                          # работает без своего ключа
     import interactive as _ia
     STATE.points = _ia.Points(os.path.join(BASE_DIR, "viewer_points.json"), STATE.log)
     STATE.battle = _ia.Battle(STATE.log)
