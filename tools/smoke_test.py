@@ -167,6 +167,87 @@ def start_mock_ai():
     return srv, srv.server_address[1]
 
 
+# ── поддельная голосовая программа (deiteris/voice-changer) ────────────────────
+MOCK_VC = {"settings": {"modelSlotIndex": 0, "passThrough": False, "serverAudioStated": 0}, "log": [],
+           "slots": [{"slotIndex": 0, "voiceChangerType": "RVC", "name": "Девушка"},
+                     {"slotIndex": 1, "voiceChangerType": "RVC", "name": "Демон"},
+                     {"slotIndex": 2, "voiceChangerType": None, "name": ""}],
+           "uploads": [], "loaded": []}
+MOCK_VC_PORT = 0
+
+
+class MockVC(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, obj, code=200):
+        b = json.dumps(obj, ensure_ascii=False).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def do_GET(self):
+        if self.path == "/api/hello":
+            return self._send({"result": "Index"})
+        if self.path == "/info":
+            dev = lambda i, n, inp: {"index": i, "name": n, "hostAPI": "Windows WASAPI",
+                                      "maxInputChannels": 2 if inp else 0, "maxOutputChannels": 0 if inp else 2}
+            return self._send({**MOCK_VC["settings"], "modelSlots": MOCK_VC["slots"],
+                               "gpus": [{"id": -1, "name": "CPU"}, {"id": 0, "name": "0: RTX 4060 (CUDA)"}],
+                               "serverAudioInputDevices": [dev(1, "Микрофон (USB Mic)", True)],
+                               "serverAudioOutputDevices": [dev(5, "Наушники (Realtek)", False),
+                                                            dev(7, "CABLE Input (VB-Audio Virtual Cable)", False)]})
+        self._send({"detail": "Not Found"}, 404)
+
+    def do_POST(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(n)
+        ctype = self.headers.get("Content-Type", "")
+        if self.path == "/update_settings":
+            import urllib.parse as up
+            if "multipart" in ctype:
+                f = dict(re.findall(rb'name="(\w+)"\r\n\r\n([^\r]*)', body))
+                f = {k.decode(): v.decode() for k, v in f.items()}
+            else:
+                f = {k: v[0] for k, v in up.parse_qs(body.decode()).items()}
+            k, v = f.get("key"), f.get("val")
+            MOCK_VC["log"].append((k, v))
+            if k == "passThrough":
+                v = v == "true"
+            elif k in ("modelSlotIndex", "serverAudioStated", "serverInputDeviceId", "serverOutputDeviceId",
+                       "serverMonitorDeviceId", "gpu"):
+                v = int(v)
+            MOCK_VC["settings"][k] = v
+            return self._send({"status": "OK"})
+        if self.path == "/upload_file":
+            m = re.search(rb'name="filename"\r\n\r\n([^\r]*)', body)
+            MOCK_VC["uploads"].append((m.group(1).decode() if m else "?", len(body)))
+            return self._send({"status": "OK"})
+        if self.path == "/load_model":
+            import urllib.parse as up
+            if "multipart" in ctype:
+                m = re.search(rb'name="params"\r\n\r\n(.*?)\r\n--', body, re.S)
+                p = json.loads(m.group(1)) if m else {}
+            else:                                   # aiohttp шлёт форму без файлов как urlencoded
+                p = json.loads(up.parse_qs(body.decode()).get("params", ["{}"])[0])
+            MOCK_VC["loaded"].append(p)
+            name = (p.get("files") or [{}])[0].get("name", "x").rsplit(".", 1)[0]
+            MOCK_VC["slots"] = [s for s in MOCK_VC["slots"] if s["slotIndex"] != p.get("slot")] + \
+                               [{"slotIndex": p.get("slot"), "voiceChangerType": "RVC", "name": name}]
+            return self._send({"status": "OK"})
+        self._send({"detail": "Not Found"}, 404)
+
+
+def start_mock_vc():
+    global MOCK_VC_PORT
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockVC)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    MOCK_VC_PORT = srv.server_address[1]
+    return srv
+
+
 # ── подготовка копии ────────────────────────────────────────────────────────────
 def make_copy(dst, remote_port):
     def ignore(dirpath, names):
@@ -177,7 +258,9 @@ def make_copy(dst, remote_port):
         "panel": [{"title": "💥 Тест-кнопка", "commands": ["say smoke"]}],
         "gifts": [{"name": "Rose", "gift_id": "5655", "title": "роза", "commands": ["say rose"]}],
         "chatcmds": [{"trigger": "!крипер", "title": "Крипер", "cooldown": 0, "points_cost": 30,
-                      "commands": ["say creeper"]}],
+                      "commands": ["say creeper"]},
+                     {"trigger": "!демон", "title": "Голос демона", "cooldown": 0,
+                      "commands": ["voice:Демон:3"]}],
     }}
     config = {
         "active_profile": "Тест", "tiktok_username": "smoke_nick",
@@ -189,7 +272,7 @@ def make_copy(dst, remote_port):
         "battle_say": False, "battle_like_n": 0,
         "ai_on": False, "ai_speak": False,
         "ann_tg_on": False, "ann_dc_on": False,
-        "remote_on": False, "remote_port": remote_port,
+        "remote_on": False, "remote_port": remote_port, "vc_port": MOCK_VC_PORT, "vc_autostart": False,
     }
     with open(os.path.join(dst, "profiles.json"), "w", encoding="utf-8") as f:
         json.dump(profiles, f, ensure_ascii=False)
@@ -489,6 +572,59 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     api.cfg(ai_on=False)
     mock.shutdown()
 
+    print("\n• 🎙 ИИ-голос (поддельная голосовая программа)")
+    st = api.get("/api/vc/status")
+    check("TakyLive видит голосовую программу и её голоса",
+          st.get("running") is True and [v["name"] for v in st.get("info", {}).get("slots", [])] == ["Девушка", "Демон"],
+          str(st)[:200])
+    check("VB-CABLE найден среди устройств", st.get("cable") is True)
+    r = api.post("/api/vc/audio", {"vc_mic_name": "Микрофон (USB Mic)", "vc_out_name": "", "vc_monitor_name": ""})
+    S = MOCK_VC["settings"]
+    check("«Включить ИИ-голос»: микрофон → CABLE Input, видеокарта, rmvpe, свой голос по умолчанию",
+          r.get("ok") and S.get("serverInputDeviceId") == 1 and S.get("serverOutputDeviceId") == 7 and S.get("gpu") == 0
+          and S.get("f0Detector") == "rmvpe_onnx" and S.get("serverAudioStated") == 1 and S.get("passThrough") is True
+          and str(S.get("enableServerAudio")) == "1", f"{r} {S}")
+    check("выбор микрофона сохранился в настройках", api.get("/api/state")["config"].get("vc_mic_name") == "Микрофон (USB Mic)")
+    n0 = len(api.log())
+    api.sim(kind="chat", user="hater", text="!демон")
+    ok = wait_until(lambda: S.get("modelSlotIndex") == 1 and S.get("passThrough") is False, 5)
+    check("чат-команда с voice:Демон:3 включает голос «Демон»", bool(ok), str(S))
+    od = api.get("/api/overlay?since=0")
+    check("оверлей видит «Демон» от hater с отсчётом",
+          (od.get("voice") or {}).get("name") == "Демон" and od["voice"].get("user") == "hater", str(od.get("voice")))
+    back = wait_until(lambda: S.get("passThrough") is True, 8)
+    check("через 3 сек вернулся обычный голос", bool(back) and not api.get("/api/overlay?since=0").get("voice"))
+    check("в журнале видно, кто и какой голос включил", api.log_has("ГОЛОС", r"hater: голос «Демон» на 3 сек"))
+    r = api.post("/api/vc/voice", {"name": "нет такого", "secs": 5})
+    check("несуществующий голос — понятная ошибка", r.get("ok") is False and "нет голоса" in r.get("error", ""), str(r))
+    api.post("/api/vc/normal", {"name": "Девушка"})
+    check("«Обычный голос» = ИИ-голос «Девушка»", S.get("modelSlotIndex") == 0 and S.get("passThrough") is False, str(S))
+    api.post("/api/vc/normal", {"name": ""})
+    check("«Обычный голос» = мой голос (без ИИ)", S.get("passThrough") is True)
+    # загрузка своего голоса
+    import uuid
+    bnd = "----taky" + uuid.uuid4().hex
+    parts = []
+    for name, fn, data in (("slot", None, b"auto"), ("model", "Робот.pth", b"PTH" * 1000), ("index", "Робот.index", b"IDX" * 500)):
+        disp = f'form-data; name="{name}"' + (f'; filename="{fn}"' if fn else "")
+        parts.append(f"--{bnd}\r\nContent-Disposition: {disp}\r\n\r\n".encode("utf-8") + data + b"\r\n")
+    body = b"".join(parts) + f"--{bnd}--\r\n".encode()
+    req = urllib.request.Request(api.base + "/api/vc/upload", data=body, method="POST",
+                                 headers={"Content-Type": f"multipart/form-data; boundary={bnd}"})
+    r = json.loads(urllib.request.urlopen(req, timeout=30).read())
+    ld = MOCK_VC["loaded"][-1] if MOCK_VC["loaded"] else {}
+    check("свой голос (.pth + .index) загружается в свободный слот 2",
+          r.get("ok") and r.get("slot") == 2 and [f["kind"] for f in ld.get("files", [])] == ["rvcModel", "rvcIndex"]
+          and len(MOCK_VC["uploads"]) == 2, f"{r} {ld}")
+    st = api.get("/api/vc/status")
+    check("новый голос появился в списке", "Робот" in [v["name"] for v in st.get("info", {}).get("slots", [])])
+    st, _ = api.req("/api/vc/upload", None, raw=True)
+    check("GET на загрузку не принимается", st in (404, 405), f"код {st}")
+    r = api.post("/api/vc/audio", {"off": True})
+    check("«Выключить» останавливает ИИ-голос", r.get("ok") and S.get("serverAudioStated") == 0)
+    st, _ = api.req("/web/overlays/voice.html", raw=True)
+    check("оверлей voice.html отдаётся", st == 200)
+
     print("\n• Журнал без ошибок программы")
     bad = [e for e in api.log() if e["kind"] in ("ОШИБКА",) and "RCON" not in e["text"]
            and "Minecraft" not in e["text"] and "сервер" not in e["text"].lower()]
@@ -508,6 +644,7 @@ def main():
     copy_dir = os.path.join(tmp, "TakyLive")
     port, rport = free_port(), free_port()
     print(f"Копия программы: {copy_dir}\nПорт копии: {port}, пульт: {rport}")
+    start_mock_vc()
     report_id = make_copy(copy_dir, rport)
 
     env = dict(os.environ, TAKY_TEST="1", TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1")

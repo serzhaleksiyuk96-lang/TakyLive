@@ -28,6 +28,8 @@ function iaOpen() {
   whRender(); whState();
   // 🤖
   aiOpen();
+  // 🎙
+  if (typeof vcOpen === "function") vcOpen();
   // 💎
   iaChk("pt_on", c.pts_on);
   for (const k of ["coin", "likes_n", "msg", "msg_cd", "follow", "sub", "share", "active"]) iaVal("pt_" + k, c["pts_" + k] ?? 0);

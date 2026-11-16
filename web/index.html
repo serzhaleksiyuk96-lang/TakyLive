@@ -1018,6 +1018,24 @@
   .rm-url { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,0.05); word-break: break-all; font-size: 12.5px; }
   .ann-h { margin: 18px 0 2px; font-weight: 600; color: var(--text); }
   .ia-card { margin-bottom: 16px; padding: 18px 20px; }
+  .vc-steps { list-style: none; counter-reset: vc; margin: 12px 0; padding: 0; display: grid; gap: 8px; }
+  .vc-steps li { counter-increment: vc; display: grid; grid-template-columns: 34px 170px 1fr; gap: 10px; align-items: start;
+                 padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel2); }
+  .vc-steps li::before { content: counter(vc); width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
+                         font-weight: 800; font-size: 13px; background: var(--border); color: var(--text); }
+  .vc-steps li.ok::before { content: "✓"; background: #16a34a; color: #fff; }
+  .vc-steps li.todo::before { background: #f59e0b; color: #111; }
+  .vc-steps li.off { opacity: .55; }
+  .vc-t { font-weight: 700; padding-top: 3px; }
+  .vc-d { min-width: 0; }
+  .vc-d .ia-opts { margin: 4px 0; }
+  .vc-bar { height: 8px; border-radius: 4px; background: var(--border); margin-top: 8px; overflow: hidden; }
+  .vc-bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #a855f7, #22d3ee); transition: width .5s; }
+  .vc-voices { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .vc-voice { display: inline-flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border-radius: 999px;
+              border: 1px solid var(--border); background: var(--panel); font-size: 13px; }
+  .vc-voice.on { border-color: #a855f7; box-shadow: 0 0 0 2px rgba(168,85,247,.3); }
+  .vc-voice button { padding: 2px 8px; font-size: 12px; }
   #rmCard { padding: 16px 20px; }
   #rmCard h3 { margin: 0 0 12px; }
   .ia-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; }
@@ -2101,6 +2119,63 @@
       <div class="ia-score" id="aiOut"></div>
     </div>
 
+    <!-- 🎙 ИИ-голос -->
+    <div class="card ia-card" id="vcCard">
+      <div class="ia-head">
+        <h3>🎙 ИИ-голос стримера</h3>
+        <span class="ph-badge" id="vcBadge">…</span>
+        <div class="spacer"></div>
+        <button class="small" onclick="vcRefresh(true)" title="Обновить">🔄</button>
+      </div>
+      <div class="hint">Зритель дарит подарок — и твой голос в эфире на N секунд становится ИИ-голосом (RVC):
+        демон, девушка, робот, персонаж. Считает видеокарта NVIDIA, задержка ≈30–60 мс. Всё ставится отсюда — по шагам.</div>
+      <ol class="vc-steps">
+        <li id="vcS1"><div class="vc-t">Видеокарта</div><div id="vcGpu" class="vc-d">проверяю…</div></li>
+        <li id="vcS2"><div class="vc-t">Голосовая программа</div>
+          <div class="vc-d"><span id="vcProg"></span> <span id="vcProgBtns"></span>
+            <div class="vc-bar hidden" id="vcBar"><i id="vcBarFill"></i></div></div></li>
+        <li id="vcS3"><div class="vc-t">Виртуальный кабель</div><div class="vc-d" id="vcCable"></div></li>
+        <li id="vcS4"><div class="vc-t">Звук</div>
+          <div class="vc-d">
+            <div class="ia-opts">
+              <label>🎤 Микрофон <select id="vcMic" style="width:230px"></select></label>
+              <label>→ Выход <select id="vcOut" style="width:200px"></select></label>
+              <label title="Чтобы слышать свой ИИ-голос в наушниках">🎧 Слышать себя <select id="vcMon" style="width:200px"></select></label>
+            </div>
+            <div class="ia-opts">
+              <button class="small primary" id="vcOnBtn" onclick="vcAudio(false)">▶ Включить ИИ-голос</button>
+              <button class="small" onclick="vcAudio(true)">⏹ Выключить</button>
+              <span class="hint" id="vcAudioHint"></span>
+            </div>
+          </div></li>
+        <li id="vcS5"><div class="vc-t">Голоса</div>
+          <div class="vc-d">
+            <div id="vcVoices" class="vc-voices"></div>
+            <div class="ia-opts">
+              <button class="small" onclick="document.getElementById('vcModel').click()">➕ Добавить голос (.pth)</button>
+              <input type="file" id="vcModel" accept=".pth,.onnx,.safetensors" style="display:none" onchange="vcPickModel(this)">
+              <input type="file" id="vcIndex" accept=".index" style="display:none" onchange="vcUpload()">
+              <span class="hint" id="vcUpHint">Голос RVC — файл .pth (и, если есть, .index). Ищи на huggingface.co</span>
+            </div>
+            <div class="ia-opts">
+              <label title="Каким голосом говорить, когда подарков нет">Обычный голос
+                <select id="vcNormal" style="width:220px" onchange="vcNormal(this.value)"></select></label>
+              <label>Голос из подарка держится <input type="number" min="3" id="vc_secs" class="ia-num" oninput="iaSetNum('vc_secs', this, 3)"> сек</label>
+            </div>
+          </div></li>
+        <li id="vcS6"><div class="vc-t">Как запускать</div>
+          <div class="vc-d hint">В подарке, кнопке панели, чат-команде или секторе колеса впиши команду
+            <code>voice:Имя голоса:секунды</code>, например <code>voice:Демон:30</code>. <code>voice:off</code> — сразу вернуть
+            обычный голос. В OBS / TikTok LIVE Studio микрофон — <b>CABLE Output</b> (обычный микрофон там выключи).
+            Плашка с отсчётом — оверлей «🎙 ИИ-голос стримера».</div></li>
+      </ol>
+      <div class="ia-opts">
+        <label class="chk"><input type="checkbox" id="vc_autostart" onchange="iaSetBool('vc_autostart', this)"> Запускать голосовую программу вместе с TakyLive</label>
+        <label class="chk"><input type="checkbox" id="vc_say" onchange="iaSetBool('vc_say', this)"> Плашка в оверлее</label>
+        <button class="small" onclick="vcOpenUi()" title="Тонкие настройки: высота голоса, Chunk, задержка">⚙ Окно голосовой программы</button>
+      </div>
+    </div>
+
     <!-- 💎 Очки зрителей -->
     <div class="card ia-card">
       <div class="ia-head">
@@ -2338,5 +2413,6 @@
 <script src="/web/showcase-ui.js?v=__VERSION__"></script>
 <script src="/web/live.js?v=__VERSION__"></script>
 <script src="/web/interactive.js?v=__VERSION__"></script>
+<script src="/web/voice.js?v=__VERSION__"></script>
 </body>
 </html>

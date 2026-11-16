@@ -419,7 +419,8 @@ class State:
         import copy as _copy
         import interactive as _ia                    # очки, битва команд, колесо — настройки по умолчанию
         import cohost as _ch                         # ИИ-соведущий — настройки по умолчанию
-        for _d in (_ia.PTS_DEFAULTS, _ia.BATTLE_DEFAULTS, _ia.WHEEL_DEFAULTS, _ch.DEFAULTS):
+        import voicechanger as _vc                   # 🎙 ИИ-голос — настройки по умолчанию
+        for _d in (_ia.PTS_DEFAULTS, _ia.BATTLE_DEFAULTS, _ia.WHEEL_DEFAULTS, _ch.DEFAULTS, _vc.DEFAULTS):
             for _k, _v in _d.items():
                 self.config.setdefault(_k, _copy.deepcopy(_v))
         # profiles = { "Выживание": {gifts:[], likes:[], subs:[], follows:[]}, ... }
@@ -1094,6 +1095,12 @@ async def game_send(cmd, user=""):
         return False
     if c.lower().startswith(KB_PREFIXES):          # клавиатура работает в любой игре
         return await keyboard_do(c)
+    if c.lower().startswith("voice:"):             # 🎙 ИИ-голос — работает в любой игре
+        try:
+            return await STATE.vc.command(c, user)
+        except Exception as e:
+            STATE.log("ОШИБКА", f"ИИ-голос: {e}")
+            return False
     game = active_profile().get("game") or "minecraft"
     if game in MOD_GAMES:
         mod_push(game, c, user)
@@ -2776,6 +2783,152 @@ async def ai_say(task, text):
         await tts_speak(name, cohost.speakable(text), voice=cfg.get("ai_voice") or None, read_name=False)
 
 
+# ── 🎙 ИИ-голос (голосовая программа deiteris/voice-changer) ─────────────────
+async def _json_body(request):
+    try:
+        d = await request.json()
+        return d if isinstance(d, dict) else {}
+    except Exception:
+        return {}
+
+
+async def h_vc_status(request):
+    return web.json_response(await STATE.vc.status())
+
+
+async def h_vc_install(request):
+    if STATE.vc.installing():
+        return web.json_response({"ok": True})
+    d = await _json_body(request)
+    backend = d.get("backend") if d.get("backend") in ("cuda", "dml") else None
+    asyncio.ensure_future(STATE.vc.install(backend))
+    return web.json_response({"ok": True})
+
+
+async def h_vc_install_cancel(request):
+    STATE.vc.cancel_install()
+    return web.json_response({"ok": True})
+
+
+async def h_vc_start(request):
+    try:
+        STATE.vc.start()
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+
+
+async def h_vc_stop(request):
+    STATE.vc.stop()
+    return web.json_response({"ok": True, "external": await STATE.vc.alive()})
+
+
+async def h_vc_cable(request):
+    try:
+        await STATE.vc.install_cable()
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e)})
+
+
+async def h_vc_audio(request):
+    """Сохраняет устройства и включает ИИ-голос (или выключает: {"off": true})."""
+    d = await _json_body(request)
+    try:
+        if d.get("off"):
+            await STATE.vc.audio_off()
+            return web.json_response({"ok": True})
+        for k in ("vc_mic_name", "vc_out_name", "vc_monitor_name"):
+            if k in d:
+                STATE.config[k] = str(d.get(k) or "")[:200]
+        save_config()
+        return web.json_response({"ok": True, **(await STATE.vc.setup_audio(STATE.config))})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": _vc_err(e)})
+
+
+def _vc_err(e):
+    import aiohttp
+    if isinstance(e, (aiohttp.ClientConnectorError, ConnectionError, asyncio.TimeoutError)):
+        return "голосовая программа не запущена или ещё загружается"
+    return str(e) or type(e).__name__
+
+
+async def h_vc_voice(request):
+    """Проверка голоса: {"name": "Демон", "secs": 10} или {"off": true}."""
+    d = await _json_body(request)
+    try:
+        if d.get("off"):
+            await STATE.vc.reset()
+            return web.json_response({"ok": True})
+        a = await STATE.vc.activate(str(d.get("name", "")), int(d.get("secs") or 10), "")
+        return web.json_response({"ok": True, "active": STATE.vc.overlay(), "name": a["name"]})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": _vc_err(e)})
+
+
+async def h_vc_normal(request):
+    d = await _json_body(request)
+    STATE.config["vc_normal"] = str(d.get("name") or "")[:100]
+    save_config()
+    try:
+        if not STATE.vc.active:
+            await STATE.vc.apply_normal(STATE.config)
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": _vc_err(e)})
+
+
+async def h_vc_upload(request):
+    """Свой голос: multipart — model (.pth/.onnx), index (.index, необязательно), slot."""
+    import tempfile
+    tmp = tempfile.mkdtemp(prefix="taky_vc_")
+    paths, slot = {}, None
+    try:
+        reader = await request.multipart()
+        async for part in reader:
+            if part.name == "slot":
+                slot = (await part.text()).strip()
+                continue
+            if part.name not in ("model", "index") or not part.filename:
+                continue
+            name = os.path.basename(part.filename).replace("\\", "_")
+            ext = os.path.splitext(name)[1].lower()
+            if (part.name == "model" and ext not in (".pth", ".onnx", ".safetensors")) or \
+               (part.name == "index" and ext != ".index"):
+                return web.json_response({"ok": False, "error": f"не тот файл: {name}"})
+            name = re.sub(r"[^\w.\-]+", "_", name)[:120]
+            path = os.path.join(tmp, name)
+            size = 0
+            with open(path, "wb") as f:
+                while True:
+                    chunk = await part.read_chunk(1 << 20)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > (2 << 30):
+                        return web.json_response({"ok": False, "error": "файл больше 2 ГБ"})
+                    f.write(chunk)
+            paths[part.name] = path
+        if "model" not in paths:
+            return web.json_response({"ok": False, "error": "нужен файл голоса .pth"})
+        if slot in (None, "", "auto"):
+            await STATE.vc.info()
+            slot = STATE.vc.free_slot()
+        await STATE.vc.upload_model(int(slot), paths["model"], paths.get("index"))
+        return web.json_response({"ok": True, "slot": int(slot)})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": _vc_err(e)})
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+async def h_vc_open(request):
+    import webbrowser
+    webbrowser.open(STATE.vc.url("/"))
+    return web.json_response({"ok": True})
+
+
 async def h_ai_test(request):
     """🧪 Проверить: спросить ИИ прямо сейчас (без очереди) и сказать ответ."""
     import cohost
@@ -3124,6 +3277,7 @@ async def h_overlay_data(request):
         "top_likes": top_likes_list,
         "top_points": STATE.points.top(10),
         "points_name": STATE.config.get("pts_name") or "очки",
+        "voice": STATE.vc.overlay() if STATE.config.get("vc_say", True) else None,
         "ai": {"name": STATE.config.get("ai_name") or "Соведущий",
                "avatar": ("/media/" + str(STATE.config.get("ai_avatar"))) if STATE.config.get("ai_avatar") else "",
                "shape": STATE.config.get("ai_avatar_shape") or "circle"},
@@ -3637,7 +3791,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.70"
+APP_VERSION = "1.71"
 APP_DATE = "2026-11-16"
 
 
@@ -4410,6 +4564,8 @@ def make_app():
                     STATE.stats.tick()                    # связи нет 5 минут — эфир окончен, итоги
                     ia_tick()                             # битва команд, колесо, очки за активность
                     ai_tick()                             # соведущий болтает с чатом
+                    if STATE.vc.active:
+                        await STATE.vc.tick()             # время ИИ-голоса вышло — обычный голос
                     # Случайные события
                     if (STATE.config.get("random_enabled") and STATE.connected):
                         try:
@@ -4426,10 +4582,16 @@ def make_app():
         asyncio.get_event_loop().create_task(STATE.cohost.run(lambda: STATE.config, ai_context, ai_say))
         if STATE.config.get("remote_on"):                  # пульт был включён — поднимаем снова
             await STATE.remote.start()
+        if STATE.config.get("vc_autostart") and STATE.vc.exe():   # 🎙 голосовая программа вместе с TakyLive
+            try:
+                STATE.vc.start()
+            except Exception as e:
+                STATE.log("ОШИБКА", f"ИИ-голос: {e}")
 
     async def _on_shutdown(app_):
         await STATE.remote.stop()
         STATE.points.save()
+        STATE.vc.stop()                                     # голосовую программу, запущенную нами, закрываем
 
     app.on_startup.append(_on_startup)
     app.on_shutdown.append(_on_shutdown)
@@ -4525,6 +4687,17 @@ def make_app():
     app.router.add_post("/api/announce/summary", h_announce_summary)
     app.router.add_post("/api/announce/tg_chats", h_announce_tg_chats)
     app.router.add_post("/api/ai/test", h_ai_test)
+    app.router.add_get("/api/vc/status", h_vc_status)
+    app.router.add_post("/api/vc/install", h_vc_install)
+    app.router.add_post("/api/vc/install_cancel", h_vc_install_cancel)
+    app.router.add_post("/api/vc/start", h_vc_start)
+    app.router.add_post("/api/vc/stop", h_vc_stop)
+    app.router.add_post("/api/vc/cable", h_vc_cable)
+    app.router.add_post("/api/vc/audio", h_vc_audio)
+    app.router.add_post("/api/vc/voice", h_vc_voice)
+    app.router.add_post("/api/vc/normal", h_vc_normal)
+    app.router.add_post("/api/vc/upload", h_vc_upload)
+    app.router.add_post("/api/vc/open", h_vc_open)
     app.router.add_get("/api/ai/presets", h_ai_presets)
     app.router.add_get("/api/battle", h_battle)
     app.router.add_post("/api/battle/start", h_battle_start)
@@ -4637,6 +4810,8 @@ def main():
     STATE.points = _ia.Points(os.path.join(BASE_DIR, "viewer_points.json"), STATE.log)
     STATE.battle = _ia.Battle(STATE.log)
     STATE.wheel = _ia.Wheel(STATE.log)
+    import voicechanger as _vcm
+    STATE.vc = _vcm.VoiceChanger(BASE_DIR, STATE.log, lambda: STATE.config)
     STATE.viewer_voices.update(load_viewer_voices())
     STATE.live_gift_icons.update(load_live_icons())
     if STATE.live_gift_icons:
