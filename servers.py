@@ -152,8 +152,8 @@ class LocalServers(SteamMixin):
             return []
 
     def _save(self):
-        with open(self.file, "w", encoding="utf-8") as f:
-            json.dump(self.servers, f, ensure_ascii=False, indent=1)
+        import safeio
+        safeio.write_json(self.file, self.servers, indent=1)
 
     def _get(self, sid):
         return next((s for s in self.servers if s["id"] == sid), None)

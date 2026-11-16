@@ -91,8 +91,8 @@ class GiftCatalog:
 
     def save(self):
         try:
-            with open(self.path, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, ensure_ascii=False, separators=(",", ":"))
+            import safeio
+            safeio.write_json(self.path, self.data, separators=(",", ":"))
         except Exception as e:
             self.log("ОШИБКА", f"каталог подарков не сохранился: {e}")
 

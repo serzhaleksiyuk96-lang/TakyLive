@@ -38,10 +38,11 @@ def vkey(v):
 
 
 class Updater:
-    def __init__(self, base_dir, version, log, cfg, is_live, is_busy=None):
+    def __init__(self, base_dir, version, log, cfg, is_live, is_busy=None, before_exit=None):
         self.base, self.version, self.log, self.cfg, self.is_live = base_dir, version, log, cfg, is_live
         self.is_busy = is_busy or (lambda: "")        # «стример сейчас работает» — автообновление ждёт
         self.busy_logged = ""
+        self.before_exit = before_exit or (lambda *a: None)   # дописать данные и сделать копию перед перезапуском
         self.info = None              # последняя найденная версия
         self.checked_at = 0.0
         self.job = None               # {state, progress, error}
@@ -181,6 +182,7 @@ class Updater:
                     + "".join(f'if not exist "{os.path.join(self.base, f)}" if exist "{os.path.join(new_dir, f)}" '
                               f'copy /Y "{os.path.join(new_dir, f)}" "{os.path.join(self.base, f)}" >nul\r\n'
                               for f in KEEP_FILES) +
+                    'set TAKY_AFTER_UPDATE=1\r\n'               # программа не откроет второе окно, если старое ещё открыто
                     f'start "" "{exe}"\r\n'
                     f'rmdir /S /Q "{os.path.join(upd, "new")}"\r\n'
                     f'del /Q "{os.path.join(upd, "update.zip")}"\r\n'
@@ -258,6 +260,10 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
             cmd = self._script(new_dir)
             self.job.update(state="restarting", progress=1.0)
             self.log("ОБНОВЛЕНИЕ", f"Ставлю версию {self.info['version']} — программа перезапустится")
+            try:
+                self.before_exit("перед_" + str(self.info["version"]))
+            except Exception as e:
+                self.log("ОШИБКА", f"резервная копия перед обновлением: {e}")
             # CREATE_NEW_CONSOLE: своё окно «Обновляю…». Без консоли (DETACHED_PROCESS) cmd.exe
             # обрывает .bat на первом же echo — файлы не заменялись и программа не перезапускалась.
             kw = {"creationflags": 0x00000010 | 0x00000200} if WIN else {"start_new_session": True}
@@ -363,6 +369,10 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
             shutil.rmtree(os.path.join(self.base, "_update"), ignore_errors=True)
             return False
         self.info = {"version": ver}
+        try:
+            self.before_exit("перед_" + ver)
+        except Exception:
+            pass
         cmd = self._script(new_dir)
         kw = {"creationflags": 0x00000010 | 0x00000200} if WIN else {"start_new_session": True}
         subprocess.Popen(cmd, cwd=os.path.join(self.base, "_update"), close_fds=True, **kw)

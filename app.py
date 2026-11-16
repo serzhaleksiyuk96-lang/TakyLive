@@ -153,6 +153,8 @@ try:
     APP_PORT = int(os.environ.get("TAKY_PORT") or 8765)
 except ValueError:
     APP_PORT = 8765
+import safeio
+SNAPS = safeio.Snapshots(BASE_DIR)                   # резервные копии настроек и вкладок: _backup/auto/
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 PROFILES_PATH = os.path.join(BASE_DIR, "profiles.json")
 WEB_DIR = os.path.join(BASE_DIR, "web")
@@ -199,15 +201,17 @@ def load_gift_names_ru():
 
 def save_gift_names_ru():
     try:
-        with open(GIFT_RU_FILE, "w", encoding="utf-8") as f:
-            json.dump(STATE.gift_names_ru, f, ensure_ascii=False, indent=0, sort_keys=True)
+        safeio.write_json(GIFT_RU_FILE, STATE.gift_names_ru, indent=0, sort_keys=True)
     except Exception as e:
         STATE.log("ОШИБКА", f"не сохранил русские названия подарков: {e}")
 
 
 def norm_gift(name):
     """Сравнение названий без разницы в регистре, ё/е и лишних пробелах."""
-    return " ".join(str(name or "").lower().replace("ё", "е").split())
+    s = str(name or "").lower().replace("ё", "е")
+    for a, b in (("’", "'"), ("‘", "'"), ("`", "'"), ("ʼ", "'"), ("–", "-"), ("—", "-"), ("\u00a0", " ")):
+        s = s.replace(a, b)
+    return " ".join(s.split())
 
 
 def _walk_gifts(obj, out):
@@ -342,8 +346,7 @@ def load_live_icons():
 
 def save_live_icons():
     try:
-        with open(LIVE_ICONS_PATH, "w", encoding="utf-8") as f:
-            json.dump(STATE.live_gift_icons, f, ensure_ascii=False, indent=0)
+        safeio.write_json(LIVE_ICONS_PATH, STATE.live_gift_icons, indent=0)
     except Exception:
         pass
 
@@ -470,6 +473,9 @@ class State:
         self.followers = set()        # кто зафолловил/подписался за стрим (lowercase)
         self.connected_at = 0.0       # время подключения к TikTok (для пропуска истории чата)
         self.tt_report_at = 0.0
+        self.page_ping = 0.0           # когда окно программы последний раз спрашивало состояние
+        self.editor_win = ""           # какое окно программы сейчас «главное» — только оно сохраняет изменения
+        self.boot_id = f"{int(time.time())}-{os.getpid()}"
         self.last_edit = 0.0           # когда стример последний раз что-то менял в окне (для автообновления)       # когда последний раз писали «что пришло от TikTok»
         self.follow_count = 0         # фолловов за стрим
         self.sub_count = 0            # подписок за стрим
@@ -546,19 +552,34 @@ STATE = State()
 
 
 # ── Загрузка / сохранение конфигов ───────────────────────────────────────────
+def clean_profiles(p):
+    """Вкладки в правильном виде: {имя: {раздел: [события…], game: …}}. Мусор отбрасываем."""
+    out = {}
+    if not isinstance(p, dict):
+        return out
+    for name, tab in p.items():
+        if not isinstance(tab, dict):
+            continue
+        for sec in PROFILE_SECTIONS:
+            if sec in tab and not isinstance(tab[sec], list):
+                tab[sec] = []
+            elif sec in tab:
+                tab[sec] = [a for a in tab[sec] if isinstance(a, dict)]
+        out[str(name)] = tab
+    return out
+
+
+PROFILE_SECTIONS = ("gifts", "likes", "subs", "follows", "welcome", "chatcmds", "goals", "panel")
+LOAD_NOTES = []            # что случилось при чтении данных — покажем в журнале после запуска
+
+
 def load_config():
-    if os.path.exists(CONFIG_PATH):
-        try:
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                STATE.config.update(json.load(f))
-        except Exception as e:
-            print("Ошибка чтения config.json:", e)
-    if os.path.exists(PROFILES_PATH):
-        try:
-            with open(PROFILES_PATH, "r", encoding="utf-8") as f:
-                STATE.profiles = json.load(f)
-        except Exception as e:
-            print("Ошибка чтения profiles.json:", e)
+    cfg = safeio.load_json_safe(CONFIG_PATH, SNAPS, dict, LOAD_NOTES)
+    if cfg:
+        STATE.config.update(cfg)
+    prof = safeio.load_json_safe(PROFILES_PATH, SNAPS, dict, LOAD_NOTES)
+    if prof is not None:
+        STATE.profiles = clean_profiles(prof)
     # Вкладки создаются на стартовом экране. Пустую «Алмазный стрим», которую раньше
     # программа создавала сама при первом запуске, убираем; вкладку с событиями не трогаем.
     auto = STATE.profiles.get("Алмазный стрим")
@@ -585,14 +606,32 @@ def bootstrap_fish_key():
         print("  Ключ Fish Audio подхвачен из fish_key.txt")
 
 
+def _q_int(request, name, default=0):
+    try:
+        return int(request.query.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_cfg(key, default):
+    """Число из настроек; пустое поле или мусор → значение по умолчанию."""
+    try:
+        return int(float(STATE.config.get(key) if STATE.config.get(key) not in (None, "") else default))
+    except (TypeError, ValueError):
+        return default
+
+
+_SAVE_LOCK = threading.RLock()          # сохраняют и окно, и поток TikTok — по очереди
+
+
 def save_config():
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(STATE.config, f, ensure_ascii=False, indent=2)
+    with _SAVE_LOCK:
+        safeio.write_json(CONFIG_PATH, STATE.config, indent=2)
 
 
 def save_profiles():
-    with open(PROFILES_PATH, "w", encoding="utf-8") as f:
-        json.dump(STATE.profiles, f, ensure_ascii=False, indent=2)
+    with _SAVE_LOCK:
+        safeio.write_json(PROFILES_PATH, STATE.profiles, indent=2)
 
 
 # ── ServerTap: отправка команды на сервер через HTTP ─────────────────────────
@@ -600,7 +639,10 @@ def _servertap_base():
     cfg = STATE.config
     scheme = "https" if cfg.get("use_tls") else "http"
     host = cfg.get("servertap_host", "127.0.0.1")
-    port = int(cfg.get("servertap_port", 4567))
+    try:
+        port = int(cfg.get("servertap_port") or 4567)      # поле могли очистить — берём порт по умолчанию
+    except (TypeError, ValueError):
+        port = 4567
     return f"{scheme}://{host}:{port}"
 
 
@@ -1999,7 +2041,7 @@ async def _tts_speak_inner(msg, voice, epoch):
         rel = tmp_rel
     STATE.tts_queue.append({
         "seq": seq, "file": rel,
-        "volume": int(STATE.config.get("tts_volume", 100)),
+        "volume": _int_cfg("tts_volume", 100),
     })
     # Играем НАПРЯМУЮ из программы (как TikFinity) — надёжно, без браузера
     if STATE.config.get("tts_play_local", True):
@@ -2081,8 +2123,7 @@ def load_viewer_voices():
 
 def save_viewer_voices():
     try:
-        with open(VIEWER_VOICES_FILE, "w", encoding="utf-8") as f:
-            json.dump(STATE.viewer_voices, f, ensure_ascii=False, indent=1)
+        safeio.write_json(VIEWER_VOICES_FILE, STATE.viewer_voices, indent=1)
     except Exception as e:
         STATE.log("ОШИБКА", f"не сохранил голоса зрителей: {e}")
 
@@ -3022,7 +3063,7 @@ async def h_ai_test(request):
             "Это проверка связи перед эфиром. Коротко поздоровайся со зрителями и представься.")[:300]}
     nick, game = ai_context()
     try:
-        text = await cohost.ask(cfg, STATE.cohost.messages(cfg, task, nick, game), int(cfg.get("ai_max_chars") or 180))
+        text = await cohost.ask(cfg, STATE.cohost.messages(cfg, task, nick, game), _int_cfg("ai_max_chars", 180))
     except Exception as e:
         return web.json_response({"ok": False, "error": str(e)})
     await ai_say(task, text)
@@ -3244,7 +3285,74 @@ async def h_get_state(request):
         "profiles": STATE.profiles,
         "connected": STATE.connected,
         "like_counter": STATE.like_counter,
+        "editor_win": STATE.editor_win,
+        "boot": STATE.boot_id,
     })
+
+
+async def h_window_hello(request):
+    """Окно программы открылось — теперь изменения принимаются только из него (самого нового)."""
+    d = await _json_body(request)
+    wid = str(d.get("id") or "")[:64]
+    if wid:
+        STATE.editor_win = wid
+    return web.json_response({"ok": True, "boot": STATE.boot_id})
+
+
+# ── 🛟 Резервные копии настроек и вкладок ────────────────────────────────────
+async def h_backups(request):
+    return web.json_response({"ok": True, "items": SNAPS.list()})
+
+
+async def h_backup_make(request):
+    name = SNAPS.make("вручную", force=True)
+    return web.json_response({"ok": bool(name), "id": name, "error": "" if name else "нечего копировать"})
+
+
+async def h_backup_restore(request):
+    d = await _json_body(request)
+    src = SNAPS.path(d.get("id"))
+    if not src:
+        return web.json_response({"ok": False, "error": "нет такой копии"})
+    if STATE.connected:
+        return web.json_response({"ok": False, "error": "идёт эфир — верни копию после стрима"})
+    try:
+        cfg = safeio.read_json(os.path.join(src, "config.json")) if os.path.isfile(os.path.join(src, "config.json")) else None
+        prof = safeio.read_json(os.path.join(src, "profiles.json")) if os.path.isfile(os.path.join(src, "profiles.json")) else None
+        if (cfg is not None and not isinstance(cfg, dict)) or (prof is not None and not isinstance(prof, dict)):
+            raise ValueError("копия повреждена")
+    except Exception as e:
+        return web.json_response({"ok": False, "error": f"копия не читается: {e}"})
+    STATE.points.save()
+    SNAPS.make("перед_возвратом", force=True)               # чтобы возврат можно было отменить
+    keep = {k: STATE.config.get(k) for k in SERVER_ONLY_KEYS}
+    if cfg is not None:
+        for k in SERVER_ONLY_KEYS:
+            cfg.pop(k, None)
+        STATE.config.update(cfg)
+        STATE.config.update({k: v for k, v in keep.items() if v is not None})
+        save_config()
+    if prof is not None:
+        STATE.profiles = clean_profiles(prof)
+        if STATE.config.get("active_profile") not in STATE.profiles:
+            STATE.config["active_profile"] = next(iter(STATE.profiles), "")
+            save_config()
+        save_profiles()
+    for fn in ("viewer_voices.json", "viewer_points.json", "gift_names_ru.json"):
+        p = os.path.join(src, fn)
+        if os.path.isfile(p):
+            try:
+                safeio.write_text(os.path.join(BASE_DIR, fn), open(p, encoding="utf-8").read())
+            except Exception:
+                pass
+    STATE.viewer_voices.clear()
+    STATE.viewer_voices.update(load_viewer_voices())
+    try:
+        STATE.points.reload()
+    except Exception:
+        pass
+    STATE.log("КОПИИ", f"🛟 Возвращена резервная копия {os.path.basename(src)}")
+    return web.json_response({"ok": True})
 
 
 async def h_get_log(request):
@@ -3256,11 +3364,13 @@ async def h_get_log(request):
     return web.json_response({"log": STATE.event_log[-80:], "seen_gifts": gifts})
 
 
-SERVER_ONLY_KEYS = ("remote_on", "remote_token")      # меняются только своими кнопками, не общим сохранением
+SERVER_ONLY_KEYS = ("remote_on", "remote_token", "update_repo", "update_api")      # меняются только своими кнопками, не общим сохранением
 
 
 async def h_save_config(request):
     data = await request.json()
+    if not isinstance(data, dict):
+        return web.json_response({"ok": False, "error": "настройки пришли в непонятном виде"}, status=400)
     for k in SERVER_ONLY_KEYS:                          # в окне могла остаться старая копия настроек
         data.pop(k, None)
     STATE.config.update(data)
@@ -3270,7 +3380,10 @@ async def h_save_config(request):
 
 async def h_save_profiles(request):
     data = await request.json()
-    STATE.profiles = data.get("profiles", STATE.profiles)
+    new = data.get("profiles") if isinstance(data, dict) else None
+    if not isinstance(new, dict) or any(not isinstance(v, dict) for v in new.values()):
+        return web.json_response({"ok": False, "error": "вкладки пришли в непонятном виде — не сохраняю"}, status=400)
+    STATE.profiles = clean_profiles(new)
     save_profiles()
     return web.json_response({"ok": True})
 
@@ -3343,7 +3456,7 @@ async def h_simulate(request):
 
 async def h_overlay_data(request):
     """Данные для OBS-оверлеев: новые события, лента, топ, счётчики."""
-    since = int(request.query.get("since", 0))
+    since = _q_int(request, "since", 0)
     # Только новые алерты (seq > since)
     new_events = [e for e in STATE.overlay_events if e["seq"] > since]
     # Топ донатеров (сортировка по алмазам)
@@ -3382,7 +3495,7 @@ async def h_overlay_data(request):
 
 async def h_media_queue(request):
     """Очередь медиа-алертов для media.html оверлея."""
-    since = int(request.query.get("since", 0))
+    since = _q_int(request, "since", 0)
     new_media = [m for m in STATE.media_queue if m["seq"] > since]
     return web.json_response({"seq": STATE.media_seq, "new_media": new_media})
 
@@ -3405,8 +3518,7 @@ def _load_media_meta():
 def _save_media_meta():
     try:
         os.makedirs(THUMBS_DIR, exist_ok=True)
-        with open(META_PATH, "w", encoding="utf-8") as f:
-            json.dump(MEDIA_META, f, ensure_ascii=False)
+        safeio.write_json(META_PATH, MEDIA_META)
     except Exception:
         pass
 
@@ -3509,7 +3621,7 @@ def repair_media_refs():
         if os.path.isfile(os.path.join(MEDIA_DIR, ref)) or "." not in ref:
             continue
         base, ext = ref.rsplit(".", 1)
-        if ext.lower() in ("mov", "mkv", "webm", "avi", "m4v") and os.path.isfile(os.path.join(MEDIA_DIR, base + ".mp4")):
+        if ext.lower() in VIDEO_EXTS and ext.lower() != "mp4" and os.path.isfile(os.path.join(MEDIA_DIR, base + ".mp4")):
             fixed += media_renamed(ref, base + ".mp4")
     if fixed:
         STATE.log("МЕДИА", f"Починил ссылки на видео в карточках: {fixed} (видео было перекодировано в .mp4)")
@@ -3530,6 +3642,8 @@ async def fix_video(name):
         if mode != "ok":
             base = name.rsplit(".", 1)[0]
             final = base + ".mp4"
+            if final != name:
+                final = _free_media_name(final)           # рядом уже лежит другой «эдит.mp4» — не затираем его
             tmp = os.path.join(MEDIA_DIR, f".tmp_{base}.mp4")
             await mp.convert(src, tmp, mode, info["duration"], lambda p: job.update(progress=round(p, 3)))
             dst = os.path.join(MEDIA_DIR, final)
@@ -3604,9 +3718,42 @@ async def h_media_list(request):
     return web.json_response({"files": files, "busy": bool(missing), "renamed": MEDIA_RENAMES})
 
 
+VIDEO_EXTS = ("mp4", "webm", "mov", "mkv", "avi", "m4v", "3gp", "wmv", "flv", "mpg", "mpeg", "ts")
+
+
+def _free_media_name(name):
+    """Свободное имя в media/: «эдит.mp4» занято → «эдит (2).mp4»."""
+    if not os.path.exists(os.path.join(MEDIA_DIR, name)):
+        return name
+    base, dot, ext = name.rpartition(".")
+    if not dot:
+        base, ext = name, ""
+    n = 2
+    while True:
+        cand = f"{base} ({n})" + (("." + ext) if ext else "")
+        if not os.path.exists(os.path.join(MEDIA_DIR, cand)):
+            return cand
+        n += 1
+
+
+def _same_file(a, b):
+    try:
+        if os.path.getsize(a) != os.path.getsize(b):
+            return False
+        with open(a, "rb") as fa, open(b, "rb") as fb:
+            while True:
+                x, y = fa.read(1 << 20), fb.read(1 << 20)
+                if x != y:
+                    return False
+                if not x:
+                    return True
+    except OSError:
+        return False
+
+
 def _media_kind(filename):
     ext = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
-    if ext in ("mp4", "webm", "mov", "mkv"):
+    if ext in VIDEO_EXTS:
         return "video"
     if ext == "gif":
         return "gif"
@@ -3628,16 +3775,33 @@ async def h_media_upload(request):
     filename = "".join(c for c in filename if c.isalnum() or c in "._- ()").strip()
     if not filename:
         filename = "media"
-    dest = os.path.join(MEDIA_DIR, filename)
-    size = 0
-    with open(dest, "wb") as f:
-        while True:
-            chunk = await field.read_chunk()
-            if not chunk:
-                break
-            size += len(chunk)
-            f.write(chunk)
     kind = _media_kind(filename)
+    if kind == "other":
+        return web.json_response({"ok": False, "error": f"«{filename}»: такой тип файла не поддерживается. Подходят видео "
+                                  "(mp4, mov, webm, mkv, avi), картинки (png, jpg, gif, webp) и звук (mp3, wav, ogg, m4a, flac)"})
+    tmp = os.path.join(MEDIA_DIR, f".tmp_upload_{os.getpid()}_{int(time.time() * 1000)}")
+    size = 0
+    try:
+        with open(tmp, "wb") as f:                        # сначала во временный файл: оборвётся загрузка — обрывка не останется
+            while True:
+                chunk = await field.read_chunk()
+                if not chunk:
+                    break
+                size += len(chunk)
+                f.write(chunk)
+        if not size:
+            raise RuntimeError("файл пустой")
+        dest = os.path.join(MEDIA_DIR, filename)
+        if os.path.exists(dest) and not _same_file(tmp, dest):
+            filename = _free_media_name(filename)         # другой файл с тем же именем — старый не затираем
+            dest = os.path.join(MEDIA_DIR, filename)
+        os.replace(tmp, dest)
+    except Exception as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return web.json_response({"ok": False, "error": f"не загрузилось: {e}"})
     if kind == "video":                       # любое видео → гарантированно играющее в OBS
         MEDIA_JOBS[filename] = {"state": "processing", "progress": 0.0, "mode": "", "error": ""}
         asyncio.ensure_future(fix_video(filename))
@@ -4165,10 +4329,19 @@ async def h_migrate_find(request):
                 continue
     found.sort(key=lambda x: -x["mtime"])
     return web.json_response({"items": found[:10], "current": _folder_info(BASE_DIR),
-                              "backups": sorted(os.listdir(BACKUP_DIR))[-5:] if os.path.isdir(BACKUP_DIR) else []})
+                              "backups": _migrate_backups()[-5:]})
 
 
 BACKUP_DIR = os.path.join(BASE_DIR, "_backup")
+
+
+def _migrate_backups():
+    """Копии «перед переносом» — папки с именем-датой (в _backup лежит ещё auto/ — её не трогаем)."""
+    try:
+        return sorted(d for d in os.listdir(BACKUP_DIR) if re.fullmatch(r"\d{8}-\d{6}", d)
+                      and os.path.isdir(os.path.join(BACKUP_DIR, d)))
+    except OSError:
+        return []
 
 
 def _empty(v):
@@ -4242,7 +4415,7 @@ async def h_migrate(request):
             if os.path.isfile(p):
                 os.makedirs(os.path.dirname(os.path.join(bdir, f)), exist_ok=True)
                 shutil.copy2(p, os.path.join(bdir, *f.split("/")))
-        for old in sorted(os.listdir(BACKUP_DIR))[:-5]:          # храним 5 последних копий
+        for old in _migrate_backups()[:-5]:                       # храним 5 последних копий
             shutil.rmtree(os.path.join(BACKUP_DIR, old), ignore_errors=True)
         existed_before = set()                                         # какие файлы были до переноса — для «↩ Отменить»
         for f in MIGRATE_FILES + [os.path.join("servers", "servers.json")]:
@@ -4341,9 +4514,9 @@ async def h_migrate(request):
 
 async def h_migrate_undo(request):
     """↩ Отменить перенос — возвращаем последнюю резервную копию."""
-    if not os.path.isdir(BACKUP_DIR) or not os.listdir(BACKUP_DIR):
+    if not _migrate_backups():
         return web.json_response({"ok": False, "error": "резервных копий нет"})
-    last = os.path.join(BACKUP_DIR, sorted(os.listdir(BACKUP_DIR))[-1])
+    last = os.path.join(BACKUP_DIR, _migrate_backups()[-1])
     created = _jload(os.path.join(last, "_created.json"), [])
     for root, _d, files in os.walk(last):
         for fn in files:
@@ -4497,7 +4670,7 @@ async def h_viewer_voices_clear(request):
 
 async def h_tts_queue(request):
     """Очередь озвучки для tts.html оверлея."""
-    since = int(request.query.get("since", 0))
+    since = _q_int(request, "since", 0)
     new_items = [t for t in STATE.tts_queue if t["seq"] > since]
     return web.json_response({"seq": STATE.tts_seq, "new_tts": new_items,
                               "epoch": STATE.tts_epoch, "skip": STATE.tts_skip})
@@ -4653,22 +4826,51 @@ async def h_import_zip(request):
             # Профиль
             with z.open("profile.json") as pf:
                 pdata = json.loads(pf.read().decode("utf-8"))
-            name = pdata.get("name", "Импорт")
+            if not isinstance(pdata, dict):
+                raise ValueError("в архиве не вкладка TakyLive")
+            name = str(pdata.get("name") or "Импорт")[:80]
             profile = pdata.get("profile", {})
+            if not isinstance(profile, dict):
+                profile = {}
             # Распаковываем медиа в папку media/
             extracted = 0
+            renamed = {}
             for item in z.namelist():
                 if item.startswith("media/") and not item.endswith("/"):
                     # сохраняем подпапки (mobs/, gifts/…), но не даём выйти за пределы media/
                     rel = os.path.normpath(item[len("media/"):]).replace("\\", "/")
                     if not rel or rel.startswith("..") or os.path.isabs(rel) or ":" in rel:
                         continue
+                    if _media_kind(rel) == "other" or rel.split("/")[0] in ("tts", "_thumbs"):
+                        continue                              # только видео, картинки и звук — никаких программ и страниц
                     dst_path = os.path.join(MEDIA_DIR, rel)
                     os.makedirs(os.path.dirname(dst_path), exist_ok=True)
-                    with z.open(item) as src:
-                        with open(dst_path, "wb") as dst:
-                            dst.write(src.read())
+                    blob = z.read(item)
+                    if os.path.exists(dst_path):
+                        try:
+                            with open(dst_path, "rb") as cur:
+                                same = cur.read() == blob
+                        except OSError:
+                            same = False
+                        if same:
+                            continue
+                        # у стримера уже есть ДРУГОЙ файл с таким именем — его не трогаем, новый кладём рядом
+                        folder, fn = os.path.split(rel)
+                        new_fn = os.path.basename(_free_media_name(rel)) if not folder else None
+                        if new_fn is None:
+                            b, dot, e = fn.rpartition(".")
+                            k = 2
+                            while os.path.exists(os.path.join(MEDIA_DIR, folder, f"{b} ({k}).{e}")):
+                                k += 1
+                            new_fn = f"{b} ({k}).{e}"
+                        new_rel = (folder + "/" if folder else "") + new_fn
+                        renamed[rel] = new_rel
+                        dst_path = os.path.join(MEDIA_DIR, new_rel)
+                    with open(dst_path, "wb") as dst:
+                        dst.write(blob)
                     extracted += 1
+            for old, new in renamed.items():
+                _rename_refs(profile, old, new)
     except Exception as e:
         return web.json_response({"ok": False, "error": f"не удалось прочитать ZIP: {e}"})
 
@@ -4678,8 +4880,8 @@ async def h_import_zip(request):
     while final in STATE.profiles:
         final = f"{name} {n}"
         n += 1
-    STATE.profiles[final] = {k: profile.get(k, []) for k in
-                             ("gifts", "likes", "subs", "follows", "welcome", "chatcmds", "goals", "panel")}
+    STATE.profiles[final] = {k: [a for a in profile.get(k, []) if isinstance(a, dict)]
+                             if isinstance(profile.get(k, []), list) else [] for k in PROFILE_SECTIONS}
     if profile.get("game"):
         STATE.profiles[final]["game"] = profile["game"]
     save_profiles()
@@ -4738,7 +4940,8 @@ def make_app():
             await STATE.remote.start()
         if STATE.config.get("vc_autostart") and STATE.vc.exe():   # 🎙 голосовая программа вместе с TakyLive
             try:
-                STATE.vc.start()
+                if not await STATE.vc.alive():                  # уже работает (осталась с прошлого раза) — не дублируем
+                    STATE.vc.start()
             except Exception as e:
                 STATE.log("ОШИБКА", f"ИИ-голос: {e}")
 
@@ -4774,13 +4977,49 @@ def make_app():
         except ValueError:
             return False
 
+    _err_at = {}
+
+    @web.middleware
+    async def errors(request, handler):
+        """Любая неожиданная ошибка в /api/ — не «голые 500», а понятный ответ окну и строка в журнале."""
+        try:
+            return await handler(request)
+        except web.HTTPException:
+            raise
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return web.json_response({"ok": False, "error": "запрос пришёл в непонятном виде"}, status=400)
+        except Exception as e:
+            if not request.path.startswith("/api/"):
+                raise
+            if isinstance(e, (AttributeError, TypeError, KeyError, ValueError)) and request.method == "POST":
+                try:
+                    body = await request.json()
+                except Exception:
+                    body = None
+                if not isinstance(body, dict):                 # прислали не то, что ждём (не окно программы)
+                    return web.json_response({"ok": False, "error": "запрос пришёл в непонятном виде"}, status=400)
+            if time.time() - _err_at.get(request.path, 0) > 60:
+                _err_at[request.path] = time.time()
+                import traceback
+                where = traceback.extract_tb(e.__traceback__)[-1]
+                STATE.log("ОШИБКА", f"{request.path}: {type(e).__name__}: {e} (app: {os.path.basename(where.filename)}:{where.lineno})")
+            return web.json_response({"ok": False, "error": f"внутренняя ошибка: {type(e).__name__}: {e}"}, status=500)
+
     @web.middleware
     async def activity(request, handler):
         """Запоминаем, когда стример последний раз что-то менял, — автообновление не перезапустит
         программу посреди работы (загрузка эдитов, музыки, правка карточек)."""
-        if request.method == "POST" and request.path.startswith("/api/") and \
-                not request.path.startswith(("/api/update", "/api/simulate", "/api/tts/")):
-            STATE.last_edit = time.time()
+        if request.path in ("/api/state", "/api/version", "/api/update/status", "/api/window/hello"):
+            STATE.page_ping = time.time()
+        if request.method == "POST" and request.path.startswith("/api/"):
+            win = request.headers.get("X-Taky-Win", "")
+            if win and STATE.editor_win and win != STATE.editor_win and request.path != "/api/window/hello":
+                # программа открыта ещё в одном окне, это окно устарело — иначе оно затёрло бы свежие изменения
+                return web.json_response({"ok": False, "stale_window": True,
+                                          "error": "TakyLive открыт в другом окне — изменения сохраняются из него"},
+                                         status=409)
+            if not request.path.startswith(("/api/update", "/api/simulate", "/api/tts/", "/api/window/", "/api/mod/")):
+                STATE.last_edit = time.time()
         return await handler(request)
 
     @web.middleware
@@ -4800,6 +5039,7 @@ def make_app():
 
     app.middlewares.append(local_only)
     app.middlewares.append(activity)
+    app.middlewares.append(errors)
     app.middlewares.append(no_cache)
     app.router.add_get("/", h_index)
     app.router.add_get("/api/state", h_get_state)
@@ -4807,6 +5047,16 @@ def make_app():
     app.router.add_get("/api/overlay", h_overlay_data)
     app.router.add_post("/api/config", h_save_config)
     app.router.add_post("/api/profiles", h_save_profiles)
+    app.router.add_post("/api/window/hello", h_window_hello)
+    if TEST_MODE:                                    # только для автопроверок: закрыть тестовую копию
+        async def h_test_quit(request):
+            before_restart("тест")
+            asyncio.get_event_loop().call_later(0.3, lambda: os._exit(0))
+            return web.json_response({"ok": True})
+        app.router.add_post("/api/test/quit", h_test_quit)
+    app.router.add_get("/api/backups", h_backups)
+    app.router.add_post("/api/backups/make", h_backup_make)
+    app.router.add_post("/api/backups/restore", h_backup_restore)
     app.router.add_post("/api/connect", h_connect)
     app.router.add_post("/api/disconnect", h_disconnect)
     app.router.add_post("/api/test_rcon", h_test_rcon)
@@ -4902,7 +5152,7 @@ def make_app():
     # ── Обновления через GitHub (updater.py) ──
     import updater as _updater
     STATE.updater = _updater.Updater(BASE_DIR, APP_VERSION, STATE.log, lambda: STATE.config, lambda: STATE.connected,
-                                     is_busy=user_busy)
+                                     is_busy=user_busy, before_exit=before_restart)
     STATE.updater.routes(app)
     app.router.add_get("/api/migrate/find", h_migrate_find)
     app.router.add_post("/api/migrate", h_migrate)
@@ -4936,7 +5186,7 @@ def make_app():
     return app
 
 
-def open_app_window():
+def open_app_window(wait=True):
     """Открывает редактор как отдельное окно-приложение (без браузерных кнопок).
 
     Использует Edge в режиме --app (есть в каждом Windows 10/11).
@@ -4945,7 +5195,15 @@ def open_app_window():
     import subprocess
     import time
     import webbrowser
-    time.sleep(1.2)  # даём серверу подняться
+    if wait:
+        time.sleep(1.2)  # даём серверу подняться
+        if os.environ.get("TAKY_AFTER_UPDATE") == "1":
+            # перезапуск после обновления: старое окно ещё открыто и само перезагрузится —
+            # второе окно не открываем (два окна затирали бы изменения друг друга)
+            for _ in range(16):
+                if STATE.page_ping:
+                    return
+                time.sleep(0.5)
     url = f"http://localhost:{APP_PORT}"
     if sys.platform == "win32":
         for browser in ("msedge", "chrome"):
@@ -4964,8 +5222,42 @@ def open_app_window():
         pass
 
 
+def already_running():
+    """TakyLive уже работает на этом порту (второй раз щёлкнули по ярлыку)?"""
+    import urllib.request
+    try:
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        with opener.open(f"http://127.0.0.1:{APP_PORT}/api/version", timeout=1.5) as r:
+            return "version" in json.loads(r.read().decode("utf-8"))
+    except Exception:
+        return False
+
+
+def before_restart(reason="перед_обновлением"):
+    """Перед перезапуском для обновления: всё дописать на диск и сделать резервную копию."""
+    try:
+        STATE.points.save()
+    except Exception:
+        pass
+    try:
+        STATE.vc.stop()                      # иначе голосовая программа осталась бы висеть без хозяина
+    except Exception:
+        pass
+    SNAPS.make(reason, force=True)
+
+
 def main():
+    if already_running():
+        print(f"  TakyLive уже запущен — открываю его окно (порт {APP_PORT}).")
+        if not TEST_MODE:
+            open_app_window(wait=False)
+        return
+    SNAPS.log = STATE.log
     load_config()
+    for note in LOAD_NOTES:
+        STATE.log("ОШИБКА", note)
+    if SNAPS.make("запуск"):                 # копия настроек и вкладок, если они менялись с прошлого раза
+        print("  Резервная копия настроек и вкладок: _backup/auto")
     bootstrap_fish_key()
     STATE.gift_names_ru.update(load_gift_names_ru())
     import giftcatalog as _gc
@@ -5015,7 +5307,12 @@ def main():
         hosts.append("::1")
     except Exception:
         pass
-    web.run_app(app, host=hosts, port=APP_PORT, print=None)
+    try:
+        web.run_app(app, host=hosts, port=APP_PORT, print=None)
+    except OSError as e:                      # порт занят: программа уже запускается в другом окне
+        print(f"  Не удалось занять порт {APP_PORT}: {e}")
+        print("  Похоже, TakyLive уже запущен. Закрой лишнее окно программы и запусти ещё раз.")
+        time.sleep(6)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,41 @@
 //  TakyLive — логика редактора
 // ============================================================
 
+// ── Одно «главное» окно ───────────────────────────────────────
+// Если программа открыта в двух окнах, у каждого своя копия вкладок и настроек, и то окно, что сохранило
+// последним, затирало бы изменения другого (так пропадали эдиты и музыка после обновления: открывалось
+// второе окно). Поэтому сохраняет только самое новое окно; остальные показывают заглушку.
+const WIN_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
+let WIN_STALE = false;
+const _fetch = window.fetch.bind(window);
+window.fetch = async (url, opt) => {
+  const isApiPost = typeof url === "string" && url.startsWith("/api/") && opt && String(opt.method || "GET").toUpperCase() === "POST";
+  if (!isApiPost) return _fetch(url, opt);
+  if (WIN_STALE && url !== "/api/window/hello")
+    return new Response(JSON.stringify({ok: false, stale_window: true, error: "TakyLive открыт в другом окне"}),
+                        {status: 409, headers: {"Content-Type": "application/json"}});
+  const headers = new Headers(opt.headers || {});
+  headers.set("X-Taky-Win", WIN_ID);
+  const r = await _fetch(url, {...opt, headers});
+  if (r.status === 409) { try { if ((await r.clone().json()).stale_window) winStale(); } catch (e) {} }
+  return r;
+};
+
+function winStale() {
+  if (WIN_STALE) return;
+  WIN_STALE = true;
+  const d = document.createElement("div");
+  d.id = "winStale";
+  d.style.cssText = "position:fixed;inset:0;z-index:99999;display:grid;place-items:center;background:rgba(8,10,18,.92);backdrop-filter:blur(6px)";
+  d.innerHTML = `<div style="max-width:520px;text-align:center;padding:28px 32px;border-radius:16px;background:var(--panel2);border:1px solid var(--border)">
+    <div style="font-size:44px">🪟</div>
+    <h2 style="margin:8px 0">TakyLive открыт в другом окне</h2>
+    <div class="hint" style="font-size:14px;line-height:1.5">Чтобы ничего не потерялось, изменения сохраняются только из одного окна —
+      того, что открыто последним. Закрой это окно или продолжи здесь.</div>
+    <button class="primary" style="margin-top:16px" onclick="location.reload()">Работать в этом окне</button></div>`;
+  document.body.appendChild(d);
+}
+
 let DATA = { config: {}, profiles: {}, connected: false };
 let activeProfile = null;
 let activeSection = "gifts";
@@ -97,7 +132,12 @@ async function uploadMediaFile(file) {
 }
 
 // ── Загрузка состояния с сервера ─────────────────────────────
+let BOOT_ID = null;
 async function loadState() {
+  if (!STARTED) {                       // это окно теперь главное
+    try { BOOT_ID = (await (await fetch("/api/window/hello", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                                  body: JSON.stringify({id: WIN_ID})})).json()).boot; } catch (e) {}
+  }
   const r = await fetch("/api/state");
   DATA = await r.json();
   activeProfile = DATA.config.active_profile;
@@ -1997,6 +2037,8 @@ async function toggleConnect() {
 async function refreshState() {
   const r = await fetch("/api/state");
   const s = await r.json();
+  if (s.boot && BOOT_ID && s.boot !== BOOT_ID && !WIN_STALE) { location.reload(); return; }   // программа перезапустилась — берём свежую страницу
+  if (BOOT_ID && s.editor_win && s.editor_win !== WIN_ID) { winStale(); return; }
   DATA.connected = s.connected;
   // озвучку могли включить или выключить с пульта на телефоне — не затираем это старым значением
   if (s.config && s.config.tts_enabled !== DATA.config.tts_enabled) {
@@ -2126,6 +2168,7 @@ const SX_META = {
   guard:  ["🧹 Защита от спама", "Мат, растяжки, флуд и повторы не попадут в озвучку"],
   vvoices:["🎭 Голоса зрителей", "Зритель пишет команду — и его читают выбранным голосом"],
   announce:["📣 Анонсы и итоги", "«Я в эфире!» и итоги эфира — в Telegram и Discord"],
+  backups:["🛟 Резервные копии", "Настройки и вкладки можно вернуть, если что-то сломалось"],
 };
 
 function sxGo(s) {
@@ -2135,6 +2178,7 @@ function sxGo(s) {
   document.getElementById("sxSub").textContent = SX_META[s][1];
   if (s === "vvoices" && typeof vcRender === "function") { vcRender(); vvLoad(); roleRender(); vvRecentLoad(); }
   if (s === "guard" && typeof vvLoad === "function") vvLoad();
+  if (s === "backups") bkLoad();
 }
 
 function setTransport(v, silent) {
@@ -3166,7 +3210,7 @@ let GIFT_ICONS = {};   // {название_lowercase: путь к картин�
 let GIFT_ICONS_ONLINE = {};  // {название_lowercase: ссылка на иконку TikTok}
 let GIFT_IDS = {};           // {название_lowercase: ID} — ID одинаковый на любом языке
 let GIFT_RU = {};            // {ID: «Роза»} — русские названия, TikTok отдаёт их при подключении
-const normGift = s => String(s || "").toLowerCase().replace(/ё/g, "е").split(/\s+/).filter(Boolean).join(" ");
+const normGift = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/[’‘`ʼ]/g, "'").replace(/[–—]/g, "-").split(/\s+/).filter(Boolean).join(" ");
 function ruNameOf(en) { const id = GIFT_IDS[String(en).toLowerCase()]; return id ? (GIFT_RU[id] || "") : ""; }
 function ruKnown(name) { const n = normGift(name); return Object.values(GIFT_RU).some(v => normGift(v) === n); }
 let libTarget = -1;   // индекс карточки, в которую подставляем подарок
@@ -3466,3 +3510,31 @@ setInterval(refreshState, 3000);
 
 // Старт
 loadState();
+
+
+// ── 🛟 Резервные копии ─────────────────────────────────────────
+async function bkLoad() {
+  const box = document.getElementById("bkList");
+  if (!box) return;
+  let d;
+  try { d = await (await fetch("/api/backups", {cache: "no-store"})).json(); } catch (e) { return; }
+  box.innerHTML = (d.items || []).length ? d.items.map(b => `<div class="sx-row">
+      <div class="sx-l"><div class="t">${esc(b.when)}</div>
+        <div class="d">${esc(b.reason || "копия")}${b.tabs === null ? "" : ` · вкладок: ${b.tabs}, событий: ${b.events}`}</div></div>
+      <button class="small" onclick="bkRestore(${JSON.stringify(b.id).replace(/"/g, "&quot;")}, ${JSON.stringify(b.when).replace(/"/g, "&quot;")})">↩ Вернуть</button></div>`).join("")
+    : `<div class="hint">Копий пока нет — первая появится при следующем запуске программы.</div>`;
+}
+
+async function bkMake() {
+  const r = await (await fetch("/api/backups/make", {method: "POST"})).json();
+  if (!r.ok) alert(r.error);
+  bkLoad();
+}
+
+async function bkRestore(id, when) {
+  if (!confirm(`Вернуть настройки и вкладки как было ${when}?\n\nТекущие сначала сохранятся отдельной копией — возврат можно отменить.`)) return;
+  const r = await (await fetch("/api/backups/restore", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                        body: JSON.stringify({id})})).json();
+  if (!r.ok) { alert(r.error); return; }
+  location.reload();
+}

@@ -183,8 +183,8 @@ class StreamStats:
     def _save(self, rep):
         try:
             os.makedirs(self.dir, exist_ok=True)
-            with open(os.path.join(self.dir, rep["id"] + ".json"), "w", encoding="utf-8") as f:
-                json.dump(rep, f, ensure_ascii=False)
+            import safeio
+            safeio.write_json(os.path.join(self.dir, rep["id"] + ".json"), rep)
             files = sorted(f for f in os.listdir(self.dir) if f.endswith(".json"))
             for old in files[:-KEEP_REPORTS]:
                 os.remove(os.path.join(self.dir, old))

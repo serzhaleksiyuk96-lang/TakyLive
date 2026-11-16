@@ -157,6 +157,7 @@ function mpUploadFiles(files) {
     const fd = new FormData(); fd.append("file", file);
     const x = new XMLHttpRequest();
     x.open("POST", "/api/media_upload");
+    if (typeof WIN_ID !== "undefined") x.setRequestHeader("X-Taky-Win", WIN_ID);
     x.upload.onprogress = e => { if (e.lengthComputable) { u.p = e.loaded / e.total; mpRender(true); } };
     x.onload = async () => {
       let d = {}; try { d = JSON.parse(x.responseText); } catch (e) {}

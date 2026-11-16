@@ -394,6 +394,75 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     check("библиотека подарков полная сразу (встроенный список)", len(cat.get("gifts", [])) >= 700,
           f"подарков: {len(cat.get('gifts', []))}")
 
+    print("\n• Сохранность данных")
+    # 1) два окна: сохраняет только самое новое
+    api.post("/api/window/hello", {"id": "winA"}, headers={"X-Taky-Win": "winA"})
+    good = api.get("/api/state")["profiles"]
+    stc, r = api.req("/api/profiles", {"profiles": good}, headers={"X-Taky-Win": "winA"})
+    check("главное окно сохраняет вкладки", stc == 200 and r.get("ok") is True, f"{stc} {r}")
+    api.post("/api/window/hello", {"id": "winB"}, headers={"X-Taky-Win": "winB"})
+    stc, r = api.req("/api/profiles", {"profiles": {"Старьё": {"gifts": []}}}, headers={"X-Taky-Win": "winA"})
+    check("устаревшее окно не может затереть вкладки (409)", stc == 409 and r.get("stale_window") is True
+          and list(api.get("/api/state")["profiles"]) == list(good), f"{stc} {r}")
+    stc, r = api.req("/api/config", {"tiktok_username": "затёрли"}, headers={"X-Taky-Win": "winA"})
+    check("устаревшее окно не может затереть настройки",
+          stc == 409 and api.get("/api/state")["config"].get("tiktok_username") == "smoke_nick", f"{stc}")
+    check("программа сообщает окнам, какое из них главное", api.get("/api/state").get("editor_win") == "winB")
+    api.post("/api/window/hello", {"id": ""})
+    # 2) мусор вместо вкладок не принимается
+    stc, r = api.req("/api/profiles", {"profiles": ["не", "то"]})
+    stc2, r2 = api.req("/api/profiles", {"profiles": {"Тест": "строка"}})
+    check("мусор вместо вкладок не сохраняется", stc == 400 and stc2 == 400
+          and list(api.get("/api/state")["profiles"]) == list(good), f"{stc} {stc2}")
+    # 3) резервные копии
+    bk = api.get("/api/backups").get("items", [])
+    check("при запуске сделана резервная копия", len(bk) >= 1 and bk[0].get("tabs") == 1, str(bk)[:200])
+    made = api.post("/api/backups/make")
+    api.post("/api/profiles", {"profiles": {"Сломано": {"gifts": []}}})
+    r = api.post("/api/backups/restore", {"id": made.get("id")})
+    check("копия возвращает вкладки", r.get("ok") and list(api.get("/api/state")["profiles"]) == list(good), str(r))
+    r = api.post("/api/backups/restore", {"id": "../../etc"})
+    check("чужой путь вместо копии не принимается", r.get("ok") is False)
+    # 4) повреждённый файл не затирается пустым, а поднимается из копии
+    sys.path.insert(0, copy_dir)
+    import safeio
+    import tempfile as _tf
+    d = _tf.mkdtemp(prefix="taky_safe_")
+    safeio.write_json(os.path.join(d, "profiles.json"), {"Моя": {"gifts": [{"name": "Rose"}]}})
+    safeio.write_json(os.path.join(d, "config.json"), {"a": 1})
+    sn = safeio.Snapshots(d)
+    check("копия создаётся и не дублируется без изменений", bool(sn.make("запуск")) and sn.make("запуск") == "")
+    with open(os.path.join(d, "profiles.json"), "w", encoding="utf-8") as f:
+        f.write('{"Моя": {"gifts": [{"na')                                  # оборванная запись
+    notes = []
+    got = safeio.load_json_safe(os.path.join(d, "profiles.json"), sn, dict, notes)
+    check("оборванный profiles.json восстановлен из копии, обрывок отложен",
+          got == {"Моя": {"gifts": [{"name": "Rose"}]}} and any(".broken-" in f for f in os.listdir(d)) and notes, str(notes))
+    check("после восстановления файл на диске снова целый",
+          safeio.read_json(os.path.join(d, "profiles.json")) == got)
+    sys.path.remove(copy_dir)
+    shutil.rmtree(d, ignore_errors=True)
+    # 5) загрузка медиа
+    def upload(name, data):
+        bnd = "----tk" + str(time.time()).replace(".", "")
+        body = (f"--{bnd}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\n"
+                f"Content-Type: application/octet-stream\r\n\r\n").encode("utf-8") + data + f"\r\n--{bnd}--\r\n".encode()
+        rq = urllib.request.Request(api.base + "/api/media_upload", data=body, method="POST",
+                                    headers={"Content-Type": f"multipart/form-data; boundary={bnd}"})
+        return json.loads(urllib.request.urlopen(rq, timeout=30).read())
+    r1 = upload("трек.mp3", b"AAAA" * 100)
+    r2 = upload("трек.mp3", b"BBBB" * 100)
+    r3 = upload("трек.mp3", b"AAAA" * 100)
+    a_ok = open(os.path.join(copy_dir, "media", "трек.mp3"), "rb").read() == b"AAAA" * 100
+    check("другой файл с тем же именем не затирает старый (кладётся рядом)",
+          r1.get("name") == "трек.mp3" and r2.get("name") == "трек (2).mp3" and r3.get("name") == "трек.mp3" and a_ok,
+          f"{r1} {r2} {r3}")
+    r = upload("вирус.html", b"<script>alert(1)</script>")
+    check("неподдерживаемый тип файла — понятный отказ", r.get("ok") is False and "не поддерживается" in r.get("error", "")
+          and not os.path.exists(os.path.join(copy_dir, "media", "вирус.html")), str(r))
+    check("после загрузок не осталось временных файлов",
+          not [f for f in os.listdir(os.path.join(copy_dir, "media")) if f.startswith(".tmp_")])
+
     print("\n• Подарки по названиям")
     api.sim(kind="gift", name="Friendship Necklace", gift_id="9947", count=1, user="g1", diamonds=1)
     check("«Friendship Necklace» из эфира запускает карточку «Кулон дружбы»",

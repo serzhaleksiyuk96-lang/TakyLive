@@ -1346,6 +1346,7 @@
         <div class="sx-it" data-s="guard" onclick="sxGo('guard')">🧹 Защита от спама<span class="sx-dot" id="sxDot_guard"></span></div>
         <div class="sx-it" data-s="vvoices" onclick="sxGo('vvoices')">🎭 Голоса зрителей<span class="sx-dot" id="sxDot_vvoices"></span></div>
         <div class="sx-it" data-s="announce" onclick="sxGo('announce')">📣 Анонсы и итоги<span class="sx-dot" id="sxDot_announce"></span></div>
+        <div class="sx-it" data-s="backups" onclick="sxGo('backups')">🛟 Резервные копии<span class="sx-dot" id="sxDot_backups"></span></div>
       </nav>
       <div class="sx-main" id="sxMain" data-tr="servertap">
         <div class="sx-head"><b id="sxTitle">🎵 TikTok</b><span class="ev-saved" id="cfgSaveHint">✓ Сохранено</span></div>
@@ -1641,6 +1642,16 @@
           <input id="guardTest" class="sx-in" placeholder="аааааа нооооогггг" oninput="guardCheck()">
         </div>
         <div class="sx-note" id="guardStats">Отфильтровано за этот запуск: пока ничего.</div>
+        </section>
+
+        <section class="sx-sec hidden" data-s="backups">
+        <div class="sx-row">
+          <div class="sx-l"><div class="t">Копии создаются сами</div><div class="d">при запуске программы (если что-то менялось) и перед каждым обновлением.
+            Хранится 12 последних. В копии: настройки, вкладки с событиями, голоса и очки зрителей. Файлы эдитов и музыки
+            лежат в папке media и обновлением не трогаются.</div></div>
+          <button class="small" onclick="bkMake()">➕ Сделать копию сейчас</button>
+        </div>
+        <div id="bkList"></div>
         </section>
 
         <section class="sx-sec hidden" data-s="announce">

@@ -70,15 +70,19 @@ class Points:
         self.likes_buf, self.msg_at, self.share_at, self.active_at, self.reply_at = {}, {}, {}, {}, {}
         self.followed = set()
         self.next_bonus = time.time() + self.ACTIVE_EVERY
-        try:
-            with open(path, encoding="utf-8") as f:
-                d = json.load(f)
-            if isinstance(d, dict):
-                self.data = {k: v for k, v in d.items() if isinstance(v, dict)}
-        except FileNotFoundError:
-            pass
-        except Exception as e:
-            log("ОШИБКА", f"не прочитал очки зрителей: {e}")
+        self.reload()
+
+    def reload(self):
+        """Читает очки с диска. Повреждённый файл не затираем: откладываем и берём из резервной копии."""
+        import safeio
+        notes = []
+        snaps = safeio.Snapshots(os.path.dirname(os.path.abspath(self.path)))
+        d = safeio.load_json_safe(self.path, snaps, dict, notes)
+        for n in notes:
+            self.log("ОШИБКА", n)
+        with self.lock:
+            self.data = {k: v for k, v in (d or {}).items() if isinstance(v, dict)}
+            self.dirty = False
 
     def _rec(self, key, name):
         r = self.data.get(key)
