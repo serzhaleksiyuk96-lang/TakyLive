@@ -224,7 +224,10 @@ async function vcHubSearch() {
   hint.textContent = "Ищу…"; list.innerHTML = "";
   const r = await (await fetch("/api/vc/hub/search?q=" + encodeURIComponent(q))).json();
   if (!r.ok) { hint.textContent = "✗ " + r.error; return; }
-  hint.textContent = r.items.length ? `Найдено: ${r.items.length}. Нажми «Открыть», чтобы выбрать голос` : "Ничего не нашлось — попробуй по-английски";
+  const asked = r.terms && r.terms.join(" ") !== q.toLowerCase() ? `Искал: ${r.terms.join(", ")}` +
+    (r.unknown && r.unknown.length ? ` (не понял: ${r.unknown.join(", ")})` : "") + ". " : "";
+  hint.textContent = asked + (r.items.length ? `Найдено: ${r.items.length}. Нажми «Открыть», чтобы выбрать голос`
+                                             : "Ничего не нашлось — попробуй другое слово, лучше по-английски");
   list.innerHTML = r.items.map((m, i) => `<div><div class="vc-hub-row"><span class="nm" title="${esc(m.id)}">${esc(m.id)}</span>
       <span class="st">⬇ ${m.downloads} · ♥ ${m.likes}</span>
       <button class="small" onclick="vcHubOpen(${i}, ${JSON.stringify(m.id).replace(/"/g, "&quot;")})">Открыть</button></div>

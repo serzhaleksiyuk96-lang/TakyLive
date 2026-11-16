@@ -33,6 +33,42 @@ CABLE_PAGE = "https://vb-audio.com/Cable/"
 HF_BASE = (os.environ.get("TAKY_HF_BASE") or "https://huggingface.co").rstrip("/")   # для автопроверки — подмена
 REPO_RE = re.compile(r"^[\w.\-]{1,96}/[\w.\-]{1,96}$")
 MAX_HUB_FILE = 2 << 30
+
+# Названия моделей на Hugging Face — латиницей. Частые русские слова переводим сами
+# (ключ — начало слова, чтобы «робота», «девушки», «низкий» тоже находились).
+RU_EN = [
+    ("робот", "robot"), ("демон", "demon"), ("дьявол", "devil"), ("монстр", "monster"), ("зомби", "zombie"),
+    ("орк", "orc"), ("гоблин", "goblin"), ("инопланет", "alien"), ("пришелец", "alien"), ("бурундук", "chipmunk"),
+    ("кот", "cat"), ("кошк", "cat"), ("собак", "dog"), ("пёс", "dog"), ("пес", "dog"), ("дракон", "dragon"),
+    ("девуш", "girl"), ("девоч", "girl"), ("женск", "female"), ("женщин", "woman"), ("мужск", "male"),
+    ("мужик", "man"), ("мужчин", "man"), ("парен", "boy"), ("парн", "boy"), ("мальчик", "boy"), ("ребён", "kid"),
+    ("ребен", "kid"), ("детск", "kid"), ("старик", "old"), ("стар", "old"), ("бабушк", "granny"),
+    ("низк", "deep"), ("глубок", "deep"), ("бас", "bass"), ("высок", "high"), ("пискляв", "squeaky"),
+    ("хрипл", "raspy"), ("груб", "rough"), ("мягк", "soft"), ("нежн", "soft"), ("мил", "cute"),
+    ("аниме", "anime"), ("мульт", "cartoon"), ("злой", "evil"), ("зло", "evil"), ("страшн", "scary"),
+    ("рассказчик", "narrator"), ("диктор", "announcer"), ("радио", "radio"), ("рэп", "rap"), ("певец", "singer"),
+    ("певиц", "singer"), ("русск", "russian"), ("англ", "english"), ("японск", "japanese"),
+]
+STOP_WORDS = {"голос", "голоса", "голосом", "voice", "voices", "rvc", "model", "модель", "и", "а", "the"}
+
+
+def hub_terms(q):
+    """Запрос → слова для поиска: латиница как есть, русские частые слова — по-английски."""
+    out, unknown = [], []
+    for w in re.findall(r"[\w\-]+", str(q or "").lower()):
+        if w in STOP_WORDS:
+            continue
+        if re.search(r"[а-яё]", w):
+            en = next((e for ru, e in RU_EN if w.startswith(ru)), None)
+            (out if en else unknown).append(en or w)
+        else:
+            out.append(w)
+    seen, terms = set(), []
+    for t in out:
+        if t not in seen and len(t) >= 2:
+            seen.add(t)
+            terms.append(t)
+    return terms[:3], unknown
 EXE_NAME = "MMVCServerSIO.exe" if IS_WIN else "MMVCServerSIO"
 MIN_DRIVER = (528, 33)
 
@@ -505,18 +541,29 @@ class VoiceChanger:
         q = str(q or "").strip()[:60]
         if len(q) < 2:
             raise RuntimeError("впиши, какой голос ищешь")
+        terms, unknown = hub_terms(q)
+        if not terms:
+            raise RuntimeError("не понял «" + " ".join(unknown or [q]) + "» — напиши по-английски, например robot, "
+                               "demon, girl, deep")
         base = {"sort": "downloads", "direction": "-1", "limit": "40"}
-        items = await self._hf_json("/api/models", dict(base, filter="rvc", search=q))
-        if not items and q:
-            raw = await self._hf_json("/api/models", dict(base, search=q, limit="80"))
-            items = [m for m in raw if "rvc" in str(m.get("id", "")).lower()
-                     or any("rvc" in str(t).lower() for t in m.get("tags") or [])]
-        out = []
-        for m in items[:40]:
-            rid = str(m.get("id") or m.get("modelId") or "")
-            if REPO_RE.match(rid):
-                out.append({"id": rid, "downloads": int(m.get("downloads") or 0), "likes": int(m.get("likes") or 0)})
-        return out
+        found = {}
+
+        def add(items):
+            for m in items:
+                rid = str(m.get("id") or m.get("modelId") or "")
+                if REPO_RE.match(rid) and rid not in found:
+                    found[rid] = {"id": rid, "downloads": int(m.get("downloads") or 0), "likes": int(m.get("likes") or 0)}
+        add(await self._hf_json("/api/models", dict(base, filter="rvc", search=" ".join(terms))))
+        if not found:                          # несколько слов — ищем каждое отдельно
+            for t in terms:
+                add(await self._hf_json("/api/models", dict(base, filter="rvc", search=t)))
+        if not found:                          # без тега rvc — но с rvc в названии или тегах
+            for t in terms:
+                raw = await self._hf_json("/api/models", dict(base, search=t, limit="80"))
+                add([m for m in raw if "rvc" in str(m.get("id", "")).lower()
+                     or any("rvc" in str(x).lower() for x in m.get("tags") or [])])
+        items = sorted(found.values(), key=lambda m: -m["downloads"])[:40]
+        return {"items": items, "terms": terms, "unknown": unknown}
 
     @staticmethod
     def _is_voice_file(name):

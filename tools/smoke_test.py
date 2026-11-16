@@ -684,6 +684,12 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     r = api.get("/api/vc/hub/search?q=" + urllib.request.quote("robot"))
     check("поиск в библиотеке голосов находит модель", r.get("ok") and [m["id"] for m in r.get("items", [])] == ["tester/robot-rvc"],
           str(r)[:200])
+    r = api.get("/api/vc/hub/search?q=" + urllib.request.quote("голос робота"))
+    check("русский запрос «голос робота» ищет robot и находит модель",
+          r.get("ok") and r.get("terms") == ["robot"] and [m["id"] for m in r.get("items", [])] == ["tester/robot-rvc"], str(r)[:200])
+    r = api.get("/api/vc/hub/search?q=" + urllib.request.quote("абракадабра"))
+    check("непонятное русское слово — просьба написать по-английски", r.get("ok") is False and "по-английски" in r.get("error", ""),
+          str(r))
     r = api.get("/api/vc/hub/search?q=x")
     check("слишком короткий запрос — подсказка", r.get("ok") is False and "впиши" in r.get("error", ""), str(r))
     f = api.get("/api/vc/hub/files?repo=tester/robot-rvc")

@@ -2925,7 +2925,7 @@ async def h_vc_upload(request):
 
 async def h_vc_hub_search(request):
     try:
-        return web.json_response({"ok": True, "items": await STATE.vc.hub_search(request.query.get("q", ""))})
+        return web.json_response({"ok": True, **(await STATE.vc.hub_search(request.query.get("q", "")))})
     except Exception as e:
         return web.json_response({"ok": False, "error": _hub_err(e)})
 
