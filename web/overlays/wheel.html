@@ -56,7 +56,7 @@ const Q = new URLSearchParams(location.search);
 const DEMO = Q.has("demo"), ALWAYS = Q.has("always");
 const cv = $("cv"), ctx = cv.getContext("2d"), C = 560, TAU = Math.PI * 2;
 let SECT = [], angle = 0, spinId = 0, anim = null, STYLE = "", winner = -1, winT = 0;
-let ptrKick = 0, lastIdx = -1, lights = 0, spinning = false;
+let ptrKick = 0, lastIdx = -1, lights = 0, spinning = false, flipT = 1;
 
 // ── цвета ──
 function hex2rgb(h) { h = String(h).replace("#", ""); if (h.length === 3) h = h.replace(/./g, "$&$&");
@@ -101,27 +101,36 @@ function draw() {
     ctx.fill();
     if (winner >= 0 && i !== winner) { ctx.fillStyle = `rgba(6,8,14,${0.55 * Math.min(1, winT)})`; ctx.fill(); }
     ctx.lineWidth = modern ? 5 : 6; ctx.strokeStyle = modern ? "rgba(9,11,19,.95)" : "rgba(10,12,19,.9)"; ctx.stroke();
-    // надпись по радиусу, от края к центру; длинная — в две строки
-    ctx.save();
-    ctx.rotate(a0 + step / 2);
-    ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
-    ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2;
-    const room = R - inner - pad, label = SECT[i].label;
+    // надпись по радиусу; длинная — в две строки. Когда колесо стоит, надписи слева переворачиваются,
+    // чтобы не читаться вверх ногами (пока крутится — обычные, иначе мелькали бы у стрелки)
+    const mid = a0 + step / 2, room = R - inner - pad, label = SECT[i].label;
+    const wantFlip = Math.cos(angle + mid) < -0.15 ? flipT : 0;
     const font = fs => `800 ${fs}px Inter, Segoe UI, Roboto, sans-serif`;
     const fit = (t, hi, lo) => { let fs = hi; ctx.font = font(fs);
       while (ctx.measureText(t).width > room && fs > lo) { fs -= 2; ctx.font = font(fs); } return fs; };
-    let fs = fit(label, big, 26);
-    const sp = label.indexOf(" ") > 0 ? [...label.matchAll(/ /g)].map(m => m.index)
-      .sort((a, b) => Math.abs(a - label.length / 2) - Math.abs(b - label.length / 2))[0] : -1;
-    if (ctx.measureText(label).width > room && sp > 0) {
-      const a = label.slice(0, sp), b = label.slice(sp + 1);
-      fs = Math.min(fit(a, 36, 16), fit(b, 36, 16)); ctx.font = font(fs);
-      ctx.fillText(a, R - pad, -fs * 0.55); ctx.fillText(b, R - pad, fs * 0.6);
-    } else {
-      if (ctx.measureText(label).width > room) fs = fit(label, fs, 16);
-      ctx.fillText(label, R - pad, 0);
-    }
-    ctx.restore();
+    const text = (flip, alpha) => {
+      if (alpha <= 0) return;
+      ctx.save();
+      ctx.rotate(mid + (flip ? Math.PI : 0));
+      ctx.globalAlpha = alpha;
+      ctx.textAlign = flip ? "left" : "right"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff";
+      ctx.shadowColor = "rgba(0,0,0,.55)"; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2;
+      const x = flip ? -(R - pad) : R - pad;
+      let fs = fit(label, big, 26);
+      const sp = label.indexOf(" ") > 0 ? [...label.matchAll(/ /g)].map(m => m.index)
+        .sort((a, b) => Math.abs(a - label.length / 2) - Math.abs(b - label.length / 2))[0] : -1;
+      if (ctx.measureText(label).width > room && sp > 0) {
+        const a = label.slice(0, sp), b = label.slice(sp + 1);
+        fs = Math.min(fit(a, 36, 16), fit(b, 36, 16)); ctx.font = font(fs);
+        ctx.fillText(a, x, -fs * 0.55); ctx.fillText(b, x, fs * 0.6);
+      } else {
+        if (ctx.measureText(label).width > room) fs = fit(label, fs, 16);
+        ctx.fillText(label, x, 0);
+      }
+      ctx.restore();
+    };
+    text(false, 1 - Math.min(1, wantFlip * 2));
+    text(true, Math.max(0, wantFlip * 2 - 1));
   }
   if (modern) {
     // глубина: тень по краю
@@ -236,7 +245,7 @@ function spin(s) {
   const dur = s.secs * 1000, t0 = performance.now() - Math.min(s.ago, s.secs) * 1000;
   if (anim) cancelAnimationFrame(anim);
   const ease = t => 1 - Math.pow(1 - t, 4);
-  winner = -1; spinning = true;
+  winner = -1; spinning = true; flipT = 0;
   $("box").classList.add("spinning");
   const frame = now => {
     const t = Math.min(1, (now - t0) / dur);
@@ -282,6 +291,8 @@ function fxFrame() {
 
 // пульс подсветки победителя
 setInterval(() => { if (winner >= 0 && !anim) { winT = Math.min(1, winT + 0.08); draw(); } }, 50);
+// колесо остановилось — плавно переворачиваем надписи слева
+setInterval(() => { if (!spinning && flipT < 1 && SECT.length) { flipT = Math.min(1, flipT + 0.1); draw(); } }, 30);
 
 let shownDone = 0;
 function render(d) {

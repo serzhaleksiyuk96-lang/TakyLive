@@ -183,7 +183,7 @@ class Updater:
                               f'copy /Y "{os.path.join(new_dir, f)}" "{os.path.join(self.base, f)}" >nul\r\n'
                               for f in KEEP_FILES) +
                     'set TAKY_AFTER_UPDATE=1\r\n'               # программа не откроет второе окно, если старое ещё открыто
-                    f'start "" "{exe}"\r\n'
+                    f'start "" /D "{self.base}" "{exe}"\r\n'            # /D — иначе start.bat ищет app.py в _update
                     f'rmdir /S /Q "{os.path.join(upd, "new")}"\r\n'
                     f'del /Q "{os.path.join(upd, "update.zip")}"\r\n'
                     '(goto) 2>nul & del "%~f0"\r\n')                     # и сам скрипт — без хвостов

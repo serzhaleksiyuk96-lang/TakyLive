@@ -58,8 +58,8 @@ async function vcRefresh(force) {
   } else {
     bar.classList.add("hidden");
     if (s.running) {
-      vcEl("vcProg").innerHTML = "✓ Работает" + (s.ours ? "" : " (запущена отдельно)");
-      btns.innerHTML = s.ours ? `<button class="small" onclick="vcStartStop(false)">⏹ Остановить</button>` : "";
+      vcEl("vcProg").innerHTML = "✓ Работает" + (s.ours ? "" : " (осталась с прошлого запуска)");
+      btns.innerHTML = `<button class="small" onclick="vcStartStop(false)">⏹ Остановить</button>`;
       vcStep(2, "ok");
     } else if (!s.installed) {
       vcEl("vcProg").innerHTML = (ins.error ? `<span style="color:#f87171">✗ ${esc(ins.error)}</span> · ` : "") +
@@ -67,11 +67,16 @@ async function vcRefresh(force) {
       btns.innerHTML = `<button class="small primary" onclick="vcInstall()">⬇ Скачать и установить</button>`;
       vcStep(2, "todo");
     } else if (s.starting) {
-      vcEl("vcProg").textContent = "Запускается… В первый раз программа качает свои файлы — до нескольких минут";
-      btns.innerHTML = "";
+      const st = s.start || {};
+      const mm = Math.floor((st.secs || 0) / 60), ss = String((st.secs || 0) % 60).padStart(2, "0");
+      vcEl("vcProg").textContent = `Запускается… ${mm}:${ss}. В первый раз программа качает свои файлы (≈1 ГБ)` +
+        (st.mb ? ` — уже ${st.mb} МБ` : "") + (st.note ? `. ${st.note[0].toUpperCase() + st.note.slice(1)}` : "") +
+        ". Ждать у окна не нужно";
+      btns.innerHTML = `<button class="small" onclick="vcStartStop(false)">✕ Отменить</button>`;
       vcStep(2, "todo");
     } else {
-      vcEl("vcProg").textContent = "Установлена, не запущена";
+      const err = (s.start || {}).error;
+      vcEl("vcProg").innerHTML = (err ? `<span style="color:#f87171">✗ ${esc(err)}</span> · ` : "") + "Установлена, не запущена";
       btns.innerHTML = `<button class="small primary" onclick="vcStartStop(true)">▶ Запустить</button>`;
       vcStep(2, "todo");
     }
@@ -102,8 +107,10 @@ async function vcRefresh(force) {
   // 5. Голоса
   const slots = (inf && inf.slots) || [];
   const act = s.active;
+  if (!vcEl("vcVoices").contains(document.activeElement))          // не перерисовываем, пока выбирают высоту
   vcEl("vcVoices").innerHTML = !s.running ? `<span class="hint">появятся, когда запустится голосовая программа</span>`
     : slots.length ? slots.map(v => `<span class="vc-voice${act && act.name === v.name ? " on" : ""}">${esc(v.name)}
+          ${vcTuneSel(v.name, (inf.tunes || {})[v.name] || 0)}
           <button class="small" title="Включить на 10 секунд" onclick="vcTry(${JSON.stringify(v.name).replace(/"/g, "&quot;")})">▶ 10 с</button>
           <button class="small" title="Скопировать команду для подарка" onclick="vcCopy(${JSON.stringify(v.name).replace(/"/g, "&quot;")})">📋</button></span>`).join("")
     : `<span class="hint">Пока нет голосов — добавь .pth</span>`;
@@ -136,6 +143,26 @@ async function vcInstall() {
 async function vcStartStop(start) {
   const r = await vcApi(start ? "start" : "stop", {});
   if (r && r.ok === false) alert("Не запустилась: " + r.error);
+  else if (r && r.error) alert(r.error);
+  vcRefresh();
+}
+
+// высота голоса: мужской голос + женская модель обычно звучит правильно на +12, наоборот — на −12
+function vcTuneSel(name, cur) {
+  const vals = [-12, -8, -5, -3, 0, 3, 5, 8, 12];
+  if (!vals.includes(cur)) vals.push(cur);
+  vals.sort((a, b) => a - b);
+  const lab = t => t === 0 ? "высота 0" : t === 12 ? "+12 выше" : t === -12 ? "−12 ниже" : (t > 0 ? "+" : "−") + Math.abs(t);
+  return `<select class="vc-tune" title="Высота голоса в полутонах. Мужской голос → женская модель: +12. Женский → мужская: −12"
+    onchange="vcTune(${JSON.stringify(name).replace(/"/g, "&quot;")}, this)">` +
+    vals.map(t => `<option value="${t}"${t === cur ? " selected" : ""}>${lab(t)}</option>`).join("") + `</select>`;
+}
+
+async function vcTune(name, sel) {
+  const r = await vcApi("tune", {name, tune: +sel.value});
+  if (r.ok) DATA.config.vc_tune = r.tunes;                 // чтобы общее сохранение настроек не затёрло
+  else alert(r.error);
+  sel.blur();
   vcRefresh();
 }
 
@@ -316,14 +343,14 @@ async function vcPresetsRender(slots, running) {
       <span class="em">${esc(p.emoji)}</span>
       <div class="tx"><b>${esc(p.name)}</b><span>${esc(p.desc || p.repo)}${p.size_mb ? " · " + p.size_mb + " МБ" : ""}</span></div>
       ${ok ? `<span class="hint">✓ есть</span>`
-           : `<button class="small primary" ${running ? "" : "disabled"} onclick="vcPresetInstall(${i})">⬇</button>`}</div>`;
+           : `<button class="small primary" ${running ? "" : "disabled"} title="${running ? "Скачать и поставить" : "Сначала запусти голосовую программу (шаг 2)"}" onclick="vcPresetInstall(${i})">⬇</button>`}</div>`;
   }).join("");
 }
 
 async function vcPresetInstall(i) {
   const p = VC_PRESETS[i];
   const r = await (await fetch("/api/vc/hub/install", {method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({repo: p.repo, model: p.model, index: p.index, zip: p.zip, name: p.name})})).json();
+    body: JSON.stringify({repo: p.repo, model: p.model, index: p.index, zip: p.zip, name: p.name, auto: !!p.auto})})).json();
   if (!r.ok) { alert(r.error); return; }
   vcHubWatch();
 }

@@ -49,7 +49,7 @@ function render(v) {
     $("bar").style.transition = "";
   }
   $("name").textContent = "«" + v.name + "»";
-  $("from").textContent = v.user ? "от " + v.user : "";
+  $("from").textContent = v.user ? "заказ: " + v.user : "";
   $("left").textContent = v.left;
   $("bar").style.width = Math.max(0, Math.min(100, v.left / Math.max(1, v.secs) * 100)) + "%";
   card.classList.add("show");

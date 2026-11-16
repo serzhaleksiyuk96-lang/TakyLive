@@ -169,11 +169,23 @@ def start_mock_ai():
 
 # ── поддельная голосовая программа (deiteris/voice-changer) ────────────────────
 MOCK_VC = {"settings": {"modelSlotIndex": 0, "passThrough": False, "serverAudioStated": 0}, "log": [],
-           "slots": [{"slotIndex": 0, "voiceChangerType": "RVC", "name": "Девушка"},
+           "slots": [{"slotIndex": 0, "voiceChangerType": "RVC", "name": "Девушка", "defaultTune": 12},
                      {"slotIndex": 1, "voiceChangerType": "RVC", "name": "Демон"},
                      {"slotIndex": 2, "voiceChangerType": None, "name": ""}],
-           "uploads": [], "loaded": []}
+           "uploads": [], "loaded": [],
+           # звуковые устройства: номера меняются, когда подключают наушники — как в Windows
+           "ins": [(1, "Микрофон (USB Mic)")], "outs": [(5, "Наушники (Realtek)"), (7, "CABLE Input (VB-Audio Virtual Cable)")],
+           "stale": None,          # старый список, который программа отдаёт до первой неудачной попытки включить звук
+           "broken": False,        # звук не включается совсем
+           "logfile": ""}          # её журнал — туда пишется ошибка открытия устройства
 MOCK_VC_PORT = 0
+
+
+def mock_vc_log(line):
+    if MOCK_VC["logfile"]:
+        os.makedirs(os.path.dirname(MOCK_VC["logfile"]), exist_ok=True)
+        with open(MOCK_VC["logfile"], "a", encoding="utf-8") as f:
+            f.write(line + "\n")
 
 
 class MockVC(http.server.BaseHTTPRequestHandler):
@@ -194,11 +206,12 @@ class MockVC(http.server.BaseHTTPRequestHandler):
         if self.path == "/info":
             dev = lambda i, n, inp: {"index": i, "name": n, "hostAPI": "Windows WASAPI",
                                       "maxInputChannels": 2 if inp else 0, "maxOutputChannels": 0 if inp else 2}
+            on = MOCK_VC["settings"].get("serverAudioStated") == 1      # пока звук включён — списки пустые
+            ins, outs = MOCK_VC["stale"] or (MOCK_VC["ins"], MOCK_VC["outs"])
             return self._send({**MOCK_VC["settings"], "modelSlots": MOCK_VC["slots"],
                                "gpus": [{"id": -1, "name": "CPU"}, {"id": 0, "name": "0: RTX 4060 (CUDA)"}],
-                               "serverAudioInputDevices": [dev(1, "Микрофон (USB Mic)", True)],
-                               "serverAudioOutputDevices": [dev(5, "Наушники (Realtek)", False),
-                                                            dev(7, "CABLE Input (VB-Audio Virtual Cable)", False)]})
+                               "serverAudioInputDevices": [] if on else [dev(i, n, True) for i, n in ins],
+                               "serverAudioOutputDevices": [] if on else [dev(i, n, False) for i, n in outs]})
         self._send({"detail": "Not Found"}, 404)
 
     def do_POST(self):
@@ -217,9 +230,20 @@ class MockVC(http.server.BaseHTTPRequestHandler):
             if k == "passThrough":
                 v = v == "true"
             elif k in ("modelSlotIndex", "serverAudioStated", "serverInputDeviceId", "serverOutputDeviceId",
-                       "serverMonitorDeviceId", "gpu"):
+                       "serverMonitorDeviceId", "gpu", "tran"):
                 v = int(v)
             MOCK_VC["settings"][k] = v
+            if k == "serverAudioStated" and v == 1:                     # открываем устройства по номерам
+                st = MOCK_VC["settings"]
+                good = st.get("serverInputDeviceId") in [i for i, _ in MOCK_VC["ins"]] and \
+                    st.get("serverOutputDeviceId") in [i for i, _ in MOCK_VC["outs"]]
+                if MOCK_VC["broken"] or not good:
+                    mock_vc_log("2026-11-16 21:33:40 | ERROR | MMVC_Rest_Fileuploader | "
+                                "'NoneType' object has no attribute 'maxInputChannels'")
+                    MOCK_VC["stale"] = None                             # после неудачи список устройств свежий
+            if k == "modelSlotIndex":                                   # как настоящая: высота — из настроек слота
+                sl = next((x for x in MOCK_VC["slots"] if x["slotIndex"] == v), {})
+                MOCK_VC["settings"]["tran"] = sl.get("defaultTune", 0)
             return self._send({"status": "OK"})
         if self.path == "/upload_file":
             m = re.search(rb'name="filename"\r\n\r\n([^\r]*)', body)
@@ -240,6 +264,34 @@ class MockVC(http.server.BaseHTTPRequestHandler):
         self._send({"detail": "Not Found"}, 404)
 
 
+# поддельный MMVCServerSIO для проверки запуска: mode.txt — slow (2 раза «не докачал») / crash / ok
+FAKE_VC_EXE = r'''#!/usr/bin/env python3
+import http.server, json, os, sys
+here = os.path.dirname(os.path.abspath(__file__))
+rd = lambda n, d="": open(os.path.join(here, n)).read().strip() if os.path.exists(os.path.join(here, n)) else d
+n = int(rd("runs.txt", "0")) + 1
+open(os.path.join(here, "runs.txt"), "w").write(str(n))
+mode = rd("mode.txt", "ok")
+if mode == "crash":
+    print("2026-11-16 | ERROR | VoiceChangerV2 | CUDA is not available on this device", flush=True)
+    sys.exit(3)
+os.makedirs(os.path.join(here, "pretrain"), exist_ok=True)
+with open(os.path.join(here, "pretrain", "rmvpe.onnx"), "ab") as f:
+    f.write(b"x" * 200000)
+if mode == "slow" and n < 3:
+    print("2026-11-16 | ERROR | downloader | Failed to download or verify pretrain/rmvpe.onnx", flush=True)
+    print("PretrainDownloadException: 'Failed to download pretrain models.'", flush=True)
+    sys.exit(1)
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        b = json.dumps({"result": "Index", "modelSlots": [], "gpus": []}).encode()
+        self.send_response(200); self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+http.server.HTTPServer(("127.0.0.1", __PORT__), H).serve_forever()
+'''
+
+
 # ── поддельный Hugging Face (библиотека голосов) ─────────────────────────────
 def _zip_bytes(files):
     import io as _io
@@ -257,6 +309,9 @@ MOCK_HF_FILES = {
     "tester/pack-rvc": {"voices.zip": _zip_bytes({"pack/demon.pth": b"PTH-DEMON" * 50,
                                                   "pack/added_demon.index": b"IDX" * 50, "pack/info.txt": b"hi"})},
 }
+MOCK_HF_FILES["tester/alien-voice-RVC"] = {"alien.pth": b"PTH-ALIEN" * 50}     # без тега rvc — только «RVC» в названии
+MOCK_HF_FILES["tester/alien-coder-7b"] = {"model.safetensors": b"LLM"}          # мусор: не голос
+MOCK_HF_TAGS = {"tester/alien-voice-RVC": [], "tester/alien-coder-7b": ["text-generation"]}
 MOCK_HF_PORT = 0
 
 
@@ -280,12 +335,17 @@ class MockHF(http.server.BaseHTTPRequestHandler):
             return self._send({"voices": [
                 {"name": "Робот", "emoji": "🤖", "desc": "металлический", "repo": "tester/robot-rvc", "model": "robot.pth",
                  "index": "added_IVF256_robot.index", "license": "mit", "size_mb": 1},
+                {"name": "Авто", "emoji": "✨", "repo": "tester/pack-rvc", "auto": True, "license": "openrail"},
                 {"name": "Плохой", "repo": "../evil", "model": "x.pth"},
                 {"name": "Плохой2", "repo": "tester/robot-rvc", "model": "../../x.pth"}]})
         if u.path == "/api/models":
-            term = (q.get("search") or [""])[0].lower()
-            items = [{"id": rid, "downloads": 100 - i, "likes": 5, "tags": ["rvc"]}
-                     for i, rid in enumerate(MOCK_HF_FILES) if term in rid]
+            words = (q.get("search") or [""])[0].lower().split()         # как на сайте: все слова — в названии
+            need_tag = (q.get("filter") or [""])[0]
+            items = [{"id": rid, "downloads": 100 - i, "likes": 5, "tags": MOCK_HF_TAGS.get(rid, ["rvc"])}
+                     for i, rid in enumerate(MOCK_HF_FILES)
+                     if all(w in rid.lower() for w in words) and (not need_tag or need_tag in MOCK_HF_TAGS.get(rid, ["rvc"]))
+                     # как на сайте: по одному слову без тега в первых результатах — чужие популярные модели, не голоса
+                     and not (not need_tag and "rvc" not in words and rid == "tester/alien-voice-RVC")]
             return self._send(items)
         m = re.match(r"^/api/models/([\w.\-]+/[\w.\-]+)$", u.path)
         if m and m.group(1) in MOCK_HF_FILES:
@@ -328,6 +388,7 @@ def make_copy(dst, remote_port):
                    "media_kind": "video", "sound_file": "музыка.flac"},
                   {"name": "Кулон дружбы", "title": "кулон", "commands": []},          # по-русски, без ID
                   {"name": "Doughnut", "title": "пончик", "commands": []},             # из библиотеки, по-английски
+                  {"name": "Тестовый дракон", "title": "дракон", "commands": []},      # узнаем только от TikTok (ru-RU)
                   {"name": "Загадочный подарок", "title": "загадка", "commands": []}],  # такого названия нет
         "chatcmds": [{"trigger": "!крипер", "title": "Крипер", "cooldown": 0, "points_cost": 30,
                       "commands": ["say creeper"]},
@@ -351,7 +412,7 @@ def make_copy(dst, remote_port):
     with open(os.path.join(dst, "media", "музыка.flac"), "wb") as f:
         f.write(b"fLaC" + b"\x00" * 64)
     with open(os.path.join(dst, "gift_names_ru.json"), "w", encoding="utf-8") as f:
-        json.dump({"9947": "Кулон дружбы", "5655": "Роза"}, f, ensure_ascii=False)   # как отдаёт TikTok при подключении
+        json.dump({"111": "Старый подарок"}, f, ensure_ascii=False)   # свой файл стримера; «Кулон дружбы» — из встроенного списка
     with open(os.path.join(dst, "profiles.json"), "w", encoding="utf-8") as f:
         json.dump(profiles, f, ensure_ascii=False)
     with open(os.path.join(dst, "config.json"), "w", encoding="utf-8") as f:
@@ -794,7 +855,7 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     # ⭐ рекомендуемые голоса
     pr = api.get("/api/vc/presets").get("voices", [])
     check("⭐ рекомендуемые приходят с GitHub, кривые записи отброшены",
-          [v["name"] for v in pr] == ["Робот"] and pr[0]["license"] == "mit", str(pr)[:200])
+          [v["name"] for v in pr] == ["Робот", "Авто"] and pr[0]["license"] == "mit" and pr[1]["auto"] is True, str(pr)[:300])
     # библиотека голосов (Hugging Face)
     r = api.get("/api/vc/hub/search?q=" + urllib.request.quote("robot"))
     check("поиск в библиотеке голосов находит модель", r.get("ok") and [m["id"] for m in r.get("items", [])] == ["tester/robot-rvc"],
@@ -839,14 +900,183 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     check("голос из .zip-архива распаковывается и ставится",
           bool(done) and [x["name"] for x in ld.get("files", [])] == ["Демон.pth", "added_demon.index"], str(ld))
 
+    api.post("/api/vc/hub/install", {"repo": "tester/pack-rvc", "auto": True, "name": "Авто"})
+    n_up = len(MOCK_VC["loaded"])
+    done = wait_until(lambda: len(MOCK_VC["loaded"]) > n_up and not api.get("/api/vc/status")["hub"]["running"], 15)
+    ld = MOCK_VC["loaded"][-1] if MOCK_VC["loaded"] else {}
+    check("⭐ рекомендуемый голос без указания файла ставится сам (первый голос модели)",
+          bool(done) and [x["name"] for x in ld.get("files", [])] == ["Авто.pth", "added_demon.index"], str(ld))
+    r = api.get("/api/vc/hub/search?q=alien")
+    check("голос без тега rvc находится («alien rvc»), не-голоса отброшены",
+          r.get("ok") and [m["id"] for m in r.get("items", [])] == ["tester/alien-voice-RVC"], str(r)[:200])
+
+    # высота голоса
+    api.post("/api/vc/voice", {"name": "Девушка", "secs": 5})
+    check("высота голоса по умолчанию — из модели (+12 у «Девушки»)", S.get("tran") == 12 and S.get("modelSlotIndex") == 0, str(S))
+    r = api.post("/api/vc/tune", {"name": "Демон", "tune": -12})
+    api.post("/api/vc/voice", {"name": "Демон", "secs": 5})
+    check("своя высота (−12 у «Демона») применяется и сохраняется",
+          r.get("ok") and S.get("tran") == -12 and api.get("/api/state")["config"].get("vc_tune") == {"Демон": -12}, f"{r} {S}")
+    api.post("/api/vc/tune", {"name": "Демон", "tune": 5})
+    check("высота меняется сразу у звучащего голоса", S.get("tran") == 5, str(S))
+    stv = api.get("/api/vc/status")
+    check("окно видит высоту каждого голоса", stv["info"]["tunes"].get("Демон") == 5 and stv["info"]["tunes"].get("Девушка") == 12,
+          str(stv["info"].get("tunes")))
+    check("пока звук включён, список устройств в окне не пустеет",
+          len(stv["info"]["inputs"]) == 1 and len(stv["info"]["outputs"]) == 2, str(stv["info"]["inputs"]))
+    api.post("/api/vc/voice", {"off": True})
+    r = api.post("/api/vc/tune", {"name": "Демон", "tune": "abc"})
+    check("кривая высота не принимается", r.get("ok") is False)
+
+    # наушники подключили — Windows сменила номера устройств
+    aud = {"vc_mic_name": "Микрофон (USB Mic)", "vc_out_name": "", "vc_monitor_name": ""}
+    MOCK_VC["stale"] = (list(MOCK_VC["ins"]), list(MOCK_VC["outs"]))
+    MOCK_VC["ins"] = [(29, "Микрофон (USB Mic)")]
+    MOCK_VC["outs"] = [(22, "Наушники (Buds)"), (25, "Наушники (Realtek)"), (24, "CABLE Input (VB-Audio Virtual Cable)")]
+    r = api.post("/api/vc/audio", aud)
+    check("номера устройств сменились (подключили наушники) — ИИ-голос сам находит их по имени",
+          r.get("ok") and S.get("serverInputDeviceId") == 29 and S.get("serverOutputDeviceId") == 24
+          and S.get("serverAudioStated") == 1, f"{r} {S}")
+    S["serverAudioStated"] = 0                                    # голосовую программу перезапускали — звук выключен
+    api.post("/api/vc/voice", {"name": "Демон", "secs": 2})
+    check("звук был выключен — голос из подарка включает его сам",
+          S.get("serverAudioStated") == 1 and api.log_has("ГОЛОС", "был выключен — включаю заново"), str(S))
+    api.post("/api/vc/voice", {"off": True})
+    MOCK_VC["broken"] = True
+    r = api.post("/api/vc/audio", aud)
+    check("устройство не открылось — честная ошибка вместо «включён»",
+          r.get("ok") is False and "не смогла открыть" in r.get("error", ""), str(r))
+    MOCK_VC["broken"] = False
+    keep_ins, MOCK_VC["ins"] = MOCK_VC["ins"], []
+    r = api.post("/api/vc/audio", aud)
+    check("микрофон отключён — понятная ошибка", r.get("ok") is False and "не вижу микрофон" in r.get("error", ""), str(r))
+    MOCK_VC["ins"] = keep_ins
+    r = api.post("/api/vc/audio", aud)
+    check("после ошибок ИИ-голос включается снова", r.get("ok") and S.get("serverAudioStated") == 1, str(r))
+
     r = api.post("/api/vc/audio", {"off": True})
     check("«Выключить» останавливает ИИ-голос", r.get("ok") and S.get("serverAudioStated") == 0)
+
+    if os.name != "nt":                                           # запуск голосовой программы: подделка-«exe»
+        vdir = os.path.join(copy_dir, "voice-changer")
+        p2 = free_port()
+        with open(os.path.join(vdir, "MMVCServerSIO"), "w", encoding="utf-8") as f:
+            f.write(FAKE_VC_EXE.replace("__PORT__", str(p2)))
+        os.chmod(os.path.join(vdir, "MMVCServerSIO"), 0o755)
+
+        def mode(m):
+            with open(os.path.join(vdir, "mode.txt"), "w") as f:
+                f.write(m)
+            if os.path.exists(os.path.join(vdir, "runs.txt")):
+                os.remove(os.path.join(vdir, "runs.txt"))
+        api.cfg(vc_port=p2)
+        mode("slow")                                              # дважды не успевает докачать свои файлы
+        r = api.post("/api/vc/start")
+        stv = api.get("/api/vc/status")
+        check("голосовая программа запускается, окно видит «запускается»", r.get("ok") and stv.get("starting") is True, str(stv)[:200])
+        up2 = wait_until(lambda: api.get("/api/vc/status").get("running"), 30, 0.5)
+        runs = open(os.path.join(vdir, "runs.txt")).read()
+        check("не успела скачать свои файлы — TakyLive сам запускает её снова, пока не докачает",
+              bool(up2) and runs == "3" and api.log_has("ГОЛОС", r"докачка продолжится \(попытка 3\)")
+              and wait_until(lambda: api.log_has("ГОЛОС", "Голосовая программа запустилась"), 6), f"запусков {runs}")
+        api.post("/api/vc/stop")
+        check("«Остановить» закрывает голосовую программу", not wait_until(lambda: api.get("/api/vc/status").get("running"), 2, 0.5))
+        mode("crash")                                             # падает не из-за интернета
+        api.post("/api/vc/start")
+        err = wait_until(lambda: (api.get("/api/vc/status").get("start") or {}).get("error"), 10, 0.5) or ""
+        check("не запустилась — причина из её журнала видна в окне и в журнале TakyLive",
+              "CUDA" in err and open(os.path.join(vdir, "runs.txt")).read() == "1"
+              and api.log_has("ОШИБКА", "ИИ-голос: не запустилась.*CUDA"), err)
+        api.cfg(vc_port=MOCK_VC_PORT)
     st, _ = api.req("/web/overlays/voice.html", raw=True)
     check("оверлей voice.html отдаётся", st == 200)
+
+    print("\n• Подключение к TikTok (поддельный TikTok)")
+
+    def connected():
+        return api.get("/api/state").get("connected")
+
+    def errors(_=0):
+        return [e["text"] for e in api.log() if e["kind"] == "ОШИБКА"
+                and ("tiktok" in e["text"].lower() or "подключ" in e["text"].lower() or "отключ" in e["text"].lower())]
+
+    def reconnect_ok(nick="fake_ok", timeout=6):
+        api.cfg(tiktok_username=nick)
+        r = api.post("/api/connect")
+        return r.get("ok") is True and bool(wait_until(connected, timeout)), r
+
+    api.sim(kind="gift", name="Test Dragon", gift_id="7777", count=1, user="Аня", diamonds=1)
+    check("до подключения «Test Dragon» карточку не находит",
+          wait_until(lambda: api.log_has("ПОДАРОК", r"«Test Dragon».*карточки нет"), 5))
+    ok, r = reconnect_ok("fake_ok")
+    check("подключение к эфиру", ok and api.log_has("СИСТЕМА", "✅ Подключено к @fake_ok"), str(r))
+    check("русские названия TikTok отдаёт по ru-RU — программа их получает",
+          wait_until(lambda: api.log_has("ПОДАРКИ", r"Русские названия подарков: 3 "), 5),
+          str([e["text"] for e in api.log() if e["kind"] == "ПОДАРКИ"][-3:]))
+    api.sim(kind="gift", name="Test Dragon", gift_id="7777", count=1, user="Аня", diamonds=1)
+    check("после подключения «Test Dragon» запускает карточку «Тестовый дракон»",
+          wait_until(lambda: api.log_has("ПОДАРОК", r"«Test Dragon».*→ карточка «Тестовый дракон»"), 5))
+    api.sim(kind="gift", name="Friendship Necklace", gift_id="1", count=1, user="Аня", diamonds=10)
+    check("TikTok сменил ID подарка — «Кулон дружбы» всё равно срабатывает по названию",
+          wait_until(lambda: api.log_has("ПОДАРОК", r"«Friendship Necklace».*ID: 1\].*→ карточка «Кулон дружбы»"), 5),
+          str([e["text"] for e in api.log() if e["kind"] == "ПОДАРОК"][-2:]))
+    r = api.post("/api/connect")
+    check("второе «Подключиться» при живом эфире — «Уже подключено»", r.get("ok") is False and "Уже подключено" in r.get("message", ""), str(r))
+    t0 = time.time()
+    api.post("/api/disconnect")
+    dt = time.time() - t0
+    check("«Отключиться» отключает сразу", dt < 3 and not connected()
+          and api.log_has("СИСТЕМА", "❌ Отключено от TikTok"), f"{dt:.1f} с")
+    ok, r = reconnect_ok("fake_ok")
+    check("после «Отключиться» можно подключиться снова", ok, str(r))
+    api.post("/api/disconnect")
+
+    api.cfg(tiktok_username="fake_ok")                          # передумал, пока подключается
+    api.post("/api/connect")
+    api.post("/api/disconnect")
+    ok, r = reconnect_ok("fake_ok")
+    check("отмена во время подключения — потом подключается снова", ok, str(r))
+    api.post("/api/disconnect")
+
+    ok, r = reconnect_ok("fake_slow")                           # TikTok не отвечает на «пока»
+    t0 = time.time()
+    api.post("/api/disconnect")
+    dt = time.time() - t0
+    ok2, r2 = reconnect_ok("fake_ok")
+    check("TikTok не отвечает на отключение — программа отключается сама (до 10 с) и подключается снова",
+          ok and dt < 10 and ok2, f"{dt:.1f} с, {r2}")
+    api.post("/api/disconnect")
+    check("отключения и отмены не пишут в журнал ошибок", not errors(0), str(errors(0))[:300])
+
+    ok, r = reconnect_ok("fake_stuck")                          # поток намертво занят
+    time.sleep(2)
+    t0 = time.time()
+    api.post("/api/disconnect")
+    dt = time.time() - t0
+    ok2, r2 = reconnect_ok("fake_ok")
+    check("зависшее подключение не мешает подключиться заново", ok and dt < 12 and ok2, f"{dt:.1f} с, {r2}")
+    api.post("/api/disconnect")
+
+    api.cfg(tiktok_username="fake_drop")
+    api.post("/api/connect")
+    check("обрыв связи — понятная запись, а не «не удалось подключиться»",
+          wait_until(lambda: api.log_has("ОШИБКА", "Связь с TikTok оборвалась"), 6) and not connected())
+    ok, r = reconnect_ok("fake_ok")
+    check("после обрыва можно подключиться снова", ok, str(r))
+    api.post("/api/disconnect")
+    api.cfg(tiktok_username="fake_off")
+    api.post("/api/connect")
+    check("эфир не идёт — «Не удалось подключиться»",
+          wait_until(lambda: api.log_has("ОШИБКА", "Не удалось подключиться: .*offline"), 6))
+    wait_until(lambda: api.post("/api/connect").get("ok"), 5)
+    api.post("/api/disconnect")
+    api.cfg(tiktok_username="smoke_nick")
 
     print("\n• Журнал без ошибок программы")
     bad = [e for e in api.log() if e["kind"] in ("ОШИБКА",) and "RCON" not in e["text"]
            and "в модели нет файла ../../secret.pth" not in e["text"]                    # это проверяли нарочно
+           and "ИИ-голос: не запустилась" not in e["text"] and "не включился звук" not in e["text"]
+           and "Связь с TikTok оборвалась" not in e["text"] and "Не удалось подключиться" not in e["text"]
            and "Minecraft" not in e["text"] and "сервер" not in e["text"].lower()]
     check("в журнале нет неожиданных ошибок", not bad, json.dumps(bad[:5], ensure_ascii=False)[:400])
 
@@ -867,8 +1097,10 @@ def main():
     start_mock_vc()
     start_mock_hf()
     report_id = make_copy(copy_dir, rport)
+    MOCK_VC["logfile"] = os.path.join(copy_dir, "voice-changer", "voice_changer_log.txt")
+    os.makedirs(os.path.dirname(MOCK_VC["logfile"]), exist_ok=True)
 
-    env = dict(os.environ, TAKY_TEST="1", TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
+    env = dict(os.environ, TAKY_TEST="1", TAKY_FAKE_TIKTOK="1", TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
                TAKY_HF_BASE=f"http://127.0.0.1:{MOCK_HF_PORT}",
                TAKY_PRESETS_URL=f"http://127.0.0.1:{MOCK_HF_PORT}/presets.json")
     out_path = os.path.join(tmp, "app_output.txt")

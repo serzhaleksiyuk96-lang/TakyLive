@@ -64,13 +64,14 @@ def clean_presets(d):
         if not isinstance(v, dict):
             continue
         repo, model, index, zp = (str(v.get(k) or "").strip() for k in ("repo", "model", "index", "zip"))
-        if not REPO_RE.match(repo) or not (model or zp):
-            continue
+        if not REPO_RE.match(repo) or not (model or zp or v.get("auto")):
+            continue                           # auto — файл голоса программа выберет сама (первый в модели)
         if any(f and not FILE_RE.match(f) for f in (model, index, zp)):
             continue
         out.append({"name": str(v.get("name") or "")[:40] or "Голос", "emoji": str(v.get("emoji") or "🎙")[:4],
                     "desc": str(v.get("desc") or "")[:160], "repo": repo, "model": model, "index": index, "zip": zp,
-                    "license": str(v.get("license") or "")[:40], "size_mb": int(v.get("size_mb") or 0)})
+                    "license": str(v.get("license") or "")[:40], "size_mb": int(v.get("size_mb") or 0),
+                    "auto": not (model or zp)})
     return out[:60]
 
 
@@ -107,7 +108,9 @@ DEFAULTS = {
     "vc_normal": "",            # обычный голос: пусто — свой, иначе имя ИИ-голоса
     "vc_secs": 30,              # сколько держится голос из подарка по умолчанию
     "vc_say": True,             # писать в оверлей «Голос … от …»
+    "vc_tune": {},              # высота голоса по имени: {"Девушка": 12} (полутона; нет записи — как в модели)
 }
+MAX_START_TRIES = 8             # столько раз сами перезапускаем, пока голосовая программа докачивает свои файлы
 
 
 def _ver(s):
@@ -140,6 +143,15 @@ class VoiceChanger:
         self.lock = asyncio.Lock()
         self.nv = None
         self.hub_state = {"running": False, "stage": "", "done": 0, "total": 0, "error": "", "ok": ""}
+        self.ready = False            # после запуска программа хоть раз ответила
+        self.start_state = {"tries": 0, "error": "", "note": ""}
+        self._log_pos = 0             # откуда читать её журнал: с момента запуска
+        self._audio_pos = None        # …и с момента включения звука
+        self._pretrain_seen = 0
+        self._probing = False
+        self._last_probe = 0.0
+        self._job = None              # Windows: «связка» процессов — закрылся TakyLive, закрылась и голосовая программа
+        self.dev_cache = {"inputs": [], "outputs": []}
 
     # ── где лежит ────────────────────────────────────────────────────────────
     def dir(self):
@@ -190,7 +202,7 @@ class VoiceChanger:
     async def set(self, key, val):
         return await self._req("POST", "/update_settings", data={"key": key, "val": str(val)}, timeout=20)
 
-    async def info(self):
+    async def info(self, fresh=False):
         d = await self._req("GET", "/info", timeout=15)
         slots = []
         for s in d.get("modelSlots") or []:
@@ -206,10 +218,15 @@ class VoiceChanger:
                     out.append({"index": x.get("index"), "name": x.get("name", "")})
             return out
         gpus = [g for g in d.get("gpus") or [] if isinstance(g, dict)]
+        ins, outs = devs("serverAudioInputDevices"), devs("serverAudioOutputDevices")
+        if ins or outs:
+            self.dev_cache = {"inputs": ins, "outputs": outs}
+        elif not fresh:                       # пока звук включён, программа отдаёт пустые списки — показываем прошлые
+            ins, outs = self.dev_cache["inputs"], self.dev_cache["outputs"]
         return {
             "slots": slots,
-            "inputs": devs("serverAudioInputDevices"),
-            "outputs": devs("serverAudioOutputDevices"),
+            "inputs": ins,
+            "outputs": outs,
             "gpus": [{"id": g.get("id"), "name": g.get("name")} for g in gpus],
             "settings": {k: d.get(k) for k in ("modelSlotIndex", "passThrough", "serverAudioStated", "gpu",
                                                 "tran", "f0Detector", "serverReadChunkSize", "extraConvertSize",
@@ -343,28 +360,197 @@ class VoiceChanger:
     def proc_alive(self):
         return self.proc is not None and self.proc.poll() is None
 
-    def start(self):
+    def log_path(self):
+        return os.path.join(self.dir(), "voice_changer_log.txt")
+
+    def _log_size(self):
+        try:
+            return os.path.getsize(self.log_path())
+        except OSError:
+            return 0
+
+    def _log_errors(self, pos, audio_only=False):
+        """Строки с ошибками из журнала голосовой программы, появившиеся после позиции pos."""
+        try:
+            size = os.path.getsize(self.log_path())
+            if pos is None or size <= pos:
+                return []
+            with open(self.log_path(), "rb") as f:
+                f.seek(max(pos, size - 200_000))
+                text = f.read().decode("utf-8", "replace")
+        except OSError:
+            return []
+        rx = re.compile(r"maxInputChannels|maxOutputChannels|PortAudioError|Invalid device|device unavailable|"
+                        r"Error opening \w*Stream", re.I) if audio_only else \
+            re.compile(r"\bERROR\b|Exception|Traceback|Error:", re.I)
+        return [" ".join(ln.split())[:220] for ln in text.splitlines()
+                if rx.search(ln) and (not audio_only or re.search(r"error|exception|NoneType", ln, re.I))]
+
+    def pretrain_bytes(self):
+        """Сколько своих файлов (моделей) голосовая программа уже скачала — для «скачано N МБ»."""
+        exe = self.exe()
+        total = 0
+        if exe:
+            for cur, _dirs, files in os.walk(os.path.join(os.path.dirname(exe), "pretrain")):
+                for fn in files:
+                    try:
+                        total += os.path.getsize(os.path.join(cur, fn))
+                    except OSError:
+                        pass
+        return total
+
+    def start(self, retry=False):
         exe = self.exe()
         if not exe:
             raise RuntimeError("голосовая программа не установлена")
         if self.proc_alive():
             return
-        logf = open(os.path.join(self.dir(), "voice_changer_log.txt"), "a", encoding="utf-8", errors="replace")
+        if not retry:
+            self.start_state = {"tries": 0, "error": "", "note": ""}
+        self._log_pos = self._log_size()
+        self._pretrain_seen = self.pretrain_bytes()
         kw = {"creationflags": 0x08000000} if IS_WIN else {}       # без чёрного окна
-        self.proc = subprocess.Popen([exe], cwd=os.path.dirname(exe), stdout=logf, stderr=subprocess.STDOUT, **kw)
+        with open(self.log_path(), "a", encoding="utf-8", errors="replace") as logf:
+            self.proc = subprocess.Popen([exe], cwd=os.path.dirname(exe), stdout=logf, stderr=subprocess.STDOUT, **kw)
+        self._tie_to_us(self.proc)
+        self.ready = False
         self.started_at = time.time()
-        self.log("ГОЛОС", "🎙 Запускаю голосовую программу (первый раз она качает файлы — пару минут)")
+        if not retry:
+            self.log("ГОЛОС", "🎙 Запускаю голосовую программу (первый раз она качает свои файлы — несколько минут)")
+
+    def _tie_to_us(self, proc):
+        """Windows: голосовая программа закрывается вместе с TakyLive, как бы его ни закрыли (крестик окна,
+        диспетчер задач, обновление). Иначе она оставалась висеть — держала видеокарту и микрофон."""
+        if not IS_WIN:
+            return
+        try:
+            import ctypes
+            from ctypes import wintypes
+            k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+            class BASIC(ctypes.Structure):
+                _fields_ = [("PerProcessUserTimeLimit", ctypes.c_int64), ("PerJobUserTimeLimit", ctypes.c_int64),
+                            ("LimitFlags", wintypes.DWORD), ("MinimumWorkingSetSize", ctypes.c_size_t),
+                            ("MaximumWorkingSetSize", ctypes.c_size_t), ("ActiveProcessLimit", wintypes.DWORD),
+                            ("Affinity", ctypes.c_size_t), ("PriorityClass", wintypes.DWORD),
+                            ("SchedulingClass", wintypes.DWORD)]
+
+            class IO(ctypes.Structure):
+                _fields_ = [(n, ctypes.c_uint64) for n in ("ReadOperationCount", "WriteOperationCount",
+                                                           "OtherOperationCount", "ReadTransferCount",
+                                                           "WriteTransferCount", "OtherTransferCount")]
+
+            class EXT(ctypes.Structure):
+                _fields_ = [("BasicLimitInformation", BASIC), ("IoInfo", IO),
+                            ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
+                            ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t)]
+
+            k32.CreateJobObjectW.restype = wintypes.HANDLE
+            k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+            k32.SetInformationJobObject.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD]
+            k32.SetInformationJobObject.restype = wintypes.BOOL
+            k32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+            k32.AssignProcessToJobObject.restype = wintypes.BOOL
+            if self._job is None:
+                job = k32.CreateJobObjectW(None, None)
+                if not job:
+                    return
+                info = EXT()
+                info.BasicLimitInformation.LimitFlags = 0x2000      # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+                if not k32.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info)):
+                    return
+                self._job = job                                     # держим открытым, пока жив TakyLive
+            k32.AssignProcessToJobObject(self._job, wintypes.HANDLE(int(proc._handle)))
+        except Exception:
+            pass                                                    # не вышло — закроем сами при обычном выходе
+
+    def watch(self):
+        """Раз в секунду: голосовая программа закрылась сама? При первом запуске она качает ≈1 ГБ своих файлов
+        и на медленном интернете не успевает — тогда запускаем снова (докачка идёт с места обрыва)."""
+        if self.proc is None or self.proc.poll() is None:
+            return
+        code, self.proc = self.proc.returncode, None
+        errs = self._log_errors(self._log_pos)
+        last = errs[-1] if errs else ""
+        st = self.start_state
+        if code == 0 and not self.ready:                            # закрыли сами, пока запускалась
+            return
+        if self.ready:                                              # работала и закрылась
+            self.ready, self.active = False, None
+            if code == 0 and not last:                              # закрыли её окно сами
+                self.log("ГОЛОС", "🎙 Голосовая программа закрыта")
+                return
+            st["error"] = "голосовая программа закрылась" + (f": {last}" if last else f" (код {code})")
+            self.log("ОШИБКА", f"ИИ-голос: {st['error']}")
+            return
+        st["tries"] += 1
+        text = " ".join(errs)
+        download = bool(re.search(r"download|pretrain|ContentLength|content length|timed? ?out|Connection|SSL", text, re.I))
+        grew = self.pretrain_bytes() > self._pretrain_seen
+        if st["tries"] < MAX_START_TRIES and (grew or (download and st["tries"] < 3)):
+            st["note"] = f"интернет медленный — докачиваю файлы, попытка {st['tries'] + 1}"
+            self.log("ГОЛОС", f"🎙 Голосовая программа не успела скачать свои файлы — запускаю ещё раз, докачка "
+                              f"продолжится (попытка {st['tries'] + 1})")
+            try:
+                self.start(retry=True)
+                return
+            except Exception as e:
+                last = str(e)
+        if download:
+            st["error"] = ("не скачались файлы голосовой программы (интернет медленный или обрывается). Нажми "
+                           "«▶ Запустить» ещё раз — докачка продолжится с места обрыва")
+        else:
+            st["error"] = "не запустилась" + (f": {last}" if last else f" (код {code})") + \
+                          f". Подробности — в файле {self.log_path()}"
+        st["note"] = ""
+        self.log("ОШИБКА", f"ИИ-голос: {st['error']}")
+
+    async def _probe(self):
+        self._probing = True
+        try:
+            if await self.alive() and self.proc_alive() and not self.ready:
+                self.ready = True
+                self.start_state.update(error="", note="")
+                self.log("ГОЛОС", "🎙 Голосовая программа запустилась")
+        finally:
+            self._probing = False
 
     def stop(self):
-        if self.proc_alive():
-            self.proc.terminate()
+        proc, self.proc = self.proc, None                          # watch() не примет это за падение
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
             try:
-                self.proc.wait(10)
+                proc.wait(10)
             except Exception:
-                self.proc.kill()
+                proc.kill()
             self.log("ГОЛОС", "🎙 Голосовая программа остановлена")
-        self.proc = None
         self.active = None
+        self.ready = False
+        self.start_state = {"tries": 0, "error": "", "note": ""}
+
+    def kill_orphans(self):
+        """Windows: закрывает голосовую программу из НАШЕЙ папки, которую запускал не этот TakyLive (осталась
+        с прошлого раза). Чужую (запущенную из другой папки) не трогает. Возвращает, сколько закрыл."""
+        if not IS_WIN:
+            return 0
+        root = os.path.normcase(os.path.normpath(self.dir())) + os.sep
+        n = 0
+        try:
+            ps = ("Get-CimInstance Win32_Process -Filter \"Name='MMVCServerSIO.exe'\" | "
+                  "ForEach-Object { \"$($_.ProcessId)|$($_.ExecutablePath)\" }")
+            out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
+                                 timeout=20, creationflags=0x08000000).stdout.decode("utf-8", "replace")
+            for line in out.splitlines():
+                pid, _, path = line.strip().partition("|")
+                if pid.isdigit() and path and (os.path.normcase(os.path.normpath(path)) + os.sep).startswith(root):
+                    r = subprocess.run(["taskkill", "/PID", pid, "/T", "/F"], capture_output=True, timeout=15,
+                                       creationflags=0x08000000)
+                    n += r.returncode == 0
+        except Exception:
+            pass
+        if n:
+            self.log("ГОЛОС", "🎙 Закрыл голосовую программу, оставшуюся с прошлого запуска")
+        return n
 
     # ── VB-CABLE ─────────────────────────────────────────────────────────────
     async def install_cable(self):
@@ -411,18 +597,25 @@ class VoiceChanger:
                     return d
         return None
 
-    async def setup_audio(self, cfg):
-        """Микрофон → ИИ → CABLE Input (+ «слышать себя»), видеокарта, rmvpe — и включаем."""
-        inf = await self.info()
+    async def setup_audio(self, cfg, _again=True):
+        """Микрофон → ИИ → CABLE Input (+ «слышать себя»), видеокарта, rmvpe — и включаем.
+
+        Устройства ищем по ИМЕНИ каждый раз заново: Windows меняет их номера, стоит подключить наушники
+        или гарнитуру. Сначала выключаем звук — только тогда программа отдаёт свежий список устройств."""
+        await self.set("serverAudioStated", 0)
+        inf = await self.info(fresh=True)
+        if not (inf["inputs"] or inf["outputs"]):                  # не успела перечитать — ещё раз
+            await asyncio.sleep(0.5)
+            inf = await self.info(fresh=True)
         mic = self._find(inf["inputs"], cfg.get("vc_mic_name"))
         out = self._find(inf["outputs"], cfg.get("vc_out_name"), contains="cable input")
         if not mic:
-            raise RuntimeError("выбери микрофон")
+            raise RuntimeError(f"не вижу микрофон «{cfg.get('vc_mic_name')}» — он подключён? Выбери микрофон заново"
+                               if cfg.get("vc_mic_name") else "выбери микрофон")
         if not out:
             raise RuntimeError("не нашёл «CABLE Input» — поставь VB-CABLE и перезагрузи ПК")
         mon = self._find(inf["outputs"], cfg.get("vc_monitor_name")) if cfg.get("vc_monitor_name") else None
         gpu = next((g["id"] for g in inf["gpus"] if g.get("id", -1) >= 0), -1)
-        await self.set("serverAudioStated", 0)
         for k, v in (("enableServerAudio", 1), ("serverAudioSampleRate", 48000), ("serverInputDeviceId", mic["index"]),
                      ("serverOutputDeviceId", out["index"]), ("serverMonitorDeviceId", mon["index"] if mon else -1),
                      ("gpu", gpu), ("f0Detector", "rmvpe_onnx")):
@@ -430,13 +623,51 @@ class VoiceChanger:
         if inf["slots"] and (inf["settings"].get("modelSlotIndex") in (None, -1)):
             await self.set("modelSlotIndex", inf["slots"][0]["slot"])
         await self.apply_normal(cfg)
+        pos = self._log_size()
         await self.set("serverAudioStated", 1)
+        await asyncio.sleep(0.8)                                   # программа открывает устройства — ждём её ответ
+        errs = self._log_errors(pos, audio_only=True)
+        if errs:
+            if _again:                                             # номера успели смениться — пробуем ещё раз
+                return await self.setup_audio(cfg, _again=False)
+            try:
+                await self.set("serverAudioStated", 0)
+            except Exception:
+                pass
+            raise RuntimeError("голосовая программа не смогла открыть звуковое устройство. Проверь, что микрофон и "
+                               "наушники подключены, и нажми «Включить» ещё раз")
+        self._audio_pos = self._log_size()
         self.log("ГОЛОС", f"🎙 ИИ-голос включён: {mic['name']} → {out['name']}" + (f", слышно в {mon['name']}" if mon else ""))
+        if cfg.get("vc_monitor_name") and not mon:
+            self.log("ГОЛОС", f"🎙 «Слышать себя»: не вижу «{cfg.get('vc_monitor_name')}» — работаю без прослушки")
         return {"mic": mic["name"], "out": out["name"], "monitor": mon["name"] if mon else ""}
+
+    async def _heal_audio(self, cfg):
+        """Перед сменой голоса: звук выключен или устройство отвалилось (подключили наушники) — включаем заново."""
+        if not cfg.get("vc_mic_name") or time.time() - getattr(self, "_healed_at", 0) < 30:
+            return                                                 # не чаще раза в полминуты — без «дёрганья» звука
+        broken = bool(self._log_errors(self._audio_pos, audio_only=True)) if self._audio_pos is not None else False
+        off = False
+        if not broken:
+            try:
+                d = await self._req("GET", "/info", timeout=6)
+                off = "serverAudioStated" in d and int(d.get("serverAudioStated") or 0) != 1
+            except Exception:
+                return
+        if broken or off:
+            self._healed_at = time.time()
+            self._audio_pos = self._log_size()
+            self.log("ГОЛОС", "🎙 " + ("Звуковые устройства изменились" if broken else "ИИ-голос был выключен") +
+                     " — включаю заново")
+            try:
+                await self.setup_audio(cfg)
+            except Exception as e:
+                self.log("ОШИБКА", f"ИИ-голос: не включился звук — {e}")
 
     async def audio_off(self):
         await self.set("serverAudioStated", 0)
         self.active = None
+        self._audio_pos = None
 
     # ── голоса ───────────────────────────────────────────────────────────────
     def find_slot(self, name):
@@ -457,11 +688,20 @@ class VoiceChanger:
                 return s
         return None
 
+    def tune_for(self, slot):
+        """Высота голоса (полутона): своя из настроек TakyLive, иначе — та, что записана в модели."""
+        t = (self.get_cfg().get("vc_tune") or {}).get(slot["name"]) if isinstance(self.get_cfg().get("vc_tune"), dict) else None
+        try:
+            return max(-24, min(24, int(t if t is not None else slot.get("tune") or 0)))
+        except (TypeError, ValueError):
+            return 0
+
     async def apply_normal(self, cfg):
         """Обычный голос: свой (без ИИ) или выбранный «основной» ИИ-голос."""
         normal = self.find_slot(cfg.get("vc_normal")) if cfg.get("vc_normal") else None
         if normal:
             await self.set("modelSlotIndex", normal["slot"])
+            await self.set("tran", self.tune_for(normal))
             await self.set("passThrough", "false")
         else:
             await self.set("passThrough", "true")
@@ -476,7 +716,9 @@ class VoiceChanger:
             if not s:
                 raise RuntimeError(f"нет голоса «{name}» — загрузи его во вкладке 🎙")
             secs = int(secs or cfg.get("vc_secs") or 30)
-            await self.set("modelSlotIndex", s["slot"])      # высоту голоса программа берёт из настроек слота
+            await self._heal_audio(cfg)
+            await self.set("modelSlotIndex", s["slot"])
+            await self.set("tran", self.tune_for(s))         # высота: мужской голос → женская модель обычно +12
             await self.set("passThrough", "false")
             self.active = {"name": s["name"], "slot": s["slot"], "user": user or "", "until": time.time() + secs,
                            "secs": secs}
@@ -500,6 +742,10 @@ class VoiceChanger:
         return True
 
     async def tick(self):
+        self.watch()
+        if self.proc_alive() and not self.ready and not self._probing and time.time() - self._last_probe > 3:
+            self._last_probe = time.time()
+            asyncio.ensure_future(self._probe())
         a = self.active
         if a and time.time() >= a["until"]:
             try:
@@ -585,6 +831,10 @@ class VoiceChanger:
         if not found:                          # несколько слов — ищем каждое отдельно
             for t in terms:
                 add(await self._hf_json("/api/models", dict(base, filter="rvc", search=t)))
+        is_rvc = lambda m: "rvc" in str(m.get("id", "")).lower() or any("rvc" in str(x).lower() for x in m.get("tags") or [])
+        if not found:                          # у многих голосов нет тега rvc, но «RVC» есть в названии: «robot rvc»
+            for t in terms:
+                add([m for m in await self._hf_json("/api/models", dict(base, search=f"{t} rvc")) if is_rvc(m)])
         if not found:                          # без тега rvc — но с rvc в названии или тегах
             for t in terms:
                 raw = await self._hf_json("/api/models", dict(base, search=t, limit="80"))
@@ -649,7 +899,7 @@ class VoiceChanger:
     def hub_busy(self):
         return self.hub_state.get("running")
 
-    async def hub_install(self, repo, model="", index="", zip_name="", slot=None, name=""):
+    async def hub_install(self, repo, model="", index="", zip_name="", slot=None, name="", auto=False):
         """Скачивает голос с Hugging Face и загружает его в свободный слот голосовой программы."""
         st = self.hub_state
         if st.get("running"):
@@ -663,8 +913,11 @@ class VoiceChanger:
             for f in (model, index, zip_name):
                 if f and f not in valid:
                     raise RuntimeError(f"в модели нет файла {f}")
+            if not (model or zip_name) and auto and info["candidates"]:      # ⭐ рекомендуемый: берём первый голос модели
+                c = info["candidates"][0]
+                model, index, zip_name = c["model"], c["index"], c["zip"]
             if not (model or zip_name):
-                raise RuntimeError("выбери голос")
+                raise RuntimeError("выбери голос" if not auto else "в этой модели нет файлов голоса")
             label = re.sub(r"[^\w\-]+", "_", str(name or os.path.splitext(os.path.basename(model or zip_name))[0]))
             label = label.strip("_")[:60] or "voice"
             todo = [f for f in (zip_name, model, index) if f]
@@ -771,15 +1024,19 @@ class VoiceChanger:
             "running": running,
             "starting": (not running) and self.proc_alive(),
             "ours": self.proc_alive(),
+            "start": dict(self.start_state, secs=int(time.time() - self.started_at) if self.proc_alive() else 0),
             "install": dict(self.install_state),
             "hub": dict(self.hub_state),
             "nvidia": await self.nvidia(),
             "active": self.overlay(),
             "ui_url": self.url("/"),
         }
+        if st["starting"]:
+            st["start"]["mb"] = round(await asyncio.to_thread(self.pretrain_bytes) / 1048576)
         if running:
             try:
                 st["info"] = await self.info()
+                st["info"]["tunes"] = {v["name"]: self.tune_for(v) for v in st["info"]["slots"]}
                 outs = st["info"]["outputs"]
                 st["cable"] = any("cable input" in d["name"].lower() for d in outs)
             except Exception as e:

@@ -154,6 +154,15 @@ try:
 except ValueError:
     APP_PORT = 8765
 import safeio
+if TEST_MODE and os.environ.get("TAKY_FAKE_TIKTOK") == "1":       # автопроверка: вместо TikTok — подделка
+    try:
+        import importlib.util as _ilu
+        _sp = _ilu.spec_from_file_location("fake_tiktok", os.path.join(BASE_DIR, "tools", "fake_tiktok.py"))
+        _fm = _ilu.module_from_spec(_sp)
+        _sp.loader.exec_module(_fm)
+        TikTokLiveClient = _fm.FakeTikTokClient
+    except Exception as _e:
+        print(f"  поддельный TikTok не включился: {_e}")
 SNAPS = safeio.Snapshots(BASE_DIR)                   # резервные копии настроек и вкладок: _backup/auto/
 CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
 PROFILES_PATH = os.path.join(BASE_DIR, "profiles.json")
@@ -190,13 +199,20 @@ LIVE_ICONS_PATH = os.path.join(BASE_DIR, "gift_icons_live.json")
 GIFT_RU_FILE = os.path.join(BASE_DIR, "gift_names_ru.json")
 
 
+GIFT_RU_BASE = os.path.join(BASE_DIR, "gift_names_ru_base.json")
+
+
 def load_gift_names_ru():
-    """Русские названия подарков {ID: название}. Пополняется при каждом подключении к эфиру."""
-    try:
-        with open(GIFT_RU_FILE, encoding="utf-8") as f:
-            return {str(k): str(v) for k, v in json.load(f).items() if str(v).strip()}
-    except Exception:
-        return {}
+    """Русские названия подарков {ID: название}: встроенный список (приходит с программой и обновляется
+    вместе с ней) + то, что TikTok прислал на этом ПК (свежее — важнее). Пополняется при каждом подключении."""
+    out = {}
+    for path in (GIFT_RU_BASE, GIFT_RU_FILE):
+        try:
+            with open(path, encoding="utf-8") as f:
+                out.update({str(k): str(v).strip() for k, v in json.load(f).items() if str(v).strip()})
+        except Exception:
+            pass
+    return out
 
 
 def save_gift_names_ru():
@@ -251,6 +267,8 @@ async def fetch_ru_gift_names(client):
     from TikTokLive.client.web.web_settings import WebDefaults
     room = getattr(client, "room_id", None)
     variants = [
+        # проверено на эфире 16.11.2026: русские названия TikTok отдаёт только при webcast_language=ru-RU
+        {"app_language": "ru-RU", "browser_language": "ru-RU", "webcast_language": "ru-RU", "language": "ru"},
         {"app_language": "ru-RU", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru"},
         {"app_language": "ru", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru",
          "locale": "ru-RU", "region": "RU", "priority_region": "RU"},
@@ -1079,7 +1097,8 @@ def fill_vars(command, nick=None, count=1, user="", ctx=None):
     {comment}, {index}, {repetition}, {picture}.
     Плюс функции: {random:...}, {mult:X Y}, {plus:X Y}.
     """
-    nick = nick or player_name()
+    if not nick:                             # ник спрашиваем, только если он нужен команде (иначе — лишнее
+        nick = player_name() if re.search(r"\{(nick|playername)\}", str(command), re.I) else ""   # «не задан ник»)
     c = dict(ctx or {})
     vals = {
         "nick": nick, "playername": nick,
@@ -1464,9 +1483,7 @@ def find_gift_action(gift_name, gift_id):
     prof = active_profile()
     gifts = prof.get("gifts", [])
     gid = str(gift_id or "").strip()
-    names = {norm_gift(gift_name)}
-    if gid and STATE.gift_names_ru.get(gid):
-        names.add(norm_gift(STATE.gift_names_ru[gid]))
+    names = {norm_gift(gift_name)} | ru_gift_names(gift_name, gid)
     names.discard("")
     if names:
         for g in gifts:
@@ -1482,6 +1499,33 @@ def find_gift_action(gift_name, gift_id):
             if norm_gift(g.get("name", "")) not in known:
                 return g
     return None
+
+
+_RU_BY_EN = {"key": None, "map": {}}
+
+
+def ru_gift_names(gift_name, gift_id):
+    """Русские названия подарка: по ID из события и по английскому названию (если TikTok сменил ID,
+    название остаётся — находим русское имя через библиотеку подарков)."""
+    ru = STATE.gift_names_ru
+    out = set()
+    gid = str(gift_id or "").strip()
+    if gid and ru.get(gid):
+        out.add(norm_gift(ru[gid]))
+    cat = getattr(STATE, "gift_catalog", None)
+    gifts = cat.data.get("gifts", {}) if cat is not None else {}
+    key = (len(gifts), len(ru))
+    if _RU_BY_EN["key"] != key:
+        m = {}
+        for i, g in gifts.items():
+            if ru.get(str(i)):
+                m.setdefault(norm_gift(g.get("name", "")), set()).add(norm_gift(ru[str(i)]))
+        for n, i in GIFT_IDS.items():
+            if ru.get(str(i)):
+                m.setdefault(norm_gift(n), set()).add(norm_gift(ru[str(i)]))
+        m.pop("", None)
+        _RU_BY_EN.update(key=key, map=m)
+    return out | _RU_BY_EN["map"].get(norm_gift(gift_name), set())
 
 
 _UNMATCHED_HINTED = set()
@@ -1519,16 +1563,17 @@ def known_gift_names():
 
 # ── Обработчики событий TikTok ───────────────────────────────────────────────
 def schedule(coro):
-    """Запускает корутину в event loop (TikTok или веб-сервера)."""
-    loop = STATE.loop
-    if loop and loop.is_running():
-        asyncio.run_coroutine_threadsafe(coro, loop)
-        return
-    # Фолбэк: используем loop веб-сервера (для теста без подключения к TikTok)
+    """Запускает корутину в цикле веб-сервера: там живут все сетевые соединения программы
+    (игра, озвучка, ИИ). Цикл TikTok — только запасной вариант."""
     web_loop = STATE.web_loop
     if web_loop and web_loop.is_running():
         asyncio.run_coroutine_threadsafe(coro, web_loop)
+        return
+    loop = STATE.loop
+    if loop and loop.is_running():
+        asyncio.run_coroutine_threadsafe(coro, loop)
     else:
+        coro.close()
         STATE.log("ОШИБКА", "Нет активного цикла для выполнения команды")
 
 
@@ -2373,6 +2418,8 @@ def tiktok_worker():
 
     @client.on(ConnectEvent)
     async def on_connect(event):
+        if STATE.stop_requested or STATE.tiktok_client is not client:   # успели нажать «Отключиться»
+            return
         STATE.connected = True
         STATE.connected_at = time.time()
         STATE.log("СИСТЕМА", f"✅ Подключено к @{username} (Python {sys.version.split()[0]}, "
@@ -2541,17 +2588,62 @@ def tiktok_worker():
             except Exception as e:
                 STATE.log("ОШИБКА", f"share: {e}")
 
+    # client.run() в TikTokLive 7 крутит СВОЙ цикл событий, а не наш: «Отключиться» до него не дотягивалось,
+    # и «Подключиться» отвечало «Уже подключено», пока TikTok сам не оборвёт связь. Запускаем connect() в нашем цикле.
     try:
         STATE.log("СИСТЕМА", f"Подключаюсь к @{username}...")
-        client.run()
+        if hasattr(client, "connect"):
+            loop.run_until_complete(client.connect())
+        else:
+            client.run()
+    except asyncio.CancelledError:
+        pass                                                   # нажали «Отключиться»
     except Exception as e:
-        STATE.connected = False
-        STATE.log("ОШИБКА", f"Не удалось подключиться: {e}")
+        if STATE.tiktok_client is client and not STATE.stop_requested:
+            txt = str(e) or type(e).__name__
+            if STATE.connected:
+                STATE.log("ОШИБКА", f"Связь с TikTok оборвалась: {txt}. Нажми «Подключиться» ещё раз")
+            else:
+                STATE.log("ОШИБКА", f"Не удалось подключиться: {txt}")
+    finally:
+        mine = STATE.tiktok_client is client
+        if mine and STATE.connected:                           # обрыв без события «отключено»
+            STATE.connected = False
+            if not STATE.stop_requested:
+                STATE.stats.on_disconnect(manual=False)
+        _tiktok_cleanup(client, loop)
+        if mine:
+            STATE.tiktok_client = None
+            STATE.loop = None
+
+
+def _tiktok_cleanup(client, loop):
+    """Закрывает всё, что осталось от подключения: сессии, фоновые задачи, цикл событий."""
+    try:
+        webc = getattr(client, "_web", None)
+        if webc is not None and hasattr(webc, "close"):
+            loop.run_until_complete(asyncio.wait_for(webc.close(), 3))
+    except BaseException:
+        pass
+    try:
+        pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
+        for t in pending:
+            t.cancel()
+        if pending:
+            loop.run_until_complete(asyncio.wait(pending, timeout=3))
+    except BaseException:
+        pass
+    try:
+        loop.close()
+    except BaseException:
+        pass
 
 
 def start_tiktok():
     if STATE.tiktok_thread and STATE.tiktok_thread.is_alive():
-        return False, "Уже подключено"
+        if STATE.stop_requested:
+            return False, "Ещё отключаюсь от прошлого эфира — подожди пару секунд и нажми ещё раз"
+        return False, "Уже подключено" if STATE.connected else "Уже подключаюсь — подожди"
     STATE.stop_requested = False
     STATE.tiktok_thread = threading.Thread(target=tiktok_worker, daemon=True)
     STATE.tiktok_thread.start()
@@ -2562,29 +2654,54 @@ async def stop_tiktok():
     """Отключение от эфира. Сразу ставим флаг — события после этого игнорируются,
     даже если библиотека ещё не успела закрыть соединение."""
     STATE.stop_requested = True
-    c, loop = STATE.tiktok_client, STATE.loop
-    if c is not None and loop is not None and loop.is_running():
-        try:
-            if hasattr(c, "disconnect"):                       # TikTokLive 6.x
-                fut = asyncio.run_coroutine_threadsafe(c.disconnect(close_client=True), loop)
-                await asyncio.wait_for(asyncio.wrap_future(fut), timeout=8)
-            elif hasattr(c, "stop"):                           # старые версии
-                c.stop()
-        except Exception as e:
-            STATE.log("ОШИБКА", f"отключение от TikTok: {e}")
     th = STATE.tiktok_thread
-    for _ in range(30):                                        # ждём, пока поток закроется
-        if not (th and th.is_alive()):
+    alive = lambda: bool(th and th.is_alive())
+    for _ in range(40):                                        # нажали сразу после «Подключиться» — поток ещё стартует
+        c, loop = STATE.tiktok_client, STATE.loop
+        if not alive() or (c is not None and loop is not None):
             break
-        await asyncio.sleep(0.1)
-    if th and th.is_alive() and loop is not None:              # не закрылся — останавливаем цикл силой
+        await asyncio.sleep(0.05)
+
+    async def wait_thread(secs):
+        end = time.time() + secs
+        while alive() and time.time() < end:
+            await asyncio.sleep(0.1)
+
+    def on_loop(fn):
         try:
-            loop.call_soon_threadsafe(loop.stop)
+            if loop is not None and not loop.is_closed():
+                loop.call_soon_threadsafe(fn)
         except Exception:
             pass
+
+    if c is not None and loop is not None and alive() and loop.is_running():
+        async def bye():                                       # вежливо: закрыть соединение
+            try:
+                if hasattr(c, "disconnect"):
+                    await asyncio.wait_for(c.disconnect(), 4)
+                elif hasattr(c, "stop"):
+                    c.stop()
+            except BaseException:
+                pass                                           # TikTok не ответил на «пока» — оборвём ниже
+        try:
+            asyncio.run_coroutine_threadsafe(bye(), loop)
+        except Exception:
+            pass
+        await wait_thread(5)
+    if alive() and loop is not None:                           # не закрылось само — отменяем всё, что там работает
+        on_loop(lambda: [t.cancel() for t in asyncio.all_tasks(loop)])
+        await wait_thread(3)
+    if alive():                                                # совсем зависло — бросаем старое подключение
+        if c is not None and hasattr(c, "remove_all_listeners"):
+            on_loop(c.remove_all_listeners)                    # его события больше никуда не попадут
+        if loop is not None:
+            on_loop(loop.stop)
+        await wait_thread(1)
+        if alive() and STATE.tiktok_thread is th:
+            STATE.tiktok_thread = None                         # «Подключиться» снова работает
     STATE.connected = False
     STATE.log("СИСТЕМА", "Остановлено")
-    STATE.stats.on_disconnect(manual=True)                    # нажал «Отключиться» — эфир окончен, итоги
+    STATE.stats.on_disconnect(manual=True)                     # нажал «Отключиться» — эфир окончен, итоги
 
 
 # ── Итоги эфира, анонсы в Telegram / Discord, пульт с телефона ───────────────
@@ -2894,6 +3011,8 @@ async def h_vc_install_cancel(request):
 
 async def h_vc_start(request):
     try:
+        if not STATE.vc.proc_alive() and not await STATE.vc.alive():
+            await asyncio.to_thread(STATE.vc.kill_orphans)          # зависшая с прошлого раза держит порт и видеокарту
         STATE.vc.start()
         return web.json_response({"ok": True})
     except Exception as e:
@@ -2902,7 +3021,37 @@ async def h_vc_start(request):
 
 async def h_vc_stop(request):
     STATE.vc.stop()
-    return web.json_response({"ok": True, "external": await STATE.vc.alive()})
+    if await STATE.vc.alive():                                      # работает, но запускал её не этот TakyLive
+        await asyncio.to_thread(STATE.vc.kill_orphans)
+        await asyncio.sleep(0.5)
+    ext = await STATE.vc.alive()
+    return web.json_response({"ok": True, "external": ext, "error": (
+        "эта голосовая программа запущена не из папки TakyLive — закрой её окно сам") if ext else ""})
+
+
+async def h_vc_tune(request):
+    """Высота голоса: {"name": "Девушка", "tune": 12} (полутона, −24…24; "" — как в модели)."""
+    d = await _json_body(request)
+    name = str(d.get("name") or "").strip()[:100]
+    tunes = dict(STATE.config.get("vc_tune") or {}) if isinstance(STATE.config.get("vc_tune"), dict) else {}
+    try:
+        if d.get("tune") in ("", None):
+            tunes.pop(name, None)
+        elif name:
+            tunes[name] = max(-24, min(24, int(d.get("tune"))))
+    except (TypeError, ValueError):
+        return web.json_response({"ok": False, "error": "высота — число от −24 до 24"})
+    STATE.config["vc_tune"] = tunes
+    save_config()
+    try:                                                            # этот голос сейчас звучит — меняем сразу
+        vc = STATE.vc
+        cur = vc.active["name"] if vc.active else str(STATE.config.get("vc_normal") or "")
+        slot = vc.find_slot(name)
+        if slot and cur and slot["name"].lower() == cur.lower():
+            await vc.set("tran", vc.tune_for(slot))
+    except Exception:
+        pass
+    return web.json_response({"ok": True, "tunes": tunes})
 
 
 async def h_vc_cable(request):
@@ -3032,7 +3181,7 @@ async def h_vc_hub_install(request):
     async def run():
         try:
             await STATE.vc.hub_install(str(d.get("repo", "")), str(d.get("model", "")), str(d.get("index", "")),
-                                       str(d.get("zip", "")), name=str(d.get("name", "")))
+                                       str(d.get("zip", "")), name=str(d.get("name", "")), auto=bool(d.get("auto")))
         except Exception as e:
             STATE.log("ОШИБКА", f"ИИ-голос: библиотека — {_vc_err(e)}")
             STATE.vc.hub_state["error"] = _vc_err(e)
@@ -3104,8 +3253,7 @@ def ia_gift(user, gift_name, gift_id, count, diamonds):
     spins = 0
     wg = str(cfg.get("wheel_gift") or "").strip()
     if wg:
-        names = {norm_gift(gift_name)} | ({norm_gift(STATE.gift_names_ru[str(gift_id)])}
-                                          if STATE.gift_names_ru.get(str(gift_id)) else set())
+        names = {norm_gift(gift_name)} | ru_gift_names(gift_name, gift_id)
         if wg == str(gift_id).strip() or norm_gift(wg) in names:
             spins = min(count, 5)
     try:
@@ -3633,6 +3781,7 @@ async def fix_video(name):
     import mediaproc as mp
     src = os.path.join(MEDIA_DIR, name)
     job = MEDIA_JOBS[name] = {"state": "processing", "progress": 0.0, "mode": "", "error": ""}
+    tmp = ""
     try:
         if not mp.ffmpeg_exe():
             raise RuntimeError("нет ffmpeg — переустанови программу или запусти через start.bat")
@@ -3648,6 +3797,7 @@ async def fix_video(name):
             await mp.convert(src, tmp, mode, info["duration"], lambda p: job.update(progress=round(p, 3)))
             dst = os.path.join(MEDIA_DIR, final)
             os.replace(tmp, dst)
+            tmp = ""
             if final != name:
                 try:
                     os.remove(src)
@@ -3663,6 +3813,36 @@ async def fix_video(name):
     except Exception as e:
         job.update(state="error", error=str(e))
         STATE.log("ОШИБКА", f"видео «{name}»: {e}")
+    finally:
+        if tmp:                                               # не получилось — недоделанный файл не оставляем
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+
+
+def clean_media_tmp(max_age=3600):
+    """Удаляет забытые временные файлы программы в media (.tmp_…): остаются, если перекодирование
+    или загрузку оборвали (закрыли программу, выключили ПК). Чужие файлы не трогает."""
+    n = size = 0
+    try:
+        for fn in os.listdir(MEDIA_DIR):
+            path = os.path.join(MEDIA_DIR, fn)
+            if not fn.startswith(".tmp_") or not os.path.isfile(path):
+                continue
+            try:
+                st = os.stat(path)
+                if time.time() - st.st_mtime < max_age:
+                    continue
+                os.remove(path)
+                n, size = n + 1, size + st.st_size
+            except OSError:
+                pass
+    except OSError:
+        pass
+    if n:
+        STATE.log("МЕДИА", f"Убрал забытые временные файлы: {n} шт., {size / 1048576:.1f} МБ")
+    return n
 
 
 async def h_media_fix(request):
@@ -4109,7 +4289,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.71"
+APP_VERSION = "1.71.1"
 APP_DATE = "2026-11-16"
 
 
@@ -4920,8 +5100,7 @@ def make_app():
                     STATE.stats.tick()                    # связи нет 5 минут — эфир окончен, итоги
                     ia_tick()                             # битва команд, колесо, очки за активность
                     ai_tick()                             # соведущий болтает с чатом
-                    if STATE.vc.active:
-                        await STATE.vc.tick()             # время ИИ-голоса вышло — обычный голос
+                    await STATE.vc.tick()                 # время ИИ-голоса вышло — обычный голос; следим за запуском
                     # Случайные события
                     if (STATE.config.get("random_enabled") and STATE.connected):
                         try:
@@ -5110,6 +5289,7 @@ def make_app():
     app.router.add_post("/api/vc/audio", h_vc_audio)
     app.router.add_post("/api/vc/voice", h_vc_voice)
     app.router.add_post("/api/vc/normal", h_vc_normal)
+    app.router.add_post("/api/vc/tune", h_vc_tune)
     app.router.add_post("/api/vc/upload", h_vc_upload)
     app.router.add_post("/api/vc/open", h_vc_open)
     app.router.add_get("/api/vc/presets", h_vc_presets)
@@ -5246,6 +5426,23 @@ def before_restart(reason="перед_обновлением"):
     SNAPS.make(reason, force=True)
 
 
+def sync_installed_version():
+    """После автообновления в «Программы и компоненты» Windows оставалась старая версия (её пишет
+    только установщик). Поправляем свою запись — и только если она про эту папку."""
+    if sys.platform != "win32" or not getattr(sys, "frozen", False) or TEST_MODE:
+        return
+    try:
+        import winreg
+        key = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{6F1C2A7E-4B9D-4E8A-9C3F-7A1B2D3E4F50}_is1"
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, key, 0, winreg.KEY_READ | winreg.KEY_SET_VALUE) as k:
+            where = str(winreg.QueryValueEx(k, "InstallLocation")[0] or "")
+            same = os.path.normcase(os.path.normpath(where.rstrip("\\/"))) == os.path.normcase(os.path.normpath(BASE_DIR))
+            if same and str(winreg.QueryValueEx(k, "DisplayVersion")[0]) != APP_VERSION:
+                winreg.SetValueEx(k, "DisplayVersion", 0, winreg.REG_SZ, APP_VERSION)
+    except Exception:
+        pass                                  # записи нет (запуск не из установщика) — ничего не делаем
+
+
 def main():
     if already_running():
         print(f"  TakyLive уже запущен — открываю его окно (порт {APP_PORT}).")
@@ -5277,6 +5474,8 @@ def main():
         repair_media_refs()                  # эдиты .mov/.webm, которые стали .mp4, — вернуть в карточки
     except Exception as e:
         STATE.log("ОШИБКА", f"проверка ссылок на медиа: {e}")
+    clean_media_tmp()
+    sync_installed_version()
     STATE.viewer_voices.update(load_viewer_voices())
     STATE.live_gift_icons.update(load_live_icons())
     if STATE.live_gift_icons:

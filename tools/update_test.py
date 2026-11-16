@@ -95,7 +95,7 @@ def W(base, rel, data):
     p = os.path.join(base, *rel.split("/"))
     os.makedirs(os.path.dirname(p), exist_ok=True)
     mode = "wb" if isinstance(data, bytes) else "w"
-    with open(p, mode, **({} if isinstance(data, bytes) else {"encoding": "utf-8"})) as f:
+    with open(p, mode, **({} if isinstance(data, bytes) else {"encoding": "utf-8", "newline": ""})) as f:
         f.write(data)
 
 

@@ -64,7 +64,11 @@ def main():
 
         async def stop_later():
             await asyncio.sleep(secs)
-            await client.disconnect(close_client=True)
+            started["stop"] = True
+            try:                                   # TikTok часто не отвечает на «пока» — ждём недолго
+                await asyncio.wait_for(client.disconnect(), 6)
+            except BaseException:
+                pass
         asyncio.ensure_future(stop_later())
 
     @client.on(CommentEvent)
@@ -85,14 +89,31 @@ def main():
     async def on_dc(e):
         print("Отключено.")
 
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
-        client.run()
-    except KeyboardInterrupt:
+        loop.run_until_complete(client.connect())
+    except (KeyboardInterrupt, asyncio.CancelledError):
         pass
     except Exception as e:
-        print(f"❌ Не удалось подключиться: {type(e).__name__}: {e}")
-        print("   Эфир идёт? Ник верный? TikTok иногда временно не пускает — попробуй через минуту.")
-        return 1
+        if not started.get("stop"):
+            print(f"❌ Не удалось подключиться: {type(e).__name__}: {e}")
+            print("   Эфир идёт? Ник верный? TikTok иногда временно не пускает — попробуй через минуту.")
+            return 1
+    finally:                                       # закрываем всё сами — без пугающих ошибок при выходе
+        try:
+            loop.run_until_complete(asyncio.wait_for(client.web.close(), 3))
+        except BaseException:
+            pass
+        try:
+            pend = [t for t in asyncio.all_tasks(loop) if not t.done()]
+            for t in pend:
+                t.cancel()
+            if pend:
+                loop.run_until_complete(asyncio.wait(pend, timeout=3))
+            loop.close()
+        except BaseException:
+            pass
 
     print("\nПришло от TikTok → прочитано:")
     for kind in ("чат", "лайки", "подарки", "фолловы/репосты", "вход", "зрители"):
@@ -141,6 +162,7 @@ def ru_names(nick):
         except Exception as e:
             print(f"(ID эфира не узнал: {e} — пробую без него)")
         variants = [
+            {"app_language": "ru-RU", "browser_language": "ru-RU", "webcast_language": "ru-RU", "language": "ru"},
             {"app_language": "ru-RU", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru"},
             {"app_language": "ru", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru",
              "locale": "ru-RU", "region": "RU", "priority_region": "RU"},
@@ -172,7 +194,16 @@ def ru_names(nick):
             return 0
         print("❌ TikTok не отдал русские названия ни одним способом")
         return 1
-    return asyncio.run(go())
+
+    async def go_and_close():
+        try:
+            return await go()
+        finally:                                   # закрываем сессии сами — иначе при выходе сыплются ошибки
+            try:
+                await client.web.close()
+            except Exception:
+                pass
+    return asyncio.run(go_and_close())
 
 
 if __name__ == "__main__":
