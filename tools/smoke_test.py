@@ -325,7 +325,10 @@ def make_copy(dst, remote_port):
         "gifts": [{"name": "Rose", "gift_id": "5655", "title": "роза", "commands": ["say rose"]},
                   # эдит когда-то был .mov, программа перекодировала его в .mp4, а карточка осталась со старым именем
                   {"name": "Lion", "gift_id": "6369", "title": "лев", "commands": [], "media_file": "мой эдит.mov",
-                   "media_kind": "video", "sound_file": "музыка.flac"}],
+                   "media_kind": "video", "sound_file": "музыка.flac"},
+                  {"name": "Кулон дружбы", "title": "кулон", "commands": []},          # по-русски, без ID
+                  {"name": "Doughnut", "title": "пончик", "commands": []},             # из библиотеки, по-английски
+                  {"name": "Загадочный подарок", "title": "загадка", "commands": []}],  # такого названия нет
         "chatcmds": [{"trigger": "!крипер", "title": "Крипер", "cooldown": 0, "points_cost": 30,
                       "commands": ["say creeper"]},
                      {"trigger": "!демон", "title": "Голос демона", "cooldown": 0,
@@ -347,6 +350,8 @@ def make_copy(dst, remote_port):
         f.write(b"\x00" * 64)
     with open(os.path.join(dst, "media", "музыка.flac"), "wb") as f:
         f.write(b"fLaC" + b"\x00" * 64)
+    with open(os.path.join(dst, "gift_names_ru.json"), "w", encoding="utf-8") as f:
+        json.dump({"9947": "Кулон дружбы", "5655": "Роза"}, f, ensure_ascii=False)   # как отдаёт TikTok при подключении
     with open(os.path.join(dst, "profiles.json"), "w", encoding="utf-8") as f:
         json.dump(profiles, f, ensure_ascii=False)
     with open(os.path.join(dst, "config.json"), "w", encoding="utf-8") as f:
@@ -388,6 +393,20 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     cat = api.get("/api/gift_catalog")
     check("библиотека подарков полная сразу (встроенный список)", len(cat.get("gifts", [])) >= 700,
           f"подарков: {len(cat.get('gifts', []))}")
+
+    print("\n• Подарки по названиям")
+    api.sim(kind="gift", name="Friendship Necklace", gift_id="9947", count=1, user="g1", diamonds=1)
+    check("«Friendship Necklace» из эфира запускает карточку «Кулон дружбы»",
+          wait_until(lambda: api.log_has("ПОДАРОК", r"«Friendship Necklace».*→ карточка «Кулон дружбы»"), 5))
+    api.sim(kind="gift", name="Doughnut", gift_id="5879", count=1, user="g2", diamonds=30)
+    check("карточка из библиотеки по-английски срабатывает по названию",
+          wait_until(lambda: api.log_has("ПОДАРОК", r"«Doughnut».*→ карточка$"), 5))
+    api.sim(kind="gift", name="Doughnut", gift_id="77777", count=1, user="g3", diamonds=30)
+    check("тот же подарок с новым ID — всё равно срабатывает",
+          wait_until(lambda: api.log_has("ПОДАРОК", r"«Doughnut».*\[ID: 77777\]  → карточка$"), 5))
+    api.sim(kind="gift", name="Mystery Box", gift_id="424242", count=1, user="g4", diamonds=5)
+    check("подарок без карточки — подсказка про непонятное русское название",
+          wait_until(lambda: api.log_has("ПОДАРКИ", r"«Mystery Box».*«Загадочный подарок».*📚 Выбрать"), 5))
 
     print("\n• Медиа: эдиты и музыка")
     st_ = api.get("/api/state")

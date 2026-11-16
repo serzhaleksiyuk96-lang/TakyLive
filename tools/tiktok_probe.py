@@ -1,6 +1,7 @@
 """Проверка связи с TikTok: что приходит из эфира и читается ли.
 
     python tools/tiktok_probe.py <ник> [секунд]      (по умолчанию 90 секунд)
+    python tools/tiktok_probe.py <ник> --ru          русские названия подарков → gift_names_ru_full.json
 
 Подключается к эфиру (только чтение, как зритель-невидимка), считает сообщения
 от TikTok по видам и сколько из них библиотека TikTokLive смогла прочитать.
@@ -30,7 +31,9 @@ def main():
         print(__doc__)
         return 2
     nick = sys.argv[1].lstrip("@")
-    secs = int(sys.argv[2]) if len(sys.argv) > 2 else 90
+    if "--ru" in sys.argv:
+        return ru_names(nick)
+    secs = int(sys.argv[2]) if len(sys.argv) > 2 and sys.argv[2].isdigit() else 90
     try:
         from importlib.metadata import version
         tv = version("TikTokLive")
@@ -111,6 +114,65 @@ def main():
     else:
         print("\n✅ Связь с TikTok в порядке.")
     return 0
+
+
+def ru_names(nick):
+    """Спрашивает у TikTok список подарков по-русски (разными способами) и сохраняет {ID: название}."""
+    import json
+    import os
+    import re
+    from TikTokLive.client.web.web_settings import WebDefaults
+    client = TikTokLiveClient(unique_id="@" + nick)
+
+    def walk(o, out):
+        if isinstance(o, dict):
+            if "id" in o and isinstance(o.get("name"), str) and ("diamond_count" in o or "image" in o):
+                out[str(o["id"])] = o["name"].strip()
+            for v in o.values():
+                walk(v, out)
+        elif isinstance(o, list):
+            for v in o:
+                walk(v, out)
+
+    async def go():
+        room = None
+        try:
+            room = await client.web.fetch_room_id_from_html(nick)
+        except Exception as e:
+            print(f"(ID эфира не узнал: {e} — пробую без него)")
+        variants = [
+            {"app_language": "ru-RU", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru"},
+            {"app_language": "ru", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru",
+             "locale": "ru-RU", "region": "RU", "priority_region": "RU"},
+        ]
+        best = {}
+        for i, params in enumerate(variants, 1):
+            if room:
+                params["room_id"] = str(room)
+            try:
+                r = await client.web.get(url=WebDefaults.tiktok_webcast_url + "/gift/list/", extra_params=params,
+                                         extra_headers={"Accept-Language": "ru-RU,ru;q=0.9"})
+                found = {}
+                walk(r.json().get("data") or {}, found)
+            except Exception as e:
+                print(f"  способ {i}: ошибка {type(e).__name__}: {e}")
+                continue
+            ru = {k: v for k, v in found.items() if re.search(r"[а-яё]", v, re.I)}
+            print(f"  способ {i}: подарков {len(found)}, из них по-русски {len(ru)}")
+            if len(ru) > len(best):
+                best = ru
+        if best:
+            path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "gift_names_ru_full.json")
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(dict(sorted(best.items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 0)),
+                          f, ensure_ascii=False, indent=0)
+            print(f"✅ Сохранил {len(best)} русских названий: {path}")
+            hit = {k: v for k, v in best.items() if k == "9947"}
+            print(f"   Friendship Necklace (9947): {hit.get('9947', 'нет в списке')}")
+            return 0
+        print("❌ TikTok не отдал русские названия ни одним способом")
+        return 1
+    return asyncio.run(go())
 
 
 if __name__ == "__main__":

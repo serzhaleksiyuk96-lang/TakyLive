@@ -244,22 +244,33 @@ async def fetch_room_gift_catalog(client):
 async def fetch_ru_gift_names(client):
     """Спрашивает у TikTok список подарков на русском — тогда русские названия
     в карточках («Корги») срабатывают на английские из эфира («Corgi»)."""
-    try:
-        from TikTokLive.client.web.web_settings import WebDefaults
-        params = {"app_language": "ru-RU", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru"}
-        room = getattr(client, "room_id", None)
+    from TikTokLive.client.web.web_settings import WebDefaults
+    room = getattr(client, "room_id", None)
+    variants = [
+        {"app_language": "ru-RU", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru"},
+        {"app_language": "ru", "browser_language": "ru-RU", "webcast_language": "ru", "language": "ru",
+         "locale": "ru-RU", "region": "RU", "priority_region": "RU"},
+    ]
+    found, ru, last_err = {}, {}, ""
+    for params in variants:                    # TikTok иногда игнорирует язык — пробуем по-разному
         if room:
             params["room_id"] = str(room)
-        r = await client.web.get(url=WebDefaults.tiktok_webcast_url + "/gift/list/", extra_params=params)
-        data = r.json().get("data") or {}
-    except Exception as e:
-        STATE.log("ПОДАРКИ", f"не удалось скачать русские названия подарков: {e}")
-        return 0
-    found = {}
-    _walk_gifts(data, found)
-    ru = {k: v for k, v in found.items() if re.search(r"[а-яё]", v, re.I)}
+        try:
+            r = await client.web.get(url=WebDefaults.tiktok_webcast_url + "/gift/list/", extra_params=params,
+                                     extra_headers={"Accept-Language": "ru-RU,ru;q=0.9"})
+            data = r.json().get("data") or {}
+        except Exception as e:
+            last_err = str(e)
+            continue
+        found = {}
+        _walk_gifts(data, found)
+        ru = {k: v for k, v in found.items() if re.search(r"[а-яё]", v, re.I)}
+        if ru:
+            break
     if not ru:
-        STATE.log("ПОДАРКИ", f"TikTok отдал список подарков ({len(found)} шт.), но не по-русски")
+        STATE.log("ПОДАРКИ", (f"не удалось скачать русские названия подарков: {last_err}" if not found else
+                              f"TikTok отдал список подарков ({len(found)} шт.), но не по-русски") +
+                  " — карточки с русскими названиями выбирай кнопкой «📚 Выбрать»")
         return 0
     new = sum(1 for k, v in ru.items() if STATE.gift_names_ru.get(k) != v)
     STATE.gift_names_ru.update(ru)
@@ -1431,6 +1442,28 @@ def find_gift_action(gift_name, gift_id):
     return None
 
 
+_UNMATCHED_HINTED = set()
+
+
+def gift_hint_unmatched(gift_name, gift_id):
+    """Подарок пришёл, а карточки нет. Если во вкладке есть карточка с русским названием, которое
+    программа не знает, — подсказываем один раз, как это починить."""
+    key = norm_gift(gift_name)
+    if key in _UNMATCHED_HINTED:
+        return
+    known = known_gift_names()
+    unknown_ru = [str(g.get("name") or "") for g in active_profile().get("gifts", [])
+                  if re.search(r"[а-яё]", str(g.get("name") or ""), re.I) and norm_gift(g.get("name")) not in known
+                  and not str(g.get("gift_id") or "").strip()]
+    if not unknown_ru:
+        return
+    _UNMATCHED_HINTED.add(key)
+    STATE.log("ПОДАРКИ", f"⚠ «{gift_name}» (ID {gift_id}) не нашёл карточку. Карточки с русскими названиями, "
+                         f"которые программа пока не знает: {', '.join('«' + n + '»' for n in unknown_ru[:5])}. "
+                         f"Если это один из них — открой карточку и выбери подарок кнопкой «📚 Выбрать» "
+                         f"(или назови её «{gift_name}»)")
+
+
 def known_gift_names():
     """Все известные названия подарков (англ. и рус.) — из библиотеки, каталога и словаря."""
     out = {norm_gift(n) for n in GIFT_IDS}
@@ -1534,7 +1567,15 @@ def check_goals():
 
 
 def handle_gift(gift_name, gift_id, count, user, diamonds=0):
-    STATE.log("ПОДАРОК", f"{user} → «{gift_name}» x{count}  [ID: {gift_id}]")
+    action = find_gift_action(gift_name, gift_id)
+    if action:
+        card = str(action.get("name") or "").strip()
+        tail = f"  → карточка «{card}»" if norm_gift(card) != norm_gift(gift_name) else "  → карточка"
+    else:
+        tail = "  — карточки нет"
+    STATE.log("ПОДАРОК", f"{user} → «{gift_name}» x{count}  [ID: {gift_id}]{tail}")
+    if not action:
+        gift_hint_unmatched(gift_name, gift_id)
     STATE.register_seen_gift(gift_name, gift_id, diamonds)
     STATE.gifts_count += count
     STATE.last_gift = {"name": str(gift_name or "").strip(),
@@ -1549,7 +1590,6 @@ def handle_gift(gift_name, gift_id, count, user, diamonds=0):
             per = 0
         if per > 0:
             STATE.timer["end"] += (diamonds or 1) * count * per
-    action = find_gift_action(gift_name, gift_id)
     # Оверлей: алерт + топ донатеров + медиа (если у подарка задано)
     media = _extract_media(action)
     STATE.push_overlay("gift", user,
