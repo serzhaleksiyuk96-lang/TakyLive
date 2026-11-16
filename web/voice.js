@@ -1,7 +1,7 @@
 // 🎙 ИИ-голос стримера: мастер установки и управление голосовой программой (deiteris/voice-changer).
 // Сервер: /api/vc/* (app.py) → voicechanger.py.
 
-let VC = null, vcTimer = null, vcModelFile = null;
+let VC = null, vcTimer = null, vcModelFile = null, VC_PRESETS = null;
 const vcEl = id => document.getElementById(id);
 
 function vcOpen() {
@@ -107,6 +107,7 @@ async function vcRefresh(force) {
           <button class="small" title="Включить на 10 секунд" onclick="vcTry(${JSON.stringify(v.name).replace(/"/g, "&quot;")})">▶ 10 с</button>
           <button class="small" title="Скопировать команду для подарка" onclick="vcCopy(${JSON.stringify(v.name).replace(/"/g, "&quot;")})">📋</button></span>`).join("")
     : `<span class="hint">Пока нет голосов — добавь .pth</span>`;
+  vcPresetsRender(slots, s.running);
   const nsel = vcEl("vcNormal");
   if (document.activeElement !== nsel)
     nsel.innerHTML = `<option value="">🙂 Мой голос (без ИИ)</option>` +
@@ -277,4 +278,32 @@ function vcHubWatch() {
     hint.textContent = h.error ? "✗ " + h.error : h.ok || "Готово";
     vcRefresh();
   }, 1000);
+}
+
+// ── ⭐ Рекомендуемые голоса (ссылки на Hugging Face) ───────────────────────────
+async function vcPresetsRender(slots, running) {
+  if (VC_PRESETS === null) {
+    VC_PRESETS = [];
+    try { VC_PRESETS = (await (await fetch("/api/vc/presets")).json()).voices || []; } catch (e) {}
+  }
+  const box = vcEl("vcPresets");
+  box.classList.toggle("hidden", !VC_PRESETS.length);
+  if (!VC_PRESETS.length) return;
+  const have = new Set((slots || []).map(v => v.name.toLowerCase()));
+  vcEl("vcPresetList").innerHTML = VC_PRESETS.map((p, i) => {
+    const ok = have.has(p.name.toLowerCase());
+    return `<div class="vc-preset" title="${esc(p.repo)} · лицензия ${esc(p.license || "?")}">
+      <span class="em">${esc(p.emoji)}</span>
+      <div class="tx"><b>${esc(p.name)}</b><span>${esc(p.desc || p.repo)}${p.size_mb ? " · " + p.size_mb + " МБ" : ""}</span></div>
+      ${ok ? `<span class="hint">✓ есть</span>`
+           : `<button class="small primary" ${running ? "" : "disabled"} onclick="vcPresetInstall(${i})">⬇</button>`}</div>`;
+  }).join("");
+}
+
+async function vcPresetInstall(i) {
+  const p = VC_PRESETS[i];
+  const r = await (await fetch("/api/vc/hub/install", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({repo: p.repo, model: p.model, index: p.index, zip: p.zip, name: p.name})})).json();
+  if (!r.ok) { alert(r.error); return; }
+  vcHubWatch();
 }

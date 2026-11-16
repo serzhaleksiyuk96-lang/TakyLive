@@ -1036,6 +1036,14 @@
               border: 1px solid var(--border); background: var(--panel); font-size: 13px; }
   .vc-voice.on { border-color: #a855f7; box-shadow: 0 0 0 2px rgba(168,85,247,.3); }
   .vc-voice button { padding: 2px 8px; font-size: 12px; }
+  .vc-presets { margin: 4px 0 8px; }
+  .vc-preset-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
+  .vc-preset { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-radius: 10px;
+               border: 1px solid var(--border); background: var(--panel); }
+  .vc-preset .em { font-size: 24px; }
+  .vc-preset .tx { flex: 1; min-width: 0; }
+  .vc-preset .tx b { display: block; }
+  .vc-preset .tx span { font-size: 12px; opacity: .7; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .vc-hub { margin: 6px 0 8px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: 10px; }
   .vc-hub-warn { margin: 4px 0 8px; }
   .vc-hub a { color: #93c5fd; }
@@ -2159,6 +2167,10 @@
         <li id="vcS5"><div class="vc-t">Голоса</div>
           <div class="vc-d">
             <div id="vcVoices" class="vc-voices"></div>
+            <div id="vcPresets" class="vc-presets hidden">
+              <div class="vc-t" style="padding:0 0 4px">⭐ Рекомендуемые <span class="hint">— открытая лицензия, ставятся одной кнопкой</span></div>
+              <div id="vcPresetList" class="vc-preset-list"></div>
+            </div>
             <div class="ia-opts">
               <button class="small" onclick="document.getElementById('vcModel').click()">➕ Добавить голос (.pth)</button>
               <input type="file" id="vcModel" accept=".pth,.onnx,.safetensors" style="display:none" onchange="vcPickModel(this)">

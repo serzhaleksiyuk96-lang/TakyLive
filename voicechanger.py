@@ -31,7 +31,7 @@ CABLE_URLS = ("https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack4
               "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip")
 CABLE_PAGE = "https://vb-audio.com/Cable/"
 HF_BASE = (os.environ.get("TAKY_HF_BASE") or "https://huggingface.co").rstrip("/")   # для автопроверки — подмена
-REPO_RE = re.compile(r"^[\w.\-]{1,96}/[\w.\-]{1,96}$")
+REPO_RE = re.compile(r"^(?![.\-])(?!.*\.\.)[\w.\-]{1,96}/(?![.\-])[\w.\-]{1,96}$")   # без «..» и «./»
 MAX_HUB_FILE = 2 << 30
 
 # Названия моделей на Hugging Face — латиницей. Частые русские слова переводим сами
@@ -49,6 +49,31 @@ RU_EN = [
     ("рассказчик", "narrator"), ("диктор", "announcer"), ("радио", "radio"), ("рэп", "rap"), ("певец", "singer"),
     ("певиц", "singer"), ("русск", "russian"), ("англ", "english"), ("японск", "japanese"),
 ]
+# ⭐ Рекомендуемые голоса: в программе только ссылки (модель на Hugging Face + имена файлов),
+# сами файлы каждый скачивает себе сам. Список лежит рядом с программой и обновляется
+# с GitHub без нового релиза. Только открытые лицензии и не клоны реальных людей/персонажей.
+PRESETS_FILE = "voice_presets.json"
+PRESETS_URL = os.environ.get("TAKY_PRESETS_URL") or \
+    "https://raw.githubusercontent.com/serzhaleksiyuk96-lang/TakyLive/main/voice_presets.json"
+FILE_RE = re.compile(r"^(?!.*\.\.)[\w .,()\[\]\-/]{1,200}$")
+
+
+def clean_presets(d):
+    out = []
+    for v in (d or {}).get("voices") or []:
+        if not isinstance(v, dict):
+            continue
+        repo, model, index, zp = (str(v.get(k) or "").strip() for k in ("repo", "model", "index", "zip"))
+        if not REPO_RE.match(repo) or not (model or zp):
+            continue
+        if any(f and not FILE_RE.match(f) for f in (model, index, zp)):
+            continue
+        out.append({"name": str(v.get("name") or "")[:40] or "Голос", "emoji": str(v.get("emoji") or "🎙")[:4],
+                    "desc": str(v.get("desc") or "")[:160], "repo": repo, "model": model, "index": index, "zip": zp,
+                    "license": str(v.get("license") or "")[:40], "size_mb": int(v.get("size_mb") or 0)})
+    return out[:60]
+
+
 STOP_WORDS = {"голос", "голоса", "голосом", "voice", "voices", "rvc", "model", "модель", "и", "а", "the"}
 
 
@@ -689,6 +714,31 @@ class VoiceChanger:
         if not model:
             raise RuntimeError("в архиве нет голоса (.pth)")
         return model, index
+
+    async def presets(self):
+        """Список «⭐ Рекомендуемые»: свежий с GitHub (раз в час), иначе — тот, что пришёл с программой."""
+        now = time.time()
+        cache = getattr(self, "_presets_cache", None)
+        if cache and now - cache[0] < 3600:
+            return cache[1]
+        local = []
+        try:
+            with open(os.path.join(self.base_dir, PRESETS_FILE), encoding="utf-8") as f:
+                local = clean_presets(json.load(f))
+        except Exception:
+            pass
+        remote = None
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=6),
+                                             headers={"User-Agent": "TakyLive"}) as s:
+                async with s.get(PRESETS_URL) as r:
+                    if r.status == 200:
+                        remote = clean_presets(json.loads(await r.text()))
+        except Exception:
+            pass
+        lst = remote if remote else local
+        self._presets_cache = (now, lst)
+        return lst
 
     # ── состояние для окна ───────────────────────────────────────────────────
     async def status(self):

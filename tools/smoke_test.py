@@ -276,6 +276,12 @@ class MockHF(http.server.BaseHTTPRequestHandler):
         import urllib.parse as up
         u = up.urlparse(self.path)
         q = up.parse_qs(u.query)
+        if u.path == "/presets.json":
+            return self._send({"voices": [
+                {"name": "Робот", "emoji": "🤖", "desc": "металлический", "repo": "tester/robot-rvc", "model": "robot.pth",
+                 "index": "added_IVF256_robot.index", "license": "mit", "size_mb": 1},
+                {"name": "Плохой", "repo": "../evil", "model": "x.pth"},
+                {"name": "Плохой2", "repo": "tester/robot-rvc", "model": "../../x.pth"}]})
         if u.path == "/api/models":
             term = (q.get("search") or [""])[0].lower()
             items = [{"id": rid, "downloads": 100 - i, "likes": 5, "tags": ["rvc"]}
@@ -680,6 +686,10 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     check("новый голос появился в списке", "Робот" in [v["name"] for v in st.get("info", {}).get("slots", [])])
     st, _ = api.req("/api/vc/upload", None, raw=True)
     check("GET на загрузку не принимается", st in (404, 405), f"код {st}")
+    # ⭐ рекомендуемые голоса
+    pr = api.get("/api/vc/presets").get("voices", [])
+    check("⭐ рекомендуемые приходят с GitHub, кривые записи отброшены",
+          [v["name"] for v in pr] == ["Робот"] and pr[0]["license"] == "mit", str(pr)[:200])
     # библиотека голосов (Hugging Face)
     r = api.get("/api/vc/hub/search?q=" + urllib.request.quote("robot"))
     check("поиск в библиотеке голосов находит модель", r.get("ok") and [m["id"] for m in r.get("items", [])] == ["tester/robot-rvc"],
@@ -750,7 +760,8 @@ def main():
     report_id = make_copy(copy_dir, rport)
 
     env = dict(os.environ, TAKY_TEST="1", TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
-               TAKY_HF_BASE=f"http://127.0.0.1:{MOCK_HF_PORT}")
+               TAKY_HF_BASE=f"http://127.0.0.1:{MOCK_HF_PORT}",
+               TAKY_PRESETS_URL=f"http://127.0.0.1:{MOCK_HF_PORT}/presets.json")
     out_path = os.path.join(tmp, "app_output.txt")
     out = open(out_path, "w", encoding="utf-8", errors="replace")
     proc = subprocess.Popen([sys.executable, "app.py"], cwd=copy_dir, env=env, stdout=out, stderr=subprocess.STDOUT)

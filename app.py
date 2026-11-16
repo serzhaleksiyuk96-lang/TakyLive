@@ -2923,6 +2923,10 @@ async def h_vc_upload(request):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+async def h_vc_presets(request):
+    return web.json_response({"ok": True, "voices": await STATE.vc.presets()})
+
+
 async def h_vc_hub_search(request):
     try:
         return web.json_response({"ok": True, **(await STATE.vc.hub_search(request.query.get("q", "")))})
@@ -4735,6 +4739,7 @@ def make_app():
     app.router.add_post("/api/vc/normal", h_vc_normal)
     app.router.add_post("/api/vc/upload", h_vc_upload)
     app.router.add_post("/api/vc/open", h_vc_open)
+    app.router.add_get("/api/vc/presets", h_vc_presets)
     app.router.add_get("/api/vc/hub/search", h_vc_hub_search)
     app.router.add_get("/api/vc/hub/files", h_vc_hub_files)
     app.router.add_post("/api/vc/hub/install", h_vc_hub_install)
