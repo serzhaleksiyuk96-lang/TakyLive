@@ -1,8 +1,8 @@
 """Итоги эфира: статистика одного стрима по минутам + сохранённые отчёты в папке reports/.
 
-Эфир начинается с подключения к TikTok. Кончается, когда стример нажал «⏹ Отключиться»,
-TikTok сообщил о конце эфира или связи нет дольше 5 минут. Если связь оборвалась и
-вернулась раньше — это тот же эфир, статистика продолжается.
+Эфир начинается с подключения к TikTok. Кончается, когда TikTok сообщил о конце эфира, связи нет
+дольше 5 минут или стример нажал «⏹ Отключиться» и не подключился снова за 2 минуты. Если связь
+вернулась раньше — это тот же эфир, статистика продолжается (без второго «Я в эфире» и лишних итогов).
 """
 import json
 import os
@@ -11,6 +11,7 @@ import threading
 import time
 
 RESUME_SEC = 300                  # обрыв связи короче этого — тот же эфир
+MANUAL_SEC = 120                  # нажал «Отключиться» и вернулся быстрее — тоже тот же эфир
 KEEP_REPORTS = 200                # сколько отчётов хранить
 
 
@@ -30,6 +31,8 @@ class StreamStats:
         self.lock = threading.Lock()
         self.cur = None               # текущий эфир (dict) или None
         self.lost_at = 0.0            # когда пропала связь (0 — связь есть)
+        self.wait = RESUME_SEC        # сколько ждать возвращения, прежде чем подвести итоги
+        self.manual = False           # связь пропала, потому что нажали «Отключиться»
         self.on_end = None            # колбэк(отчёт) — например, итоги в Telegram
 
     # ── жизнь эфира ──
@@ -44,28 +47,42 @@ class StreamStats:
                 "gifts": {}}              # название → {count, coins, card}
 
     def on_connect(self, nick):
-        """→ True, если начался новый эфир (а не продолжился после обрыва)."""
+        """→ True, если начался новый эфир (а не продолжился после обрыва или переподключения)."""
         with self.lock:
-            self.lost_at = 0.0
+            other = self.cur is not None and str(self.cur.get("nick") or "") != str(nick or "")
+        if other:
+            self.end("другой эфир")
+        with self.lock:
+            back = bool(self.lost_at)
+            self.lost_at, self.manual = 0.0, False
             if self.cur is not None:
+                if back:
+                    self.log("ИТОГИ", "Связь вернулась — продолжаю считать тот же эфир")
                 return False
             self.cur = self._new(nick)
         self.log("ИТОГИ", "Начал считать статистику эфира")
         return True
 
     def on_disconnect(self, manual):
-        """manual — нажали «Отключиться» (эфир закончен сразу), иначе ждём 5 минут."""
-        if manual:
-            return self.end("отключился")
+        """Связь пропала. Итоги — не сразу: при обрыве ждём 5 минут, после «Отключиться» — 2 минуты
+        (переподключился посреди эфира — статистика и анонсы не дробятся)."""
         with self.lock:
-            if self.cur is not None and not self.lost_at:
+            if self.cur is None:
+                return None
+            say = manual and not self.manual
+            if not self.lost_at:
                 self.lost_at = time.time()
+                self.wait = RESUME_SEC
+            if manual:
+                self.manual, self.wait = True, MANUAL_SEC
+        if say:
+            self.log("ИТОГИ", f"Отключено. Не подключишься снова за {MANUAL_SEC // 60} мин — подведу итоги эфира")
         return None
 
     def tick(self):
-        """Раз в секунду: связи нет дольше 5 минут — эфир окончен."""
-        if self.cur is not None and self.lost_at and time.time() - self.lost_at > RESUME_SEC:
-            return self.end("связь пропала")
+        """Раз в секунду: связи нет дольше положенного — эфир окончен."""
+        if self.cur is not None and self.lost_at and time.time() - self.lost_at > self.wait:
+            return self.end("отключился" if self.manual else "связь пропала")
         return None
 
     def end(self, why=""):
@@ -74,7 +91,7 @@ class StreamStats:
             if rep is None:
                 return None
             rep["ended"] = self.lost_at or time.time()     # связь пропала — эфир кончился тогда
-            self.cur, self.lost_at = None, 0.0
+            self.cur, self.lost_at, self.manual = None, 0.0, False
         rep = self._public(rep)
         if rep["totals"]["coins"] or rep["totals"]["likes"] or rep["totals"]["comments"] or rep["duration"] >= 60:
             self._save(rep)

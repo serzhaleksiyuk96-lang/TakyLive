@@ -179,6 +179,7 @@ MOCK_VC = {"settings": {"modelSlotIndex": 0, "passThrough": False, "serverAudioS
            "broken": False,        # звук не включается совсем
            "logfile": ""}          # её журнал — туда пишется ошибка открытия устройства
 MOCK_VC_PORT = 0
+DEVSIG_FILE = ""                   # «отпечаток» звуковых устройств Windows — подделка для программы
 
 
 def mock_vc_log(line):
@@ -230,7 +231,7 @@ class MockVC(http.server.BaseHTTPRequestHandler):
             if k == "passThrough":
                 v = v == "true"
             elif k in ("modelSlotIndex", "serverAudioStated", "serverInputDeviceId", "serverOutputDeviceId",
-                       "serverMonitorDeviceId", "gpu", "tran"):
+                       "serverMonitorDeviceId", "gpu", "tran", "serverReadChunkSize"):
                 v = int(v)
             MOCK_VC["settings"][k] = v
             if k == "serverAudioStated" and v == 1:                     # открываем устройства по номерам
@@ -406,6 +407,8 @@ def make_copy(dst, remote_port):
         "ai_on": False, "ai_speak": False,
         "ann_tg_on": False, "ann_dc_on": False,
         "remote_on": False, "remote_port": remote_port, "vc_port": MOCK_VC_PORT, "vc_autostart": False,
+        # своя папка голосовой программы: иначе на Windows программа читала бы журнал настоящей (%LOCALAPPDATA%)
+        "vc_dir": os.path.join(dst, "voice-changer"),
     }
     with open(os.path.join(dst, "media", "мой эдит.mp4"), "wb") as f:
         f.write(b"\x00" * 64)
@@ -816,6 +819,8 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
           r.get("ok") and S.get("serverInputDeviceId") == 1 and S.get("serverOutputDeviceId") == 7 and S.get("gpu") == 0
           and S.get("f0Detector") == "rmvpe_onnx" and S.get("serverAudioStated") == 1 and S.get("passThrough") is True
           and str(S.get("enableServerAudio")) == "1", f"{r} {S}")
+    check("задержка: вместо 0,5 с по умолчанию — ≈130 мс (Chunk 48)",
+          S.get("serverReadChunkSize") == 48 and r.get("latency_ms") == 128, f"{S.get('serverReadChunkSize')} {r}")
     check("выбор микрофона сохранился в настройках", api.get("/api/state")["config"].get("vc_mic_name") == "Микрофон (USB Mic)")
     n0 = len(api.log())
     api.sim(kind="chat", user="hater", text="!демон")
@@ -954,8 +959,32 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     r = api.post("/api/vc/audio", aud)
     check("после ошибок ИИ-голос включается снова", r.get("ok") and S.get("serverAudioStated") == 1, str(r))
 
+    r = api.post("/api/vc/audio", dict(aud, vc_chunk=96))
+    check("свою задержку можно выбрать (Chunk 96 ≈ 256 мс)", r.get("ok") and S.get("serverReadChunkSize") == 96
+          and api.get("/api/state")["config"].get("vc_chunk") == 96, f"{S.get('serverReadChunkSize')} {r}")
+    api.post("/api/vc/audio", dict(aud, vc_chunk=0))
+
+    # наушники убрали в футляр: номера те же, ошибок в журнале нет, но звук в голосовой программе молча умер.
+    # TakyLive видит, что список устройств Windows изменился, и включает звук заново — голос из подарка не сбивается
+    api.post("/api/vc/voice", {"name": "Демон", "secs": 30})
+    n_on = sum(1 for k, v in MOCK_VC["log"] if k == "serverAudioStated" and v == "1")
+    with open(DEVSIG_FILE, "w", encoding="utf-8") as f:
+        f.write("o:Динамики|i:Микрофон")                          # было: + наушники
+    again = wait_until(lambda: sum(1 for k, v in MOCK_VC["log"] if k == "serverAudioStated" and v == "1") > n_on, 15)
+    check("убрали наушники — ИИ-голос сам включается заново, голос из подарка остаётся",
+          bool(again) and api.log_has("ГОЛОС", "Звуковые устройства Windows изменились")
+          and wait_until(lambda: S.get("serverAudioStated") == 1 and S.get("modelSlotIndex") == 1 and S.get("passThrough") is False, 5)
+          and (api.get("/api/overlay?since=0").get("voice") or {}).get("name") == "Демон", str(S))
+    api.post("/api/vc/voice", {"off": True})
+
     r = api.post("/api/vc/audio", {"off": True})
     check("«Выключить» останавливает ИИ-голос", r.get("ok") and S.get("serverAudioStated") == 0)
+    n_on = sum(1 for k, v in MOCK_VC["log"] if k == "serverAudioStated" and v == "1")
+    with open(DEVSIG_FILE, "w", encoding="utf-8") as f:
+        f.write("o:Динамики|o:Наушники|i:Микрофон")
+    time.sleep(9)
+    check("ИИ-голос выключен — смена устройств его не включает",
+          sum(1 for k, v in MOCK_VC["log"] if k == "serverAudioStated" and v == "1") == n_on and S.get("serverAudioStated") == 0)
 
     if os.name != "nt":                                           # запуск голосовой программы: подделка-«exe»
         vdir = os.path.join(copy_dir, "voice-changer")
@@ -1029,6 +1058,10 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
           and api.log_has("СИСТЕМА", "❌ Отключено от TikTok"), f"{dt:.1f} с")
     ok, r = reconnect_ok("fake_ok")
     check("после «Отключиться» можно подключиться снова", ok, str(r))
+    check("переподключение посреди эфира — тот же эфир: итоги не дробятся, «Я в эфире» второй раз не уходит",
+          api.log_has("ИТОГИ", "Отключено. Не подключишься снова за 2 мин")
+          and wait_until(lambda: api.log_has("ИТОГИ", "Связь вернулась — продолжаю считать тот же эфир"), 3)
+          and not api.log_has("ИТОГИ", r"Эфир окончен \(отключился\)"))
     api.post("/api/disconnect")
 
     api.cfg(tiktok_username="fake_ok")                          # передумал, пока подключается
@@ -1099,8 +1132,12 @@ def main():
     report_id = make_copy(copy_dir, rport)
     MOCK_VC["logfile"] = os.path.join(copy_dir, "voice-changer", "voice_changer_log.txt")
     os.makedirs(os.path.dirname(MOCK_VC["logfile"]), exist_ok=True)
+    global DEVSIG_FILE
+    DEVSIG_FILE = os.path.join(tmp, "devsig.txt")
+    with open(DEVSIG_FILE, "w", encoding="utf-8") as f:
+        f.write("o:Динамики|o:Наушники|i:Микрофон")
 
-    env = dict(os.environ, TAKY_TEST="1", TAKY_FAKE_TIKTOK="1", TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
+    env = dict(os.environ, TAKY_TEST="1", TAKY_FAKE_TIKTOK="1", TAKY_VC_DEVSIG=DEVSIG_FILE, TAKY_PORT=str(port), PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
                TAKY_HF_BASE=f"http://127.0.0.1:{MOCK_HF_PORT}",
                TAKY_PRESETS_URL=f"http://127.0.0.1:{MOCK_HF_PORT}/presets.json")
     out_path = os.path.join(tmp, "app_output.txt")

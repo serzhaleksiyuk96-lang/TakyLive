@@ -70,7 +70,7 @@ async function vcRefresh(force) {
       const st = s.start || {};
       const mm = Math.floor((st.secs || 0) / 60), ss = String((st.secs || 0) % 60).padStart(2, "0");
       vcEl("vcProg").textContent = `Запускается… ${mm}:${ss}. В первый раз программа качает свои файлы (≈1 ГБ)` +
-        (st.mb ? ` — уже ${st.mb} МБ` : "") + (st.note ? `. ${st.note[0].toUpperCase() + st.note.slice(1)}` : "") +
+        (st.mb ? ` — скачано ${st.mb} МБ` : "") + (st.note ? `. ${st.note[0].toUpperCase() + st.note.slice(1)}` : "") +
         ". Ждать у окна не нужно";
       btns.innerHTML = `<button class="small" onclick="vcStartStop(false)">✕ Отменить</button>`;
       vcStep(2, "todo");
@@ -102,6 +102,12 @@ async function vcRefresh(force) {
     vcFill("vcOut", inf.outputs, c.vc_out_name || (inf.outputs.find(d => /cable input/i.test(d.name)) || {}).name, "— выбери —");
     vcFill("vcMon", inf.outputs, c.vc_monitor_name, "не слышать");
   }
+  const ch = vcEl("vcChunk");
+  if (ch && document.activeElement !== ch) {
+    const want = String(c.vc_chunk || 0);
+    if (![...ch.options].some(o => o.value === want)) ch.add(new Option(`≈${Math.round(want * 2.667)} мс`, want));
+    ch.value = want;
+  }
   vcStep(4, !s.running ? "off" : on ? "ok" : "todo");
   vcEl("vcOnBtn").textContent = on ? "↻ Применить" : "▶ Включить ИИ-голос";
   // 5. Голоса
@@ -121,7 +127,8 @@ async function vcRefresh(force) {
       slots.map(v => `<option value="${esc(v.name)}"${c.vc_normal === v.name ? " selected" : ""}>🎙 ${esc(v.name)}</option>`).join("");
   vcStep(5, !s.running ? "off" : slots.length ? "ok" : "todo");
   vcStep(6, slots.length && on ? "ok" : "");
-  badge.textContent = act ? `🎙 «${act.name}» ${act.left} с` : on ? "включён" : s.running ? "не включён" : s.installed ? "не запущен" : "не установлен";
+  badge.textContent = act ? `🎙 «${act.name}» ${act.left} с` : on ? "включён" : s.running ? "не включён"
+    : s.starting ? "запускается…" : s.installed ? "не запущен" : "не установлен";
 }
 
 function vcFill(id, devs, cur, empty) {
@@ -177,11 +184,13 @@ async function vcCable(btn) {
 async function vcAudio(off) {
   const hint = vcEl("vcAudioHint");
   if (off) { await vcApi("audio", {off: true}); hint.textContent = "ИИ-голос выключен"; vcRefresh(); return; }
-  const body = {vc_mic_name: vcEl("vcMic").value, vc_out_name: vcEl("vcOut").value, vc_monitor_name: vcEl("vcMon").value};
+  const body = {vc_mic_name: vcEl("vcMic").value, vc_out_name: vcEl("vcOut").value, vc_monitor_name: vcEl("vcMon").value,
+                vc_chunk: +vcEl("vcChunk").value || 0};
   Object.assign(DATA.config, body);                       // чтобы общее сохранение настроек не затёрло выбор
   hint.textContent = "Включаю…";
   const r = await vcApi("audio", body);
-  hint.textContent = r.ok ? `✓ ${r.mic} → ${r.out}` + (r.monitor ? ` · слышно в ${r.monitor}` : "") : "✗ " + r.error;
+  hint.textContent = r.ok ? `✓ ${r.mic} → ${r.out}` + (r.monitor ? ` · слышно в ${r.monitor}` : "") +
+    (r.latency_ms ? ` · задержка ≈${r.latency_ms} мс` : "") : "✗ " + r.error;
   vcRefresh();
 }
 

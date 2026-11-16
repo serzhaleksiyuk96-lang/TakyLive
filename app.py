@@ -2701,7 +2701,7 @@ async def stop_tiktok():
             STATE.tiktok_thread = None                         # «Подключиться» снова работает
     STATE.connected = False
     STATE.log("СИСТЕМА", "Остановлено")
-    STATE.stats.on_disconnect(manual=True)                     # нажал «Отключиться» — эфир окончен, итоги
+    STATE.stats.on_disconnect(manual=True)                     # итоги — через 2 минуты, если не подключится снова
 
 
 # ── Итоги эфира, анонсы в Telegram / Discord, пульт с телефона ───────────────
@@ -3072,6 +3072,11 @@ async def h_vc_audio(request):
         for k in ("vc_mic_name", "vc_out_name", "vc_monitor_name"):
             if k in d:
                 STATE.config[k] = str(d.get(k) or "")[:200]
+        if "vc_chunk" in d:                                         # ⏱ задержка
+            try:
+                STATE.config["vc_chunk"] = max(0, min(1024, int(d.get("vc_chunk") or 0)))
+            except (TypeError, ValueError):
+                STATE.config["vc_chunk"] = 0
         save_config()
         return web.json_response({"ok": True, **(await STATE.vc.setup_audio(STATE.config))})
     except Exception as e:
@@ -5128,6 +5133,11 @@ def make_app():
         await STATE.remote.stop()
         STATE.points.save()
         STATE.vc.stop()                                     # голосовую программу, запущенную нами, закрываем
+        try:
+            STATE.stats.on_end = None                       # отчёт идущего эфира не теряем
+            STATE.stats.end("программа закрыта")
+        except Exception:
+            pass
 
     app.on_startup.append(_on_startup)
     app.on_shutdown.append(_on_shutdown)
@@ -5421,6 +5431,11 @@ def before_restart(reason="перед_обновлением"):
         pass
     try:
         STATE.vc.stop()                      # иначе голосовая программа осталась бы висеть без хозяина
+    except Exception:
+        pass
+    try:
+        STATE.stats.on_end = None            # отчёт эфира сохраняем, в чаты уже не успеть
+        STATE.stats.end("программа закрыта")
     except Exception:
         pass
     SNAPS.make(reason, force=True)

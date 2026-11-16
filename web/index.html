@@ -2156,7 +2156,7 @@
         <button class="small" onclick="vcRefresh(true)" title="Обновить">🔄</button>
       </div>
       <div class="hint">Зритель дарит подарок — и твой голос в эфире на N секунд становится ИИ-голосом (RVC):
-        демон, девушка, робот, персонаж. Считает видеокарта NVIDIA, задержка ≈30–60 мс. Всё ставится отсюда — по шагам.</div>
+        демон, девушка, робот, персонаж. Считает видеокарта NVIDIA, задержка ≈0,1–0,2 с. Всё ставится отсюда — по шагам.</div>
       <ol class="vc-steps">
         <li id="vcS1"><div class="vc-t">Видеокарта</div><div id="vcGpu" class="vc-d">проверяю…</div></li>
         <li id="vcS2"><div class="vc-t">Голосовая программа</div>
@@ -2169,6 +2169,16 @@
               <label>🎤 Микрофон <select id="vcMic" style="width:230px"></select></label>
               <label>→ Выход <select id="vcOut" style="width:200px"></select></label>
               <label title="Чтобы слышать свой ИИ-голос в наушниках">🎧 Слышать себя <select id="vcMon" style="width:200px"></select></label>
+              <label title="Чем меньше задержка, тем сильнее нагрузка на видеокарту. Голос трещит или заикается — выбери побольше">⏱ Задержка
+                <select id="vcChunk" style="width:190px">
+                  <option value="0">сама (≈0,13 с)</option>
+                  <option value="24">≈0,06 с — мощная видеокарта</option>
+                  <option value="32">≈0,09 с</option>
+                  <option value="48">≈0,13 с</option>
+                  <option value="64">≈0,17 с</option>
+                  <option value="96">≈0,26 с</option>
+                  <option value="192">≈0,5 с — слабый ПК</option>
+                </select></label>
             </div>
             <div class="ia-opts">
               <button class="small primary" id="vcOnBtn" onclick="vcAudio(false)">▶ Включить ИИ-голос</button>

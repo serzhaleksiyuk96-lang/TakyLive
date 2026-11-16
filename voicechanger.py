@@ -109,7 +109,9 @@ DEFAULTS = {
     "vc_secs": 30,              # сколько держится голос из подарка по умолчанию
     "vc_say": True,             # писать в оверлей «Голос … от …»
     "vc_tune": {},              # высота голоса по имени: {"Девушка": 12} (полутона; нет записи — как в модели)
+    "vc_chunk": 0,              # задержка: размер куска звука (1 = 2,7 мс). 0 — сама: 48 (≈130 мс) с NVIDIA, иначе 96
 }
+CHUNK_MS = 128 / 48000 * 1000   # столько миллисекунд в одной единице Chunk голосовой программы
 MAX_START_TRIES = 8             # столько раз сами перезапускаем, пока голосовая программа докачивает свои файлы
 
 
@@ -152,6 +154,12 @@ class VoiceChanger:
         self._last_probe = 0.0
         self._job = None              # Windows: «связка» процессов — закрылся TakyLive, закрылась и голосовая программа
         self.dev_cache = {"inputs": [], "outputs": []}
+        self._pretrain_base = 0
+        self._audio_on = False        # звук включали мы — следим за наушниками и прочими устройствами Windows
+        self._sig = None              # «отпечаток» списка звуковых устройств Windows
+        self._sig_at = 0.0
+        self._sig_changed = 0.0
+        self._reapplying = False
 
     # ── где лежит ────────────────────────────────────────────────────────────
     def dir(self):
@@ -405,10 +413,11 @@ class VoiceChanger:
             raise RuntimeError("голосовая программа не установлена")
         if self.proc_alive():
             return
-        if not retry:
-            self.start_state = {"tries": 0, "error": "", "note": ""}
         self._log_pos = self._log_size()
         self._pretrain_seen = self.pretrain_bytes()
+        if not retry:
+            self.start_state = {"tries": 0, "error": "", "note": ""}
+            self._pretrain_base = self._pretrain_seen
         kw = {"creationflags": 0x08000000} if IS_WIN else {}       # без чёрного окна
         with open(self.log_path(), "a", encoding="utf-8", errors="replace") as logf:
             self.proc = subprocess.Popen([exe], cwd=os.path.dirname(exe), stdout=logf, stderr=subprocess.STDOUT, **kw)
@@ -526,6 +535,7 @@ class VoiceChanger:
             self.log("ГОЛОС", "🎙 Голосовая программа остановлена")
         self.active = None
         self.ready = False
+        self._audio_on = False
         self.start_state = {"tries": 0, "error": "", "note": ""}
 
     def kill_orphans(self):
@@ -536,10 +546,11 @@ class VoiceChanger:
         root = os.path.normcase(os.path.normpath(self.dir())) + os.sep
         n = 0
         try:
-            ps = ("Get-CimInstance Win32_Process -Filter \"Name='MMVCServerSIO.exe'\" | "
+            # UTF-8: иначе PowerShell отдаёт путь в старой кодировке и папка с русскими буквами не узнаётся
+            ps = ("[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-CimInstance Win32_Process -Filter \"Name='MMVCServerSIO.exe'\" | "
                   "ForEach-Object { \"$($_.ProcessId)|$($_.ExecutablePath)\" }")
             out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps], capture_output=True,
-                                 timeout=20, creationflags=0x08000000).stdout.decode("utf-8", "replace")
+                                 timeout=20, creationflags=0x08000000).stdout.decode("utf-8-sig", "replace")
             for line in out.splitlines():
                 pid, _, path = line.strip().partition("|")
                 if pid.isdigit() and path and (os.path.normcase(os.path.normpath(path)) + os.sep).startswith(root):
@@ -616,13 +627,22 @@ class VoiceChanger:
             raise RuntimeError("не нашёл «CABLE Input» — поставь VB-CABLE и перезагрузи ПК")
         mon = self._find(inf["outputs"], cfg.get("vc_monitor_name")) if cfg.get("vc_monitor_name") else None
         gpu = next((g["id"] for g in inf["gpus"] if g.get("id", -1) >= 0), -1)
+        chunk = self.chunk_for(cfg, gpu)
         for k, v in (("enableServerAudio", 1), ("serverAudioSampleRate", 48000), ("serverInputDeviceId", mic["index"]),
                      ("serverOutputDeviceId", out["index"]), ("serverMonitorDeviceId", mon["index"] if mon else -1),
-                     ("gpu", gpu), ("f0Detector", "rmvpe_onnx")):
+                     ("gpu", gpu), ("f0Detector", "rmvpe_onnx"),
+                     ("serverReadChunkSize", chunk)):              # задержка: по умолчанию у программы 192 = 0,5 с
             await self.set(k, v)
         if inf["slots"] and (inf["settings"].get("modelSlotIndex") in (None, -1)):
             await self.set("modelSlotIndex", inf["slots"][0]["slot"])
-        await self.apply_normal(cfg)
+        a = self.active
+        if a and a["until"] > time.time() and self.find_slot(a["name"]):   # голос из подарка ещё звучит — оставляем
+            s_ = self.find_slot(a["name"])
+            await self.set("modelSlotIndex", s_["slot"])
+            await self.set("tran", self.tune_for(s_))
+            await self.set("passThrough", "false")
+        else:
+            await self.apply_normal(cfg)
         pos = self._log_size()
         await self.set("serverAudioStated", 1)
         await asyncio.sleep(0.8)                                   # программа открывает устройства — ждём её ответ
@@ -637,10 +657,92 @@ class VoiceChanger:
             raise RuntimeError("голосовая программа не смогла открыть звуковое устройство. Проверь, что микрофон и "
                                "наушники подключены, и нажми «Включить» ещё раз")
         self._audio_pos = self._log_size()
-        self.log("ГОЛОС", f"🎙 ИИ-голос включён: {mic['name']} → {out['name']}" + (f", слышно в {mon['name']}" if mon else ""))
+        self._audio_on, self._sig, self._sig_changed = True, self._dev_sig(), 0.0
+        self.log("ГОЛОС", f"🎙 ИИ-голос включён: {mic['name']} → {out['name']}" + (f", слышно в {mon['name']}" if mon else "")
+                 + f", задержка ≈{round(chunk * CHUNK_MS)} мс")
         if cfg.get("vc_monitor_name") and not mon:
             self.log("ГОЛОС", f"🎙 «Слышать себя»: не вижу «{cfg.get('vc_monitor_name')}» — работаю без прослушки")
-        return {"mic": mic["name"], "out": out["name"], "monitor": mon["name"] if mon else ""}
+        return {"mic": mic["name"], "out": out["name"], "monitor": mon["name"] if mon else "",
+                "latency_ms": round(chunk * CHUNK_MS)}
+
+    @staticmethod
+    def chunk_for(cfg, gpu=0):
+        try:
+            c = int(cfg.get("vc_chunk") or 0)
+        except (TypeError, ValueError):
+            c = 0
+        return max(8, min(1024, c)) if c > 0 else (48 if gpu is not None and gpu >= 0 else 96)
+
+    def _dev_sig(self):
+        """«Отпечаток» звуковых устройств Windows. Меняется, когда подключают или убирают наушники, гарнитуру,
+        микрофон — тогда открытый звук в голосовой программе молча умирает, и его надо включить заново."""
+        fake = os.environ.get("TAKY_VC_DEVSIG")                    # для автопроверки
+        if fake:
+            try:
+                with open(fake, encoding="utf-8") as f:
+                    return f.read().strip()
+            except OSError:
+                return ""
+        if not IS_WIN:
+            return None
+        try:
+            import ctypes
+            from ctypes import wintypes
+            mm = ctypes.WinDLL("winmm")
+
+            class OUTCAPS(ctypes.Structure):
+                _fields_ = [("wMid", wintypes.WORD), ("wPid", wintypes.WORD), ("vDriverVersion", wintypes.UINT),
+                            ("szPname", wintypes.WCHAR * 32), ("dwFormats", wintypes.DWORD),
+                            ("wChannels", wintypes.WORD), ("wReserved1", wintypes.WORD), ("dwSupport", wintypes.DWORD)]
+
+            class INCAPS(ctypes.Structure):
+                _fields_ = [("wMid", wintypes.WORD), ("wPid", wintypes.WORD), ("vDriverVersion", wintypes.UINT),
+                            ("szPname", wintypes.WCHAR * 32), ("dwFormats", wintypes.DWORD),
+                            ("wChannels", wintypes.WORD), ("wReserved1", wintypes.WORD)]
+            names = []
+            for tag, count, caps, cls in (("o", mm.waveOutGetNumDevs, mm.waveOutGetDevCapsW, OUTCAPS),
+                                          ("i", mm.waveInGetNumDevs, mm.waveInGetDevCapsW, INCAPS)):
+                count.restype = wintypes.UINT
+                caps.argtypes = [ctypes.c_size_t, ctypes.c_void_p, wintypes.UINT]
+                caps.restype = wintypes.UINT
+                for i in range(min(64, int(count()))):
+                    c = cls()
+                    names.append(f"{tag}:{c.szPname}" if caps(i, ctypes.byref(c), ctypes.sizeof(c)) == 0 else f"{tag}:?")
+            return "|".join(sorted(names))
+        except Exception:
+            return None
+
+    def _watch_devices(self):
+        """Раз в 3 секунды, пока ИИ-голос включён: список устройств Windows изменился и успокоился — перевключаем звук."""
+        now = time.time()
+        if not self._audio_on or now - self._sig_at < 3:
+            return
+        self._sig_at = now
+        sig = self._dev_sig()
+        if sig is None:
+            return
+        if self._sig is None:
+            self._sig = sig
+        elif sig != self._sig:
+            self._sig, self._sig_changed = sig, now                # Bluetooth появляется в несколько приёмов — ждём
+        elif self._sig_changed and now - self._sig_changed >= 4 and not self._reapplying:
+            self._sig_changed = 0.0
+            asyncio.ensure_future(self._reapply())
+
+    async def _reapply(self):
+        self._reapplying = True
+        try:
+            async with self.lock:
+                if not self._audio_on:
+                    return
+                self.log("ГОЛОС", "🎙 Звуковые устройства Windows изменились (подключили или убрали наушники?) — "
+                                  "включаю ИИ-голос заново")
+                await self.setup_audio(self.get_cfg())
+        except Exception as e:
+            self.log("ОШИБКА", f"ИИ-голос: после смены устройств звук не включился — {e}. Открой «🎙 ИИ-голос» и нажми "
+                               f"«Применить»")
+        finally:
+            self._reapplying = False
 
     async def _heal_audio(self, cfg):
         """Перед сменой голоса: звук выключен или устройство отвалилось (подключили наушники) — включаем заново."""
@@ -668,6 +770,7 @@ class VoiceChanger:
         await self.set("serverAudioStated", 0)
         self.active = None
         self._audio_pos = None
+        self._audio_on = False
 
     # ── голоса ───────────────────────────────────────────────────────────────
     def find_slot(self, name):
@@ -743,6 +846,7 @@ class VoiceChanger:
 
     async def tick(self):
         self.watch()
+        self._watch_devices()
         if self.proc_alive() and not self.ready and not self._probing and time.time() - self._last_probe > 3:
             self._last_probe = time.time()
             asyncio.ensure_future(self._probe())
@@ -1032,11 +1136,13 @@ class VoiceChanger:
             "ui_url": self.url("/"),
         }
         if st["starting"]:
-            st["start"]["mb"] = round(await asyncio.to_thread(self.pretrain_bytes) / 1048576)
+            st["start"]["mb"] = max(0, round((await asyncio.to_thread(self.pretrain_bytes) - self._pretrain_base) / 1048576))
         if running:
             try:
                 st["info"] = await self.info()
                 st["info"]["tunes"] = {v["name"]: self.tune_for(v) for v in st["info"]["slots"]}
+                rc = st["info"]["settings"].get("serverReadChunkSize")
+                st["latency_ms"] = round(int(rc) * CHUNK_MS) if str(rc or "").isdigit() else 0
                 outs = st["info"]["outputs"]
                 st["cable"] = any("cable input" in d["name"].lower() for d in outs)
             except Exception as e:
