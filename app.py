@@ -458,7 +458,8 @@ class State:
         self.tts_queue = []           # очередь озвучки для tts.html
         self.followers = set()        # кто зафолловил/подписался за стрим (lowercase)
         self.connected_at = 0.0       # время подключения к TikTok (для пропуска истории чата)
-        self.tt_report_at = 0.0       # когда последний раз писали «что пришло от TikTok»
+        self.tt_report_at = 0.0
+        self.last_edit = 0.0           # когда стример последний раз что-то менял в окне (для автообновления)       # когда последний раз писали «что пришло от TikTok»
         self.follow_count = 0         # фолловов за стрим
         self.sub_count = 0            # подписок за стрим
         self.gifts_count = 0          # подарков за стрим
@@ -3405,6 +3406,76 @@ async def media_meta(name, force=False):
     return meta
 
 
+def user_busy():
+    """Не перезапускать программу для обновления: стример что-то меняет или видео ещё готовится."""
+    if time.time() - getattr(STATE, "last_edit", 0) < 180:
+        return "ты сейчас работаешь в программе"
+    if any(j.get("state") == "processing" for j in MEDIA_JOBS.values()):
+        return "готовится видео"
+    return ""
+
+
+MEDIA_RENAMES = {}       # старое имя → новое (видео перекодировали в .mp4) — окно поправит свои карточки
+MEDIA_REF_KEYS = ("media_file", "sound_file", "icon_file")
+
+
+def _rename_refs(obj, old, new):
+    """Во всех вкладках/настройках меняет ссылку на файл old → new. Возвращает, сколько поправили."""
+    n = 0
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if k in MEDIA_REF_KEYS and v == old:
+                obj[k] = new
+                n += 1
+            elif isinstance(v, (dict, list)):
+                n += _rename_refs(v, old, new)
+    elif isinstance(obj, list):
+        for v in obj:
+            n += _rename_refs(v, old, new)
+    return n
+
+
+def media_renamed(old, new):
+    """Видео «эдит.mov» стало «эдит.mp4» — карточки, кнопки и случайные события не должны его потерять."""
+    MEDIA_RENAMES[old] = new
+    n = _rename_refs(STATE.profiles, old, new)
+    m = _rename_refs(STATE.config.get("random_items") or [], old, new)
+    if n:
+        save_profiles()
+    if m:
+        save_config()
+    return n + m
+
+
+def repair_media_refs():
+    """При запуске: ссылки на видео, которые раньше перекодировали в .mp4, а карточка осталась
+    со старым именем («⚠ файл не найден»), — чиним, если рядом лежит такое же видео .mp4."""
+    found = {}
+
+    def walk(obj):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                if k in MEDIA_REF_KEYS and isinstance(v, str) and v:
+                    found[v] = True
+                elif isinstance(v, (dict, list)):
+                    walk(v)
+        elif isinstance(obj, list):
+            for v in obj:
+                walk(v)
+    walk(STATE.profiles)
+    walk(STATE.config.get("random_items") or [])
+    fixed = 0
+    for ref in found:
+        if os.path.isfile(os.path.join(MEDIA_DIR, ref)) or "." not in ref:
+            continue
+        base, ext = ref.rsplit(".", 1)
+        if ext.lower() in ("mov", "mkv", "webm", "avi", "m4v") and os.path.isfile(os.path.join(MEDIA_DIR, base + ".mp4")):
+            fixed += media_renamed(ref, base + ".mp4")
+    if fixed:
+        STATE.log("МЕДИА", f"Починил ссылки на видео в карточках: {fixed} (видео было перекодировано в .mp4)")
+    return fixed
+
+
 async def fix_video(name):
     """Делает видео гарантированно играющим в OBS: переупаковка или перекодирование."""
     import mediaproc as mp
@@ -3430,6 +3501,7 @@ async def fix_video(name):
                     pass
                 MEDIA_META.pop(name, None)
                 MEDIA_JOBS[final] = job
+                media_renamed(name, final)
             name = final
             STATE.log("МЕДИА", f"Видео «{final}» подготовлено для OBS ({ {'remux': 'переупаковано', 'audio': 'перекодирован звук', 'transcode': 'перекодировано'}[mode] })")
         await media_meta(name, force=True)
@@ -3489,7 +3561,7 @@ async def h_media_list(request):
             finally:
                 STATE.media_meta_busy = False
         asyncio.ensure_future(fill())
-    return web.json_response({"files": files, "busy": bool(missing)})
+    return web.json_response({"files": files, "busy": bool(missing), "renamed": MEDIA_RENAMES})
 
 
 def _media_kind(filename):
@@ -3500,7 +3572,7 @@ def _media_kind(filename):
         return "gif"
     if ext in ("png", "jpg", "jpeg", "webp", "bmp"):
         return "image"
-    if ext in ("mp3", "wav", "ogg", "m4a"):
+    if ext in ("mp3", "wav", "ogg", "m4a", "aac", "flac", "opus", "weba"):
         return "sound"
     return "other"
 
@@ -4663,6 +4735,15 @@ def make_app():
             return False
 
     @web.middleware
+    async def activity(request, handler):
+        """Запоминаем, когда стример последний раз что-то менял, — автообновление не перезапустит
+        программу посреди работы (загрузка эдитов, музыки, правка карточек)."""
+        if request.method == "POST" and request.path.startswith("/api/") and \
+                not request.path.startswith(("/api/update", "/api/simulate", "/api/tts/")):
+            STATE.last_edit = time.time()
+        return await handler(request)
+
+    @web.middleware
     async def local_only(request, handler):
         if not _is_local(request.host or ""):           # подмена адреса (DNS rebinding)
             return web.Response(status=403, text="TakyLive открывается только по адресу 127.0.0.1 или localhost")
@@ -4678,6 +4759,7 @@ def make_app():
         return await handler(request)
 
     app.middlewares.append(local_only)
+    app.middlewares.append(activity)
     app.middlewares.append(no_cache)
     app.router.add_get("/", h_index)
     app.router.add_get("/api/state", h_get_state)
@@ -4779,7 +4861,8 @@ def make_app():
     STATE.local_servers.routes(app)
     # ── Обновления через GitHub (updater.py) ──
     import updater as _updater
-    STATE.updater = _updater.Updater(BASE_DIR, APP_VERSION, STATE.log, lambda: STATE.config, lambda: STATE.connected)
+    STATE.updater = _updater.Updater(BASE_DIR, APP_VERSION, STATE.log, lambda: STATE.config, lambda: STATE.connected,
+                                     is_busy=user_busy)
     STATE.updater.routes(app)
     app.router.add_get("/api/migrate/find", h_migrate_find)
     app.router.add_post("/api/migrate", h_migrate)
@@ -4858,6 +4941,10 @@ def main():
     STATE.wheel = _ia.Wheel(STATE.log)
     import voicechanger as _vcm
     STATE.vc = _vcm.VoiceChanger(BASE_DIR, STATE.log, lambda: STATE.config)
+    try:
+        repair_media_refs()                  # эдиты .mov/.webm, которые стали .mp4, — вернуть в карточки
+    except Exception as e:
+        STATE.log("ОШИБКА", f"проверка ссылок на медиа: {e}")
     STATE.viewer_voices.update(load_viewer_voices())
     STATE.live_gift_icons.update(load_live_icons())
     if STATE.live_gift_icons:

@@ -29,7 +29,40 @@ async function loadMediaList() {
     const r = await fetch("/api/media_list");
     const d = await r.json();
     MEDIA_FILES = d.files || [];
+    applyMediaRenames(d.renamed || {});
   } catch(e) { MEDIA_FILES = []; }
+}
+
+// Пока видео готовится для OBS (окно выбора уже закрыто) — тихо следим и обновляем карточки,
+// чтобы прогресс дошёл до конца и ссылка сменилась на готовый .mp4 сразу.
+setInterval(async () => {
+  if (!MEDIA_FILES.some(f => f.job && f.job.state === "processing")) return;
+  if (!document.getElementById("mediaPickModal")?.classList.contains("hidden")) return;   // там свой опрос
+  const sig = () => MEDIA_FILES.filter(f => f.job && f.job.state === "processing").map(f => f.name).join("|");
+  const before = sig();
+  await loadMediaList();
+  // перерисовываем только когда видео готово (а не на каждый процент) — чтобы не мешать печатать
+  if (sig() !== before && typeof renderCards === "function" && !document.activeElement?.matches("input, textarea"))
+    renderCards();
+}, 2000);
+
+// Видео «эдит.mov» программа перекодировала в «эдит.mp4» — меняем ссылку и в открытом окне,
+// иначе автосохранение вернуло бы старое имя и карточка показала бы «файл не найден».
+function applyMediaRenames(map) {
+  const olds = Object.keys(map);
+  if (!olds.length || !DATA) return;
+  const KEYS = ["media_file", "sound_file", "icon_file"];
+  const walk = o => {
+    if (Array.isArray(o)) { o.forEach(walk); return; }
+    if (!o || typeof o !== "object") return;
+    for (const k of Object.keys(o)) {
+      if (KEYS.includes(k) && map[o[k]]) o[k] = map[o[k]];
+      else if (o[k] && typeof o[k] === "object") walk(o[k]);
+    }
+  };
+  walk(DATA.profiles);
+  if (DATA.config) walk(DATA.config.random_items);
+  if (typeof RND_ITEMS !== "undefined") walk(RND_ITEMS);
 }
 
 function updMedia(idx, key, val, section) {

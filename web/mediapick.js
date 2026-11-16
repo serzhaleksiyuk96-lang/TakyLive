@@ -5,6 +5,7 @@ async function mpLoad() {
   try {
     const d = await (await fetch("/api/media_list", {cache: "no-store"})).json();
     MEDIA_FILES = d.files || [];
+    if (typeof applyMediaRenames === "function") applyMediaRenames(d.renamed || {});
     return d;
   } catch (e) { return {}; }
 }

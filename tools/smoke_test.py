@@ -322,7 +322,10 @@ def make_copy(dst, remote_port):
     profiles = {"Тест": {
         "game": "minecraft",
         "panel": [{"title": "💥 Тест-кнопка", "commands": ["say smoke"]}],
-        "gifts": [{"name": "Rose", "gift_id": "5655", "title": "роза", "commands": ["say rose"]}],
+        "gifts": [{"name": "Rose", "gift_id": "5655", "title": "роза", "commands": ["say rose"]},
+                  # эдит когда-то был .mov, программа перекодировала его в .mp4, а карточка осталась со старым именем
+                  {"name": "Lion", "gift_id": "6369", "title": "лев", "commands": [], "media_file": "мой эдит.mov",
+                   "media_kind": "video", "sound_file": "музыка.flac"}],
         "chatcmds": [{"trigger": "!крипер", "title": "Крипер", "cooldown": 0, "points_cost": 30,
                       "commands": ["say creeper"]},
                      {"trigger": "!демон", "title": "Голос демона", "cooldown": 0,
@@ -340,6 +343,10 @@ def make_copy(dst, remote_port):
         "ann_tg_on": False, "ann_dc_on": False,
         "remote_on": False, "remote_port": remote_port, "vc_port": MOCK_VC_PORT, "vc_autostart": False,
     }
+    with open(os.path.join(dst, "media", "мой эдит.mp4"), "wb") as f:
+        f.write(b"\x00" * 64)
+    with open(os.path.join(dst, "media", "музыка.flac"), "wb") as f:
+        f.write(b"fLaC" + b"\x00" * 64)
     with open(os.path.join(dst, "profiles.json"), "w", encoding="utf-8") as f:
         json.dump(profiles, f, ensure_ascii=False)
     with open(os.path.join(dst, "config.json"), "w", encoding="utf-8") as f:
@@ -381,6 +388,16 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     cat = api.get("/api/gift_catalog")
     check("библиотека подарков полная сразу (встроенный список)", len(cat.get("gifts", [])) >= 700,
           f"подарков: {len(cat.get('gifts', []))}")
+
+    print("\n• Медиа: эдиты и музыка")
+    st_ = api.get("/api/state")
+    lion = [g for g in (st_.get("profiles", {}).get("Тест", {}).get("gifts") or []) if g.get("name") == "Lion"]
+    check("эдит, который стал .mp4, вернулся в карточку подарка (было «файл не найден»)",
+          bool(lion) and lion[0].get("media_file") == "мой эдит.mp4", str(lion)[:200])
+    ml = api.get("/api/media_list")
+    check("музыка .flac видна в списке звуков",
+          any(f["name"] == "музыка.flac" and f["kind"] == "sound" for f in ml.get("files", [])), str(ml.get("files"))[:200])
+    check("карточка со звуком не потеряла музыку", bool(lion) and lion[0].get("sound_file") == "музыка.flac")
 
     print("\n• Защита от чужих сайтов")
     st, _ = api.req("/api/state", headers={"Host": "evil.example.com"}, raw=True)

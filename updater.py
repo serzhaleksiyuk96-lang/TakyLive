@@ -38,8 +38,10 @@ def vkey(v):
 
 
 class Updater:
-    def __init__(self, base_dir, version, log, cfg, is_live):
+    def __init__(self, base_dir, version, log, cfg, is_live, is_busy=None):
         self.base, self.version, self.log, self.cfg, self.is_live = base_dir, version, log, cfg, is_live
+        self.is_busy = is_busy or (lambda: "")        # «стример сейчас работает» — автообновление ждёт
+        self.busy_logged = ""
         self.info = None              # последняя найденная версия
         self.checked_at = 0.0
         self.job = None               # {state, progress, error}
@@ -297,6 +299,14 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
             return
         m = self.mode()
         if m == "auto":
+            busy = self.is_busy()
+            if busy and not self.is_live():
+                if self.busy_logged != info["version"]:
+                    self.busy_logged = info["version"]
+                    self.log("ОБНОВЛЕНИЕ", f"Есть версия {info['version']} — поставлю, когда закончишь ({busy}): "
+                                           "через 3 минуты без изменений")
+                self.auto = None
+                return
             if self.is_live() or time.time() < self.postpone_until:
                 if self.auto:
                     self.log("ОБНОВЛЕНИЕ", "Автообновление отложено — " + ("идёт эфир" if self.is_live() else "ты нажал «Не сейчас»"))
@@ -315,7 +325,7 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
         a = self.auto
         if not a or a["version"] != version or a["at"] != at:        # отменили, отложили или пришла другая версия
             return
-        if self.is_live():
+        if self.is_live() or self.is_busy():
             self.auto = None
             return
         self.auto = None
