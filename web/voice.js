@@ -214,25 +214,45 @@ async function vcOpenUi() {
 function vcHubToggle() {
   const box = vcEl("vcHub");
   box.classList.toggle("hidden");
-  if (!box.classList.contains("hidden")) vcEl("vcHubQ").focus();
+  if (!box.classList.contains("hidden") && !VC_HUB_ITEMS.length) vcHubSearch();   // как в каталоге Fish — сразу популярные
 }
 
 function vcSize(b) { return !b ? "" : b > 1073741824 ? (b / 1073741824).toFixed(1) + " ГБ" : Math.max(1, Math.round(b / 1048576)) + " МБ"; }
 
+let VC_HUB_ITEMS = [], VC_HUB_SHOWN = 0;
+const VC_HUB_PAGE = 30;
+
 async function vcHubSearch() {
-  const q = vcEl("vcHubQ").value.trim(), list = vcEl("vcHubList"), hint = vcEl("vcHubHint");
-  if (q.length < 2) { hint.textContent = "Впиши, какой голос ищешь"; return; }
-  hint.textContent = "Ищу…"; list.innerHTML = "";
-  const r = await (await fetch("/api/vc/hub/search?q=" + encodeURIComponent(q))).json();
+  const q = vcEl("vcHubQ").value.trim(), hint = vcEl("vcHubHint"), sort = vcEl("vcHubSort").value;
+  if (q.length === 1) { hint.textContent = "Впиши хотя бы 2 буквы"; return; }
+  hint.textContent = q ? "Ищу…" : "Загружаю каталог…";
+  vcEl("vcHubList").innerHTML = ""; vcEl("vcHubMore").classList.add("hidden");
+  let r;
+  try { r = await (await fetch(`/api/vc/hub/search?q=${encodeURIComponent(q)}&sort=${sort}`)).json(); }
+  catch (e) { hint.textContent = "✗ " + e.message; return; }
   if (!r.ok) { hint.textContent = "✗ " + r.error; return; }
-  const asked = r.terms && r.terms.join(" ") !== q.toLowerCase() ? `Искал: ${r.terms.join(", ")}` +
+  VC_HUB_ITEMS = r.items; VC_HUB_SHOWN = 0;
+  const asked = r.terms && r.terms.length && r.terms.join(" ") !== q.toLowerCase() ? `Искал: ${r.terms.join(", ")}` +
     (r.unknown && r.unknown.length ? ` (не понял: ${r.unknown.join(", ")})` : "") + ". " : "";
-  hint.textContent = asked + (r.items.length ? `Найдено: ${r.items.length}. Нажми «Открыть», чтобы выбрать голос`
-                                             : "Ничего не нашлось — попробуй другое слово, лучше по-английски");
-  list.innerHTML = r.items.map((m, i) => `<div><div class="vc-hub-row"><span class="nm" title="${esc(m.id)}">${esc(m.id)}</span>
+  hint.textContent = asked + (r.items.length ? (r.browse ? `В каталоге: ${r.items.length}. ` : `Найдено: ${r.items.length}. `) +
+    "«Открыть» — выбрать голос" : "Ничего не нашлось — попробуй другое слово, лучше по-английски");
+  vcHubMore();
+}
+
+function vcHubMore() {
+  const list = vcEl("vcHubList");
+  const part = VC_HUB_ITEMS.slice(VC_HUB_SHOWN, VC_HUB_SHOWN + VC_HUB_PAGE);
+  list.insertAdjacentHTML("beforeend", part.map((m, k) => {
+    const i = VC_HUB_SHOWN + k;
+    const [owner, name] = m.id.split("/");
+    return `<div><div class="vc-hub-row"><span class="nm" title="${esc(m.id)}">${esc(name)} <span class="st">· ${esc(owner)}</span></span>
       <span class="st">⬇ ${m.downloads} · ♥ ${m.likes}</span>
       <button class="small" onclick="vcHubOpen(${i}, ${JSON.stringify(m.id).replace(/"/g, "&quot;")})">Открыть</button></div>
-      <div class="vc-hub-files" id="vcHubF${i}"></div></div>`).join("");
+      <div class="vc-hub-files" id="vcHubF${i}"></div></div>`;
+  }).join(""));
+  VC_HUB_SHOWN += part.length;
+  vcEl("vcHubMore").classList.toggle("hidden", VC_HUB_SHOWN >= VC_HUB_ITEMS.length);
+  vcEl("vcHubMore").textContent = `Показать ещё (${VC_HUB_ITEMS.length - VC_HUB_SHOWN})`;
 }
 
 let VC_HUB = {};

@@ -700,6 +700,10 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     r = api.get("/api/vc/hub/search?q=" + urllib.request.quote("абракадабра"))
     check("непонятное русское слово — просьба написать по-английски", r.get("ok") is False and "по-английски" in r.get("error", ""),
           str(r))
+    r = api.get("/api/vc/hub/search?q=&sort=downloads")
+    check("каталог без запроса — сразу все голоса, популярные сверху",
+          r.get("ok") and r.get("browse") and [m["id"] for m in r.get("items", [])] == ["tester/robot-rvc", "tester/pack-rvc"],
+          str(r)[:200])
     r = api.get("/api/vc/hub/search?q=x")
     check("слишком короткий запрос — подсказка", r.get("ok") is False and "впиши" in r.get("error", ""), str(r))
     f = api.get("/api/vc/hub/files?repo=tester/robot-rvc")

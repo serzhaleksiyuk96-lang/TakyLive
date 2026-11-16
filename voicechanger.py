@@ -561,16 +561,19 @@ class VoiceChanger:
                     raise RuntimeError(f"Hugging Face ответил {r.status}")
                 return await r.json(content_type=None)
 
-    async def hub_search(self, q):
-        """Ищет модели RVC на Hugging Face (по тегу rvc, самые скачиваемые сверху)."""
+    async def hub_search(self, q, sort="downloads"):
+        """Каталог моделей RVC на Hugging Face: без запроса — все подряд (как на сайте), с запросом — поиск."""
         q = str(q or "").strip()[:60]
+        sort = sort if sort in ("downloads", "likes", "lastModified") else "downloads"
+        if not q:
+            return await self.hub_browse(sort)
         if len(q) < 2:
             raise RuntimeError("впиши, какой голос ищешь")
         terms, unknown = hub_terms(q)
         if not terms:
             raise RuntimeError("не понял «" + " ".join(unknown or [q]) + "» — напиши по-английски, например robot, "
                                "demon, girl, deep")
-        base = {"sort": "downloads", "direction": "-1", "limit": "40"}
+        base = {"sort": sort, "direction": "-1", "limit": "100"}
         found = {}
 
         def add(items):
@@ -587,8 +590,26 @@ class VoiceChanger:
                 raw = await self._hf_json("/api/models", dict(base, search=t, limit="80"))
                 add([m for m in raw if "rvc" in str(m.get("id", "")).lower()
                      or any("rvc" in str(x).lower() for x in m.get("tags") or [])])
-        items = sorted(found.values(), key=lambda m: -m["downloads"])[:40]
-        return {"items": items, "terms": terms, "unknown": unknown}
+        items = list(found.values())
+        if sort != "lastModified":
+            items.sort(key=lambda m: -m[sort])
+        return {"items": items[:300], "terms": terms, "unknown": unknown}
+
+    async def hub_browse(self, sort):
+        """Весь каталог RVC-моделей (до 1000 самых популярных / новых), кэш на 10 минут."""
+        cache = getattr(self, "_browse_cache", {})
+        hit = cache.get(sort)
+        if hit and time.time() - hit[0] < 600:
+            return {"items": hit[1], "terms": [], "unknown": [], "browse": True}
+        raw = await self._hf_json("/api/models", {"filter": "rvc", "sort": sort, "direction": "-1", "limit": "1000"})
+        items = []
+        for m in raw:
+            rid = str(m.get("id") or m.get("modelId") or "")
+            if REPO_RE.match(rid):
+                items.append({"id": rid, "downloads": int(m.get("downloads") or 0), "likes": int(m.get("likes") or 0)})
+        cache[sort] = (time.time(), items)
+        self._browse_cache = cache
+        return {"items": items, "terms": [], "unknown": [], "browse": True}
 
     @staticmethod
     def _is_voice_file(name):
