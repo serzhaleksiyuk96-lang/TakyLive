@@ -427,6 +427,21 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     got = wait_until(lambda: [e for e in api.log()[n0:] if e["kind"] == "ИИ" and "спасибо" in e["text"]], 10)
     check("большой подарок → благодарность, без <think> и звёздочек",
           bool(got) and "<think>" not in got[0]["text"] and "**" not in got[0]["text"], str(got)[:200])
+    # подарок ловится по названию: TikTok сменил ID розы — карточка «роза» всё равно срабатывает,
+    # а чужой подарок со старым ID розы её не трогает
+    time.sleep(1.5)
+    n1 = len(MOCK_LOG)
+    api.sim(kind="gift", name="Rose", gift_id="99999", count=1, user="newid", diamonds=50)
+    ok = wait_until(lambda: len(MOCK_LOG) > n1, 10)
+    check("подарок с новым ID находит карточку по названию",
+          bool(ok) and "«роза»" in MOCK_LOG[-1]["messages"][-1]["content"].split("Сейчас:")[-1])
+    time.sleep(1.5)
+    n1 = len(MOCK_LOG)
+    api.sim(kind="gift", name="Lion", gift_id="5655", count=1, user="oldid", diamonds=50)
+    ok = wait_until(lambda: len(MOCK_LOG) > n1, 10)
+    check("чужой подарок со старым ID розы карточку «роза» не запускает",
+          bool(ok) and "«роза»" not in MOCK_LOG[-1]["messages"][-1]["content"].split("Сейчас:")[-1])
+    time.sleep(1.5)
     n1 = len(MOCK_LOG)
     api.sim(kind="gift", name="Rose", gift_id="5655", count=1, user="small", diamonds=1)
     time.sleep(1.5)

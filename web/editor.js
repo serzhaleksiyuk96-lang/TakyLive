@@ -393,7 +393,7 @@ function buildCard(action, idx) {
       <button class="small lib-pick-btn" onclick="openGiftLib(${idx})">📚 Выбрать</button>
       <div class="cg-row">
         <input class="mono" placeholder="ID" value="${esc(action.gift_id||"")}"
-               oninput="upd(${idx},'gift_id',this.value)" title="ID подарка (необязательно)">
+               oninput="upd(${idx},'gift_id',this.value)" title="ID подарка — необязательно. Подарок ловится по названию; ID нужен, только если у карточки своё название, которого нет в списке подарков">
         <label class="cg-mult" title="Сколько раз выполнить за один подарок">⚡
           <input class="mono" type="number" min="1" max="100" value="${action.multiplier||1}"
                  oninput="upd(${idx},'multiplier',parseInt(this.value)||1)"></label>
@@ -2295,7 +2295,7 @@ function addSeenGift(name, id) {
   // Переключаемся на вкладку событий, секцию подарков, добавляем карточку
   switchView("events");
   switchSection("gifts");
-  const a = { name: name, gift_id: id, commands: [""], delays: [0], random: false, repeat_by_count: false };
+  const a = { name: name, gift_id: "", commands: [""], delays: [0], random: false, repeat_by_count: false };  // по названию — ID TikTok может поменять
   curList().push(a);
   renderCards();
   alert(`Подарок «${name}» добавлен! Впиши команду и сохрани.`);
@@ -3306,9 +3306,9 @@ function pickGift(gi) {
   activeSection = libSection;
   const a = curList()[libTarget];
   a.name = g.name;
-  // ID одинаковый на любом языке — TikTok может прислать название по-английски или по-русски.
-  // Старый ID обязательно сбрасываем, иначе карточка продолжит ловить прошлый подарок.
-  a.gift_id = g.id || GIFT_IDS[g.name.toLowerCase()] || "";
+  // Подарок ловится по названию: TikTok может поменять ID, а название остаётся.
+  // Старый ID сбрасываем, чтобы карточка не держалась за прошлый подарок.
+  a.gift_id = "";
   closeGiftLib();
   renderCards();
 }

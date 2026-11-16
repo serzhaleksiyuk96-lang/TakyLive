@@ -1393,28 +1393,45 @@ def _is_enabled(action):
 
 
 def find_gift_action(gift_name, gift_id):
-    """Ищет настроенный подарок по имени или ID.
+    """Ищет настроенный подарок по НАЗВАНИЮ — TikTok может поменять ID подарка, а название остаётся.
 
-    Сначала пытаемся точно сопоставить по ID (если он задан),
-    затем по имени. Пустые ID НЕ считаются совпадением.
+    1) По названию: как прислал TikTok (по-английски) или по-русски — как видно в приложении
+       (русское имя берём по ID из этого же события: словарь обновляется при каждом подключении).
+    2) По ID — только запасной вариант для карточек со своим названием, которого нет в списках
+       подарков. У карточки с обычным названием старый ID никогда не перехватит чужой подарок.
     """
     prof = active_profile()
-    gid = str(gift_id).strip()
-    # 1) Точное совпадение по ID (только непустые)
-    if gid:
-        for g in prof.get("gifts", []):
-            cfg_id = str(g.get("gift_id", "")).strip()
-            if cfg_id and cfg_id == gid:
-                return g
-    # 2) По названию: как прислал TikTok (по-английски) или по-русски — как видно в приложении
-    names = {norm_gift(gift_name)} - {""}
+    gifts = prof.get("gifts", [])
+    gid = str(gift_id or "").strip()
+    names = {norm_gift(gift_name)}
     if gid and STATE.gift_names_ru.get(gid):
         names.add(norm_gift(STATE.gift_names_ru[gid]))
+    names.discard("")
     if names:
-        for g in prof.get("gifts", []):
+        for g in gifts:
             if norm_gift(g.get("name", "")) in names:
                 return g
+    if gid:
+        known = None
+        for g in gifts:
+            if str(g.get("gift_id", "")).strip() != gid:
+                continue
+            if known is None:
+                known = known_gift_names()
+            if norm_gift(g.get("name", "")) not in known:
+                return g
     return None
+
+
+def known_gift_names():
+    """Все известные названия подарков (англ. и рус.) — из библиотеки, каталога и словаря."""
+    out = {norm_gift(n) for n in GIFT_IDS}
+    out |= {norm_gift(n) for n in STATE.gift_names_ru.values()}
+    cat = getattr(STATE, "gift_catalog", None)
+    if cat is not None:
+        out |= {norm_gift(g.get("name", "")) for g in cat.data["gifts"].values()}
+    out.discard("")
+    return out
 
 
 # ── Обработчики событий TikTok ───────────────────────────────────────────────
