@@ -12,7 +12,13 @@
   .ava { width: 74px; height: 74px; border-radius: 50%; flex: none; display: grid; place-items: center; font-size: 38px;
          background: radial-gradient(circle at 35% 30%, #2a3150, #0b0e18); position: relative;
          box-shadow: 0 0 0 3px #0b0e18, 0 0 0 6px #818cf8, 0 0 26px rgba(34,211,238,.6); }
+  .ava img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
   .talking .ava { animation: talk .35s ease-in-out infinite alternate; }
+  /* «как есть»: персонаж без кружка, крупнее, подпрыгивает, пока говорит */
+  .ava.free { width: 150px; height: 150px; border-radius: 0; background: none; box-shadow: none; }
+  .ava.free img { border-radius: 0; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+  .talking .ava.free { animation: bob .32s ease-in-out infinite alternate; }
+  @keyframes bob { to { transform: translateY(-5px) rotate(-1.5deg); } }
   @keyframes talk { to { box-shadow: 0 0 0 3px #0b0e18, 0 0 0 6px #22d3ee, 0 0 40px rgba(34,211,238,.9); } }
   .bub { position: relative; flex: 1; padding: 14px 20px 16px; border-radius: 20px 20px 20px 6px;
          background: rgba(14,17,28,.86); backdrop-filter: blur(14px); border: 1px solid rgba(255,255,255,.14);
@@ -29,11 +35,26 @@
 </style>
 </head>
 <body>
-<div id="card"><div class="ava">🤖</div><div class="bub"><div class="name" id="name">Таки</div><div class="txt"><span id="txt"></span><span class="cur" id="cur"></span></div></div></div>
+<div id="card"><div class="ava" id="ava">🤖</div><div class="bub"><div class="name" id="name">Таки</div><div class="txt"><span id="txt"></span><span class="cur" id="cur"></span></div></div></div>
 <script>
 const $ = id => document.getElementById(id);
 const DEMO = new URLSearchParams(location.search).has("demo");
-let since = null, queue = [], busy = false;
+let since = null, queue = [], busy = false, avaKey = "";
+
+function setAvatar(ai) {                                   // своя картинка соведущего из настроек
+  if (!ai) return;
+  const key = (ai.avatar || "") + "|" + (ai.shape || "");
+  if (key === avaKey) return;
+  avaKey = key;
+  const box = $("ava");
+  box.className = "ava" + (ai.avatar && ai.shape === "free" ? " free" : "");
+  if (ai.avatar) {
+    const img = new Image();
+    img.onerror = () => { box.textContent = "🤖"; box.className = "ava"; };
+    img.src = ai.avatar;
+    box.textContent = ""; box.appendChild(img);
+  } else box.textContent = "🤖";
+}
 
 async function show(ev) {
   busy = true;
@@ -56,6 +77,7 @@ async function show(ev) {
 async function poll() {
   try {
     const d = await (await fetch("/api/overlay?since=" + (since ?? 0), {cache: "no-store"})).json();
+    setAvatar(d.ai);
     if (since === null) { since = d.seq; return; }        // старое при загрузке не показываем
     since = d.seq;
     for (const e of d.new_events) if (e.type === "ai") queue.push(e);
@@ -63,7 +85,11 @@ async function poll() {
     if (!busy && queue.length) show(queue.shift());
   } catch (e) {}
 }
-if (DEMO) show({user: "Таки", text: "Аня, спасибо за розу! Лови зомби — надеюсь, стример успеет убежать 😄"});
+if (DEMO) {
+  const demo = name => show({user: name || "Таки", text: "Аня, спасибо за розу! Лови зомби — надеюсь, стример успеет убежать 😄"});
+  fetch("/api/overlay?since=0", {cache: "no-store"}).then(r => r.json())
+    .then(d => { setAvatar(d.ai); demo(d.ai && d.ai.name); }).catch(() => demo());
+}
 else { poll(); setInterval(poll, 700); }
 </script>
 </body>

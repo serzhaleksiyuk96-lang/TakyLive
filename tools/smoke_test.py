@@ -229,6 +229,10 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
         st, _ = api.req(p, raw=True)
         check(f"файл {p} отдаётся", st == 200, f"код {st}")
 
+    cat = api.get("/api/gift_catalog")
+    check("библиотека подарков полная сразу (встроенный список)", len(cat.get("gifts", [])) >= 700,
+          f"подарков: {len(cat.get('gifts', []))}")
+
     print("\n• Защита от чужих сайтов")
     st, _ = api.req("/api/state", headers={"Host": "evil.example.com"}, raw=True)
     check("чужой Host (DNS rebinding) → 403", st == 403, f"код {st}")
@@ -429,6 +433,44 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     check("мелкий подарок (меньше порога) ИИ не зовёт", len(MOCK_LOG) == n1)
     od = api.get("/api/overlay?since=0")
     check("реплики идут в оверлей соведущего", any(e.get("type") == "ai" for e in od.get("new_events", [])))
+
+    # вопросы в чате, Телеграм/Дискорд, болтовня с чатом
+    api.cfg(ai_tg="@taky_tg", ai_dc="discord.gg/takylive", ai_facts="Стримы каждый день в 19:00.",
+            ai_on_questions=True, ai_chatty=0)
+    time.sleep(1)
+    n1 = len(MOCK_LOG)
+    api.sim(kind="chat", user="q1", text="есть тг?")
+    ok = wait_until(lambda: len(MOCK_LOG) > n1, 10)
+    sys_prompt = MOCK_LOG[-1]["messages"][0]["content"] if ok else ""
+    check("вопрос «есть тг?» без обращения → соведущий отвечает", bool(ok))
+    check("ИИ знает Телеграм, Дискорд и факты о стриме",
+          "@taky_tg" in sys_prompt and "discord.gg/takylive" in sys_prompt and "19:00" in sys_prompt, sys_prompt[-300:])
+    time.sleep(1.5)
+    n1 = len(MOCK_LOG)
+    api.sim(kind="chat", user="q2", text="всем привет")
+    api.sim(kind="chat", user="q3", text="!очки")
+    time.sleep(2)
+    check("обычные сообщения и !команды не считаются вопросами", len(MOCK_LOG) == n1, f"{n1} → {len(MOCK_LOG)}")
+    api.cfg(ai_on_questions=False)
+    api.sim(kind="chat", user="q4", text="что за игра?")
+    time.sleep(2)
+    check("«Отвечать на вопросы» выключено — молчит", len(MOCK_LOG) == n1)
+    api.cfg(ai_chatty=10)
+    n1 = len(MOCK_LOG)
+    api.sim(kind="chat", user="chat1", text="я сегодня впервые на стриме")
+    check("«Болтать с чатом» — сам отвечает кому-то из чата",
+          wait_until(lambda: len(MOCK_LOG) > n1 and "впервые" in MOCK_LOG[-1]["messages"][-1]["content"], 15))
+    api.cfg(ai_chatty=0, ai_on_questions=True)
+
+    # своя картинка соведущего
+    od = api.get("/api/overlay?since=0")
+    check("оверлей знает имя соведущего и картинку по умолчанию",
+          od.get("ai", {}).get("name") == "Таки" and od["ai"].get("avatar") == "", str(od.get("ai")))
+    api.cfg(ai_avatar="ai_avatar_test.png", ai_avatar_shape="free")
+    od = api.get("/api/overlay?since=0")
+    check("своя картинка соведущего уходит в оверлей",
+          od["ai"].get("avatar") == "/media/ai_avatar_test.png" and od["ai"].get("shape") == "free", str(od.get("ai")))
+    api.cfg(ai_avatar="", ai_avatar_shape="circle")
     api.cfg(ai_on=False)
     mock.shutdown()
 

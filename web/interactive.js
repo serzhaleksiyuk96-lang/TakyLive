@@ -220,7 +220,10 @@ async function aiOpen() {
   iaChk("ai_on_gift", c.ai_on_gift !== false); iaVal("ai_gift_min", c.ai_gift_min ?? 10);
   iaChk("ai_on_sub", c.ai_on_sub !== false); iaChk("ai_on_follow", c.ai_on_follow);
   iaVal("ai_cooldown", c.ai_cooldown ?? 8); iaVal("ai_user_cd", c.ai_user_cd ?? 30); iaVal("ai_max_chars", c.ai_max_chars ?? 180);
-  aiProviderUI(); aiVoiceBtn();
+  iaChk("ai_on_questions", c.ai_on_questions !== false); iaVal("ai_chatty", c.ai_chatty ?? 0);
+  iaVal("ai_tg", c.ai_tg); iaVal("ai_dc", c.ai_dc); iaVal("ai_facts", c.ai_facts);
+  iaVal("ai_avatar_shape", c.ai_avatar_shape || "circle");
+  aiProviderUI(); aiVoiceBtn(); aiAvatarUI();
 }
 
 function aiProviderUI() {
@@ -250,6 +253,36 @@ function aiPickVoice() {
   openVoicePick({cur: iaC().ai_voice || "", label: "соведущего", allowDefault: true, onPick: v => {
     iaC().ai_voice = v || ""; iaSave(); aiVoiceBtn();
   }});
+}
+
+function aiAvatarUI() {
+  const c = iaC(), box = document.getElementById("aiAvaPrev");
+  if (!box) return;
+  box.className = "ai-ava-prev" + (c.ai_avatar_shape === "free" ? " free" : "");
+  box.innerHTML = c.ai_avatar ? `<img src="/media/${encodeURIComponent(c.ai_avatar)}" alt="">` : "🤖";
+  document.getElementById("aiAvaReset").style.display = c.ai_avatar ? "" : "none";
+}
+
+async function aiAvatarUpload(inp) {
+  const f = inp.files && inp.files[0], hint = document.getElementById("aiAvaHint");
+  inp.value = "";
+  if (!f) return;
+  if (!/^image\//.test(f.type)) { hint.textContent = "✗ это не картинка"; return; }
+  if (f.size > 15 * 1024 * 1024) { hint.textContent = "✗ файл больше 15 МБ"; return; }
+  hint.textContent = "Загружаю…";
+  const fd = new FormData();
+  fd.append("file", f, "ai_avatar_" + f.name);
+  try {
+    const d = await (await fetch("/api/media_upload", {method: "POST", body: fd})).json();
+    if (!d.ok) throw new Error(d.error || "не загрузилось");
+    iaC().ai_avatar = d.name; iaSave(); aiAvatarUI();
+    hint.textContent = "✓ Готово — видно в оверлее «🤖 ИИ-соведущий»";
+  } catch (e) { hint.textContent = "✗ " + e.message; }
+}
+
+function aiAvatarReset() {
+  iaC().ai_avatar = ""; iaSave(); aiAvatarUI();
+  document.getElementById("aiAvaHint").textContent = "Снова робот 🤖";
 }
 
 async function aiTest(btn) {

@@ -6,7 +6,10 @@
 к эфиру (список своего региона) и подарками, пришедшими в эфире.
 """
 import json
+import os
 import time
+
+BASE_FILE = "gift_catalog_base.json"      # встроенный список подарков рядом с программой
 
 # Регионы, где есть TikTok LIVE с подарками (как в каталоге Stream To Earn)
 REGIONS = [
@@ -66,6 +69,25 @@ class GiftCatalog:
                 self.data["regions"].update(d.get("regions") or {})
         except Exception:
             pass
+        self._add_base(os.path.join(os.path.dirname(os.path.abspath(path)), BASE_FILE))
+
+    def _add_base(self, base_path):
+        """Встроенный список подарков (идёт с программой): библиотека полная сразу после установки.
+        Свой каталог стримера важнее — из встроенного берём только то, чего у него нет."""
+        try:
+            with open(base_path, encoding="utf-8") as f:
+                base = json.load(f)
+        except Exception:
+            return
+        gifts = self.data["gifts"]
+        for gid, g in (base.get("gifts") or {}).items():
+            cur = gifts.get(gid)
+            if cur is None:
+                gifts[gid] = dict(g, regions=list(g.get("regions") or ["ALL"]))
+            elif not cur.get("icon") and g.get("icon"):
+                cur["icon"] = g["icon"]
+        for k, v in (base.get("regions") or {}).items():
+            self.data["regions"].setdefault(k, v)
 
     def save(self):
         try:

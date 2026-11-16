@@ -1034,6 +1034,11 @@
   .ia-team .row2 { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
   .ia-team input[type=color] { width: 40px; height: 34px; padding: 2px; flex: none; }
   .ia-team textarea, .ia-sec textarea { width: 100%; font-family: var(--mono, monospace); font-size: 12.5px; }
+  .ai-ava-prev { display: inline-grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; font-size: 22px;
+                 background: var(--panel2); border: 1px solid var(--border); overflow: hidden; vertical-align: middle; }
+  .ai-ava-prev img { width: 100%; height: 100%; object-fit: cover; }
+  .ai-ava-prev.free { border-radius: 8px; background: transparent; }
+  .ai-ava-prev.free img { object-fit: contain; }
   .ia-lbl { color: var(--text-dim); font-size: 12.5px; margin: 6px 0 4px; display: flex; gap: 8px; align-items: center; }
   .ia-lbl select { width: auto; max-width: 220px; padding: 3px 6px; font-size: 12px; }
   .ia-sec { display: grid; grid-template-columns: 14px 170px 74px 1fr 32px; gap: 8px; align-items: start;
@@ -2042,8 +2047,9 @@
         <div class="spacer"></div>
         <button class="small primary" onclick="aiTest(this)">🧪 Проверить</button>
       </div>
-      <div class="hint">Отвечает зрителям, которые к нему обращаются, и благодарит за подарки — своим голосом.
-        Только говорит, команды в игру не запускает. Оверлей «🤖 ИИ-соведущий» — в «📺 Оверлеи OBS».</div>
+      <div class="hint">Разговаривает с чатом: отвечает, когда зовут, отвечает на вопросы, подсказывает Телеграм и Дискорд,
+        благодарит за подарки — своим голосом. Только говорит, команды в игру не запускает.
+        Оверлей «🤖 ИИ-соведущий» — в «📺 Оверлеи OBS».</div>
       <div class="ia-opts">
         <label>Сервис <select id="ai_provider" style="width:auto" onchange="aiProvider(this.value)"></select></label>
         <label>Модель <input id="ai_model" class="ia-txt" oninput="iaSetStr('ai_model', this)"></label>
@@ -2065,6 +2071,27 @@
         <label>от <input type="number" min="1" id="ai_gift_min" class="ia-num" oninput="iaSetNum('ai_gift_min', this, 1)"> монет</label>
         <label class="chk"><input type="checkbox" id="ai_on_sub" onchange="iaSetBool('ai_on_sub', this)"> За подписку ⭐</label>
         <label class="chk"><input type="checkbox" id="ai_on_follow" onchange="iaSetBool('ai_on_follow', this)"> За фоллов</label>
+      </div>
+      <div class="ia-opts">
+        <label class="chk" title="«есть тг?», «что за игра?», «как дела?» — отвечает, даже если его не позвали"><input type="checkbox" id="ai_on_questions" onchange="iaSetBool('ai_on_questions', this)"> Отвечать на вопросы в чате</label>
+        <label title="Сам отвечает кому-нибудь из чата, чтобы поддержать разговор. 0 — выключено">Болтать с чатом: раз в <input type="number" min="0" id="ai_chatty" class="ia-num" oninput="iaSetNum('ai_chatty', this, 0)"> сек</label>
+        <span class="hint">0 — не болтает сам</span>
+      </div>
+      <div class="ia-lbl">Что соведущий знает о стриме — подскажет зрителям, когда спросят</div>
+      <div class="ia-opts">
+        <label>✈ Телеграм <input id="ai_tg" class="ia-txt" style="width:200px" placeholder="@мой_канал или t.me/…" oninput="iaSetStr('ai_tg', this)"></label>
+        <label>🎮 Дискорд <input id="ai_dc" class="ia-txt" style="width:220px" placeholder="название или discord.gg/…" oninput="iaSetStr('ai_dc', this)"></label>
+      </div>
+      <textarea id="ai_facts" rows="2" style="width:100%" placeholder="Например: стримы каждый день в 19:00 по Минску. IP сервера: play.example.ru. Стримера зовут Серж."
+                oninput="iaSetStr('ai_facts', this)"></textarea>
+      <div class="ia-opts">
+        <label>Картинка в оверлее <span id="aiAvaPrev" class="ai-ava-prev">🤖</span></label>
+        <button class="small" onclick="document.getElementById('aiAvaFile').click()">🖼 Своя картинка</button>
+        <button class="small" id="aiAvaReset" onclick="aiAvatarReset()">✕ Робот</button>
+        <input type="file" id="aiAvaFile" accept="image/*" style="display:none" onchange="aiAvatarUpload(this)">
+        <label>Вид <select id="ai_avatar_shape" style="width:auto" onchange="iaSetStr('ai_avatar_shape', this); aiAvatarUI()">
+          <option value="circle">⚪ В кружке</option><option value="free">🧍 Как есть (персонаж без фона)</option></select></label>
+        <span class="hint" id="aiAvaHint">PNG, JPG или GIF (гифка будет двигаться)</span>
       </div>
       <div class="ia-opts">
         <label title="Пауза между репликами, чтобы не болтал без остановки">Не чаще раза в <input type="number" min="2" id="ai_cooldown" class="ia-num" oninput="iaSetNum('ai_cooldown', this, 2)"> сек</label>

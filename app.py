@@ -457,6 +457,7 @@ class State:
         self.tts_queue = []           # очередь озвучки для tts.html
         self.followers = set()        # кто зафолловил/подписался за стрим (lowercase)
         self.connected_at = 0.0       # время подключения к TikTok (для пропуска истории чата)
+        self.tt_report_at = 0.0       # когда последний раз писали «что пришло от TikTok»
         self.follow_count = 0         # фолловов за стрим
         self.sub_count = 0            # подписок за стрим
         self.gifts_count = 0          # подарков за стрим
@@ -2192,6 +2193,49 @@ def handle_comment(user, text, display=None, is_follower=False, acc=None, roles=
                 ctx={"comment": str(text), "uniqueid": str(user)})
 
 
+# ── Что приходит от TikTok (диагностика: «чат пришёл, но не прочитался») ──────
+TT_KINDS = {"WebcastChatMessage": "чат", "WebcastLikeMessage": "лайки", "WebcastGiftMessage": "подарки",
+            "WebcastSocialMessage": "фолловы/репосты", "WebcastMemberMessage": "вход",
+            "WebcastRoomUserSeqMessage": "зрители"}
+TT_RECV, TT_DONE = {}, {}          # пришло от TikTok / разобрали наши обработчики (за текущую минуту)
+TT_TOTAL = {"recv": {}, "done": {}, "since": 0.0, "warned": set()}
+
+
+def tt_seen(kind):
+    TT_DONE[kind] = TT_DONE.get(kind, 0) + 1
+
+
+def tt_report():
+    """Раз в минуту, пока подключены: строка в журнал «что пришло от TikTok»."""
+    recv, done = dict(TT_RECV), dict(TT_DONE)
+    TT_RECV.clear(), TT_DONE.clear()
+    for k, v in recv.items():
+        TT_TOTAL["recv"][k] = TT_TOTAL["recv"].get(k, 0) + v
+    for k, v in done.items():
+        TT_TOTAL["done"][k] = TT_TOTAL["done"].get(k, 0) + v
+    parts = []
+    for kind in ("чат", "лайки", "подарки", "фолловы/репосты", "вход"):
+        r, d = recv.get(kind, 0), done.get(kind, 0)
+        if r or d:
+            parts.append(f"{kind} {r}" + (f" (прочитано {d})" if d != r and kind in ("чат", "лайки", "подарки") else ""))
+    STATE.log("TIKTOK", "📡 За минуту пришло: " + (", ".join(parts) if parts else
+                                                    "ничего, кроме числа зрителей — в чате тихо"))
+    for kind in ("чат", "лайки", "подарки"):        # приходит, но не читается — это ошибка программы
+        if recv.get(kind, 0) >= 3 and not done.get(kind) and kind not in TT_TOTAL["warned"]:
+            TT_TOTAL["warned"].add(kind)
+            STATE.log("ОШИБКА", f"от TikTok приходят события «{kind}», но программа их не читает. "
+                                f"Python {sys.version.split()[0]}, TikTokLive {_tiktoklive_version()} — "
+                                "сообщи разработчику и пришли журнал")
+
+
+def _tiktoklive_version():
+    try:
+        from importlib.metadata import version as _v
+        return _v("TikTokLive")
+    except Exception:
+        return "?"
+
+
 # ── Подключение к TikTok (в отдельном потоке) ────────────────────────────────
 def tiktok_worker():
     username = STATE.config.get("tiktok_username", "").strip().lstrip("@")
@@ -2206,12 +2250,27 @@ def tiktok_worker():
 
     client = TikTokLiveClient(unique_id=f"@{username}")
     STATE.tiktok_client = client
+    TT_RECV.clear(), TT_DONE.clear()
+    TT_TOTAL.update(recv={}, done={}, since=time.time(), warned=set())
+    _parse_one = getattr(client, "_parse_webcast_response_message", None)
+    if _parse_one is not None:                                 # считаем всё, что прислал TikTok
+        async def _counted(*a, **kw):
+            msg = kw.get("webcast_response_message", a[1] if len(a) > 1 else None)
+            kind = TT_KINDS.get(str(getattr(msg, "method", "")))
+            if kind:
+                TT_RECV[kind] = TT_RECV.get(kind, 0) + 1
+            return await _parse_one(*a, **kw)
+        try:
+            client._parse_webcast_response_message = _counted
+        except Exception:
+            pass
 
     @client.on(ConnectEvent)
     async def on_connect(event):
         STATE.connected = True
         STATE.connected_at = time.time()
-        STATE.log("СИСТЕМА", f"✅ Подключено к @{username}")
+        STATE.log("СИСТЕМА", f"✅ Подключено к @{username} (Python {sys.version.split()[0]}, "
+                             f"TikTokLive {_tiktoklive_version()})")
         asyncio.ensure_future(fetch_ru_gift_names(client))     # русские названия — в фоне
         asyncio.ensure_future(fetch_room_gift_catalog(client))  # все подарки региона — в каталог
         if STATE.stats.on_connect(username) and STATE.config.get("ann_start_on", True):
@@ -2256,6 +2315,7 @@ def tiktok_worker():
     async def on_gift(event):
         if STATE.stop_requested:
             return
+        tt_seen("подарки")
         try:
             # Стрик-подарки (type 1): реагируем только в конце серии
             g = event.gift
@@ -2300,6 +2360,7 @@ def tiktok_worker():
     async def on_like(event):
         if STATE.stop_requested:
             return
+        tt_seen("лайки")
         try:
             uid, display = _names(event)
             # Сколько лайков пришло в ЭТОМ событии (TikTok шлёт пачками)
@@ -2318,6 +2379,7 @@ def tiktok_worker():
         async def on_comment(event):
             if STATE.stop_requested:
                 return
+            tt_seen("чат")
             try:
                 uid, display = _names(event)
                 text = getattr(event, "comment", "") or ""
@@ -2613,11 +2675,43 @@ def ai_chat(uid, display, text):
     text = str(text or "").strip()
     if not text:
         return
+    import cohost
     STATE.cohost.note(f"{display}: {text[:140]}")
     cfg = STATE.config
-    if cfg.get("ai_on") and cfg.get("ai_on_mention", True) and ai_mentioned(text):
+    if not cfg.get("ai_on") or (STATE.connected and time.time() - STATE.connected_at < 3):
+        return                                                   # история чата при подключении — не отвечаем
+    if cfg.get("ai_on_mention", True) and ai_mentioned(text):
         if STATE.cohost.push(cfg, "mention", display, f"Зритель {display} пишет тебе в чате: «{text[:300]}»", key=uid):
             STATE.log("ИИ", f"{display} обратился к соведущему")
+        return
+    if text.startswith("!"):
+        return                                                   # команды чата — не разговор
+    if cfg.get("ai_on_questions", True) and cohost.is_question(text):
+        if STATE.cohost.push(cfg, "question", display, f"Зритель {display} спрашивает в чате: «{text[:300]}». "
+                             "Ответь, если знаешь; если вопрос к стримеру — коротко поддержи.", key=uid):
+            STATE.log("ИИ", f"Соведущий отвечает на вопрос {display}")
+        return
+    STATE.cohost.candidate = (display, uid, text[:300], time.time())   # для «болтать с чатом»
+
+
+def ai_tick():
+    """Раз в секунду: режим «болтать с чатом» — сам отвечает кому-то из чата раз в N секунд."""
+    cfg = STATE.config
+    try:
+        every = int(cfg.get("ai_chatty") or 0)
+    except (TypeError, ValueError):
+        every = 0
+    co = STATE.cohost
+    if not cfg.get("ai_on") or every <= 0:
+        co.chatty_at = time.time()
+        return
+    c = co.candidate
+    if time.time() - co.chatty_at < max(10, every) or not c or time.time() - c[3] > 25:
+        return
+    if co.push(cfg, "chat", c[0], f"Зритель {c[0]} пишет в чате: «{c[2]}». Поддержи разговор — "
+               "ответь ему коротко и по-дружески.", key=c[1]):
+        co.chatty_at = time.time()
+        co.candidate = None
 
 
 def ai_gift(user, gift_name, gift_id, count, diamonds):
@@ -3013,6 +3107,9 @@ async def h_overlay_data(request):
         "top_likes": top_likes_list,
         "top_points": STATE.points.top(10),
         "points_name": STATE.config.get("pts_name") or "очки",
+        "ai": {"name": STATE.config.get("ai_name") or "Соведущий",
+               "avatar": ("/media/" + str(STATE.config.get("ai_avatar"))) if STATE.config.get("ai_avatar") else "",
+               "shape": STATE.config.get("ai_avatar_shape") or "circle"},
         "total_likes": STATE.total_likes,
         "connected": STATE.connected,
         "goals": [
@@ -3523,7 +3620,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.69"
+APP_VERSION = "1.70"
 APP_DATE = "2026-11-16"
 
 
@@ -4288,8 +4385,14 @@ def make_app():
                             await run_chain({"commands": [cmd], "delays": [0]},
                                             count=1,
                                             user=STATE.config.get("minecraft_nick", ""))
+                    if STATE.connected and time.time() - STATE.tt_report_at >= 60:
+                        STATE.tt_report_at = time.time()
+                        tt_report()                       # что пришло от TikTok за минуту
+                    elif not STATE.connected:
+                        STATE.tt_report_at = time.time()
                     STATE.stats.tick()                    # связи нет 5 минут — эфир окончен, итоги
                     ia_tick()                             # битва команд, колесо, очки за активность
+                    ai_tick()                             # соведущий болтает с чатом
                     # Случайные события
                     if (STATE.config.get("random_enabled") and STATE.connected):
                         try:
