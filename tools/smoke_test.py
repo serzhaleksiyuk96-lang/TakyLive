@@ -32,6 +32,7 @@ import tempfile
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 for _s in (sys.stdout, sys.stderr):
@@ -111,6 +112,28 @@ class Api:
 
     def sim(self, **kw):
         return self.post("/api/simulate", kw)
+
+    def _raw(self, path, headers=None):
+        req = urllib.request.Request(self.base + path, headers=dict({"Host": "127.0.0.1"}, **(headers or {})))
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, *a, **k):
+                return None
+        try:
+            r = urllib.request.build_opener(NoRedirect).open(req, timeout=15)
+            return r.status, r.headers, r.read().decode("utf-8", "replace")
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers, e.read().decode("utf-8", "replace")
+
+    def get_raw(self, path, headers=None):
+        return self._raw(path, headers)[2]
+
+    def redirect_of(self, path):
+        code, h, _ = self._raw(path)
+        return h.get("Location", "") if code in (301, 302, 303, 307) else ""
+
+    def status_of(self, path):
+        return self._raw(path)[0]
 
     def cfg(self, **kw):
         return self.post("/api/config", kw)
@@ -371,6 +394,116 @@ class MockHF(http.server.BaseHTTPRequestHandler):
         self._send({"error": "not found"}, 404)
 
 
+# ── поддельные YouTube Data API, Spotify и Яндекс Музыка (заказ музыки) ─────
+MUSIC = {"log": [], "sp_queue": [], "sp_playing": "", "sp_tokens": 0, "port": 0}
+YT_VIDEOS = {   # q → [(id, название, канал, длительность)]
+    "кино": [("yt_long", "Кино — Группа крови (концерт)", "Kino", "PT14M2S"), ("yt_kino", "Группа крови", "Кино - Topic", "PT4M47S"),
+             ("yt_kino2", "Группа крови (клип)", "Kino", "PT4M50S")],
+    "ария": [("yt_aria", "Беспечный ангел", "Ария - Topic", "PT5M1S")],
+    "шансон": [("yt_bad", "Плохая песня", "кто-то", "PT3M")],
+}
+
+
+class MockMusic(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def _send(self, obj, code=200, ct="application/json"):
+        b = obj if isinstance(obj, bytes) else json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ct)
+        self.send_header("Content-Length", str(len(b)))
+        self.end_headers()
+        self.wfile.write(b)
+
+    def _req(self, method):
+        u = urllib.parse.urlparse(self.path)
+        q = {k: v[0] for k, v in urllib.parse.parse_qs(u.query).items()}
+        n = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(n).decode() if n else ""
+        form = {k: v[0] for k, v in urllib.parse.parse_qs(body).items()}
+        MUSIC["log"].append((method, u.path, q, form))
+        p = u.path
+        # YouTube Data API
+        if p == "/yt/search":
+            if q.get("key") != "ytkey":
+                return self._send({"error": {"message": "API key not valid"}}, 400)
+            word = q.get("q", "").split()[0].lower() if q.get("q") else ""
+            return self._send({"items": [{"id": {"videoId": v[0]}, "snippet": {"title": v[1], "channelTitle": v[2]}}
+                                         for v in YT_VIDEOS.get(word, [])]})
+        if p == "/yt/videos":
+            ids = q.get("id", "").split(",")
+            all_v = {v[0]: v for vs in YT_VIDEOS.values() for v in vs}
+            return self._send({"items": [{"id": i, "contentDetails": {"duration": all_v[i][3]}} for i in ids if i in all_v]})
+        # Spotify: вход
+        if p == "/spacc/api/token":
+            if form.get("grant_type") == "authorization_code":
+                ok = form.get("code") == "goodcode" and form.get("code_verifier") and form.get("client_id") == "cid123"
+                if not ok:
+                    return self._send({"error": "invalid_grant", "error_description": "bad code"}, 400)
+            elif form.get("refresh_token") != "R1":
+                return self._send({"error": "invalid_grant"}, 400)
+            MUSIC["sp_tokens"] += 1
+            return self._send({"access_token": "A%d" % MUSIC["sp_tokens"], "expires_in": 3600, "refresh_token": "R1"})
+        # Spotify: API
+        if p.startswith("/sp/"):
+            if not str(self.headers.get("Authorization", "")).startswith("Bearer A"):
+                return self._send({"error": {"status": 401, "message": "Invalid access token"}}, 401)
+            if p == "/sp/search":
+                if "премиум" in q.get("q", ""):
+                    return self._send({"tracks": {"items": [{"uri": "spotify:track:prem", "name": "Премиум", "duration_ms": 1000,
+                                                             "artists": [{"name": "X"}]}]}})
+                return self._send({"tracks": {"items": [{"uri": "spotify:track:t1", "name": "Беспечный ангел", "duration_ms": 301000,
+                                                         "artists": [{"name": "Ария"}]}]}})
+            if p == "/sp/me/player/queue" and method == "POST":
+                if q.get("uri") == "spotify:track:prem":
+                    return self._send({"error": {"status": 403, "message": "Player command failed: Premium required",
+                                                 "reason": "PREMIUM_REQUIRED"}}, 403)
+                MUSIC["sp_queue"].append(q.get("uri"))
+                return self._send(b"", 204)
+            if p == "/sp/me/player/currently-playing":
+                if not MUSIC["sp_playing"]:
+                    return self._send(b"", 204)
+                return self._send({"is_playing": True, "progress_ms": 5000, "item": {"uri": MUSIC["sp_playing"]}})
+            if p in ("/sp/me/player/next", "/sp/me/player/pause", "/sp/me/player/play"):
+                return self._send(b"", 204)
+        # Яндекс Музыка (как отвечает её API для библиотеки yandex-music)
+        if p == "/ya/account/status":
+            if self.headers.get("Authorization") != "OAuth yatok":
+                return self._send({"error": {"name": "session-expired", "message": "Unauthorized"}}, 401)
+            return self._send({"result": {"account": {"uid": 1, "login": "x", "now": "2026-11-17T00:00:00+00:00"},
+                                          "permissions": {"until": "", "values": [], "default": []}}})
+        if p == "/ya/search":
+            return self._send({"result": {"text": q.get("text", ""), "type": "track", "page": 0, "perPage": 10,
+                                          "tracks": {"type": "track", "total": 1, "perPage": 10, "order": 0, "results": [
+                                              {"id": "777", "title": "Кукла колдуна", "durationMs": 200000, "available": True,
+                                               "artists": [{"id": 1, "name": "Король и Шут"}], "albums": []}]}}})
+        if p == "/ya/tracks/777/download-info":
+            return self._send({"result": [{"codec": "mp3", "bitrateInKbps": 192, "gain": False, "preview": False,
+                                           "downloadInfoUrl": "http://127.0.0.1:%d/ya/xml" % MUSIC["port"], "direct": False}]})
+        if p == "/ya/xml":
+            return self._send(b"<?xml version='1.0' encoding='utf-8'?><download-info><host>s1.example.net</host>"
+                              b"<path>/music/abc.mp3</path><ts>0005</ts><region>-1</region><s>sss</s></download-info>",
+                              ct="text/xml")
+        return self._send({"error": "not found"}, 404)
+
+    def do_GET(self):
+        self._req("GET")
+
+    def do_POST(self):
+        self._req("POST")
+
+    def do_PUT(self):
+        self._req("PUT")
+
+
+def start_mock_music():
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockMusic)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    MUSIC["port"] = srv.server_address[1]
+    return srv
+
+
 def start_mock_hf():
     global MOCK_HF_PORT
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockHF)
@@ -406,7 +539,8 @@ def make_copy(dst, remote_port):
         "chatcmds": [{"trigger": "!крипер", "title": "Крипер", "cooldown": 0, "points_cost": 30,
                       "commands": ["say creeper"]},
                      {"trigger": "!демон", "title": "Голос демона", "cooldown": 0,
-                      "commands": ["voice:Демон:3"]}],
+                      "commands": ["voice:Демон:3"]},
+                     {"trigger": "!скип", "title": "Пропуск трека", "cooldown": 0, "commands": ["music:skip"]}],
     }}
     config = {
         "active_profile": "Тест", "tiktok_username": "smoke_nick",
@@ -1157,9 +1291,126 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     api.post("/api/disconnect")
     api.cfg(tiktok_username="smoke_nick")
 
+    print("\n• 🎵 Заказ музыки")
+    time.sleep(3.5)                       # первые 3 с после подключения к TikTok сообщения считаются историей чата
+    mu = lambda: api.get("/api/music")
+    ov = lambda: api.get("/api/music?ov=1")
+    st0 = api.get("/api/state")["config"]
+    check("заказ музыки по умолчанию выключен, источник — YouTube Music, команда !трек",
+          st0.get("music_on") is False and st0.get("music_source") == "youtube" and st0.get("music_cmd") == "!трек")
+    api.sim(kind="chat", user="dj1", text="!трек кино группа крови")
+    time.sleep(1)
+    check("выключено — «!трек» ничего не делает", not mu()["queue"] and not mu()["current"])
+    api.cfg(music_on=True, music_yt_key="ytkey", music_user_cd=60, music_cost=0, music_gift="", pts_on=False)
+    api.sim(kind="chat", user="dj1", text="!трек кино группа крови")
+    got = wait_until(lambda: mu()["current"] or mu()["queue"], 5)
+    m = mu()
+    first = (m["current"] or m["queue"][0]) if got else {}
+    check("«!трек кино…» — YouTube: длинный концерт отброшен, в эфир идёт песня (не длиннее 6 мин)",
+          bool(got) and first.get("title") == "Группа крови" and first.get("artist") == "Кино" and first.get("user") == "dj1",
+          str(m)[:300])
+    o = wait_until(lambda: (ov().get("current") or {}).get("tid"), 4) and ov()
+    check("оверлей получает ID ролика YouTube для плеера", o and o["current"]["kind"] == "youtube"
+          and o["current"]["tid"] == "yt_kino", str(o)[:200])
+    api.sim(kind="chat", user="dj1", text="!трек ария беспечный ангел")
+    check("тот же зритель второй раз сразу — «следующий заказ через …»",
+          wait_until(lambda: api.log_has("МУЗЫКА", r"dj1: следующий заказ — через \d+ с"), 4) and not mu()["queue"])
+    api.sim(kind="chat", user="dj2", text="!трек ария беспечный ангел")
+    check("другой зритель — второй трек в очереди", wait_until(lambda: len(mu()["queue"]) == 1, 4) and
+          mu()["queue"][0]["title"] == "Беспечный ангел", str(mu()["queue"]))
+    api.sim(kind="chat", user="dj3", text="!трек кино группа крови")
+    check("трек, который уже играет или в очереди, второй раз не ставится",
+          wait_until(lambda: api.log_has("МУЗЫКА", "dj3: «Группа крови» уже в очереди"), 4))
+    seq = ov()["current"]["seq"]
+    api.post("/api/music/event", {"seq": seq, "kind": "error", "detail": "владелец запретил встраивание"})
+    o2 = ov()["current"]
+    check("ролик нельзя встроить — тот же трек в другом ролике", o2["tid"] == "yt_kino2" and o2["seq"] != seq
+          and api.log_has("МУЗЫКА", "пробую другой вариант"), str(o2))
+    api.post("/api/music/event", {"seq": seq, "kind": "ended"})
+    check("событие от старого ролика не сбивает текущий", ov()["current"]["tid"] == "yt_kino2")
+    api.post("/api/music/event", {"seq": o2["seq"], "kind": "playing"})
+    api.post("/api/music/event", {"seq": o2["seq"], "kind": "ended"})
+    check("доиграл — следующий из очереди", wait_until(lambda: (ov().get("current") or {}).get("tid") == "yt_aria", 4),
+          str(ov())[:200])
+    api.sim(kind="chat", user="viewerX", text="!скип")
+    check("карточка с командой music:skip пропускает трек",
+          wait_until(lambda: api.log_has("МУЗЫКА", "Пропущен: Беспечный ангел"), 4) and not mu()["current"])
+    api.cfg(music_block="плохая")
+    r = api.post("/api/music/request", {"query": "шансон"})
+    check("стоп-слова: трек не ставится", r.get("ok") is False and "стоп" in r.get("message", ""), str(r))
+    r = api.post("/api/music/request", {"query": "нечто несуществующее"})
+    check("ничего не нашлось — понятный ответ", r.get("ok") is False and "не нашёл" in r.get("message", ""), str(r))
+
+    # оплата: подарок или очки
+    api.cfg(music_gift="Rose", music_user_cd=0, pts_on=True, music_cost=40)
+    api.sim(kind="chat", user="payer", text="!трек ария")
+    check("без подарка и без очков — «стоит 40 💎… или подари Rose»",
+          wait_until(lambda: api.log_has("МУЗЫКА", "payer: заказ трека стоит 40 💎, у тебя 0 — или подари «Rose»"), 4))
+    api.sim(kind="gift", name="Rose", gift_id="5655", count=2, user="payer", diamonds=1)
+    check("подарок Rose ×2 — два заказа", wait_until(lambda: api.log_has("МУЗЫКА", r"payer может заказать трек \(2\)"), 4))
+    api.sim(kind="chat", user="payer", text="!трек ария")
+    check("заказ за подарок", wait_until(lambda: api.log_has("МУЗЫКА", "payer заказал\\(а\\): Ария — Беспечный ангел"), 4))
+    api.post("/api/music/control", {"do": "clear"})
+    api.post("/api/music/control", {"do": "skip"})
+    api.post("/api/points/set", {"key": "viewer1", "amount": 100})       # viewer1 уже есть в таблице очков
+    api.sim(kind="chat", user="viewer1", text="!трек ария")
+    check("заказ за очки — очки списываются", wait_until(lambda: api.balance("viewer1") == 60, 4),
+          str(api.balance("viewer1")) + " " + str([e["text"] for e in api.log() if e["kind"] in ("МУЗЫКА", "ОЧКИ")][-4:]))
+    r = api.post("/api/music/control", {"do": "remove", "n": mu()["queue"][-1]["n"] if mu()["queue"] else -1})
+    api.post("/api/music/control", {"do": "skip"})
+    api.cfg(music_gift="", music_cost=0, pts_on=False, music_block="")
+
+    # Spotify
+    api.cfg(music_source="spotify")
+    r = api.post("/api/music/spotify/login", {"client": "cid123"})
+    qs = urllib.parse.parse_qs(urllib.parse.urlparse(r.get("url", "")).query)
+    check("Spotify: ссылка входа — официальный вход с PKCE и адресом возврата 127.0.0.1",
+          r.get("ok") and qs.get("code_challenge_method") == ["S256"] and qs.get("client_id") == ["cid123"]
+          and qs.get("redirect_uri", [""])[0].startswith("http://127.0.0.1:") and "user-modify-playback-state" in qs.get("scope", [""])[0],
+          str(r)[:200])
+    bad = api.get_raw(f"/api/music/spotify/callback?code=goodcode&state=wrong", headers={"Sec-Fetch-Site": "cross-site"})
+    good = api.get_raw(f"/api/music/spotify/callback?code=goodcode&state={qs.get('state', [''])[0]}",
+                       headers={"Sec-Fetch-Site": "cross-site"})
+    check("возврат из Spotify: чужой state отклонён, свой — «Spotify подключён»",
+          "устарел" in bad and "Spotify подключён" in good and mu().get("sp_linked"), good[-200:])
+    api.cfg(music_sp_refresh="")                                  # окно со старой копией настроек не стирает вход
+    check("общее сохранение настроек не стирает вход в Spotify", api.get("/api/music").get("sp_linked") is True)
+    api.sim(kind="chat", user="sp1", text="!трек ария беспечный ангел")
+    check("Spotify: трек встал в очередь Spotify", wait_until(lambda: MUSIC["sp_queue"] == ["spotify:track:t1"], 5), str(MUSIC["sp_queue"]))
+    MUSIC["sp_playing"] = "spotify:track:t1"
+    check("Spotify заиграл заказ — в оверлее «сейчас играет» и кто заказал",
+          wait_until(lambda: (ov().get("current") or {}).get("title") == "Беспечный ангел", 8)
+          and ov()["current"]["kind"] == "external" and ov()["current"]["user"] == "sp1", str(ov())[:200])
+    n_next = sum(1 for x in MUSIC["log"] if x[1] == "/sp/me/player/next")
+    api.post("/api/music/control", {"do": "skip"})
+    check("Spotify: «Пропустить» листает трек в самом Spotify",
+          sum(1 for x in MUSIC["log"] if x[1] == "/sp/me/player/next") == n_next + 1)
+    MUSIC["sp_playing"] = ""
+    r = api.post("/api/music/request", {"query": "премиум"})
+    check("Spotify без Premium — понятная ошибка", r.get("ok") is False and "Premium" in r.get("message", ""), str(r))
+    api.post("/api/music/spotify/logout")
+    r = api.post("/api/music/request", {"query": "ария"})
+    check("Spotify не подключён — «нажми Войти в Spotify»", r.get("ok") is False and "Войти в Spotify" in r.get("message", ""), str(r))
+
+    # Яндекс Музыка
+    api.cfg(music_source="yandex", music_ya_token="badtok")
+    r = api.post("/api/music/request", {"query": "кукла колдуна"})
+    check("Яндекс: неверный токен — «получи его заново»", r.get("ok") is False and "токен" in r.get("message", ""), str(r))
+    api.cfg(music_ya_token="yatok")
+    r = api.post("/api/music/request", {"query": "кукла колдуна"})
+    cur = wait_until(lambda: ov().get("current"), 4) or {}
+    loc = api.redirect_of(f"/api/music/stream?seq={cur.get('seq', -1)}")
+    check("Яндекс: трек найден, оверлей играет его по прямой ссылке",
+          r.get("ok") and cur.get("kind") == "audio" and cur.get("title") == "Кукла колдуна"
+          and loc.startswith("https://s1.example.net/get-mp3/"), f"{r} {cur} {loc}")
+    check("ссылка на звук — только для текущего трека", api.status_of("/api/music/stream?seq=99999") == 502)
+    api.post("/api/music/control", {"do": "skip"})
+    api.cfg(music_on=False, music_source="youtube")
+
     print("\n• Журнал без ошибок программы")
     bad = [e for e in api.log() if e["kind"] in ("ОШИБКА",) and "RCON" not in e["text"]
            and "в модели нет файла ../../secret.pth" not in e["text"]                    # это проверяли нарочно
+           and "заказ музыки" not in e["text"] and "вход в Spotify" not in e["text"]
            and "ИИ-голос: не запустилась" not in e["text"] and "не включился звук" not in e["text"]
            and "Связь с TikTok оборвалась" not in e["text"] and "Не удалось подключиться" not in e["text"]
            and "Minecraft" not in e["text"] and "сервер" not in e["text"].lower()]
@@ -1183,6 +1434,7 @@ def main():
     start_mock_hf()
     global MOCK_AI_PORT
     MOCK_AI_PORT = start_mock_ai()[1]
+    start_mock_music()
     report_id = make_copy(copy_dir, rport)
     MOCK_VC["logfile"] = os.path.join(copy_dir, "voice-changer", "voice_changer_log.txt")
     os.makedirs(os.path.dirname(MOCK_VC["logfile"]), exist_ok=True)
@@ -1192,7 +1444,10 @@ def main():
         f.write("o:Динамики|o:Наушники|i:Микрофон")
 
     env = dict(os.environ, TAKY_TEST="1", TAKY_FAKE_TIKTOK="1", TAKY_VC_DEVSIG=DEVSIG_FILE, TAKY_PORT=str(port),
-               TAKY_OPENROUTER_BASE=f"http://127.0.0.1:{MOCK_AI_PORT}/v1", PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
+               TAKY_OPENROUTER_BASE=f"http://127.0.0.1:{MOCK_AI_PORT}/v1",
+               TAKY_YT_API=f"http://127.0.0.1:{MUSIC['port']}/yt", TAKY_SPOTIFY_API=f"http://127.0.0.1:{MUSIC['port']}/sp",
+               TAKY_SPOTIFY_ACCOUNTS=f"http://127.0.0.1:{MUSIC['port']}/spacc",
+               TAKY_YANDEX_API=f"http://127.0.0.1:{MUSIC['port']}/ya", PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
                TAKY_HF_BASE=f"http://127.0.0.1:{MOCK_HF_PORT}",
                TAKY_PRESETS_URL=f"http://127.0.0.1:{MOCK_HF_PORT}/presets.json")
     out_path = os.path.join(tmp, "app_output.txt")

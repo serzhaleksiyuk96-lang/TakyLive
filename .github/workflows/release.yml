@@ -29,12 +29,12 @@ jobs:
           grep -q "APP_VERSION = \"$V\"" app.py || { echo "::error::В app.py другая версия, а метка $GITHUB_REF_NAME"; exit 1; }
 
       - name: Библиотеки
-        run: python -m pip install -U pyinstaller aiohttp "TikTokLive==7.0.1" "edge-tts>=7.3.1" imageio-ffmpeg segno
+        run: python -m pip install -U pyinstaller aiohttp "TikTokLive==7.0.1" "edge-tts>=7.3.1" imageio-ffmpeg segno ytmusicapi yandex-music
 
       - name: Сборка TakyLive.exe
         run: >
           python -m PyInstaller --noconfirm --onedir --console --name TakyLive
-          --icon web\takylive.ico --collect-all TikTokLive --collect-all edge_tts --collect-all imageio_ffmpeg
+          --icon web\takylive.ico --collect-all TikTokLive --collect-all edge_tts --collect-all imageio_ffmpeg --collect-all ytmusicapi --collect-all yandex_music
           --exclude-module numpy --exclude-module setuptools app.py
 
       - name: Файлы программы рядом с exe

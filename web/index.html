@@ -1036,6 +1036,14 @@
               border: 1px solid var(--border); background: var(--panel); font-size: 13px; }
   .vc-voice.on { border-color: #a855f7; box-shadow: 0 0 0 2px rgba(168,85,247,.3); }
   .vc-voice button { padding: 2px 8px; font-size: 12px; }
+  .mu-set { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.04); font-size: 13.5px; color: var(--text-dim); }
+  .mu-set b { color: var(--text); }
+  .mu-set a { color: #22d3ee; }
+  .mu-steps { margin: 6px 0 6px 20px; display: grid; gap: 6px; }
+  .mu-queue { display: grid; gap: 4px; margin: 10px 0; max-height: 220px; overflow: auto; }
+  .mu-row { display: flex; gap: 8px; align-items: center; font-size: 13.5px; }
+  .mu-row .mu-t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mu-row button { padding: 0 7px; }
   .vc-voice select.vc-tune { width: auto; padding: 2px 4px; font-size: 12px; border-radius: 999px; }
   .vc-presets { margin: 4px 0 8px; }
   .vc-preset-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 6px; }
@@ -2234,6 +2242,74 @@
       </div>
     </div>
 
+    <!-- 🎵 Заказ музыки -->
+    <div class="card ia-card" id="muCard">
+      <div class="ia-head">
+        <h3>🎵 Заказ музыки</h3>
+        <label class="chk"><input type="checkbox" id="mu_on" onchange="iaSetBool('music_on', this); muRefresh()"> Включено</label>
+        <span class="ph-badge" id="muBadge">…</span>
+        <div class="spacer"></div>
+        <button class="small" onclick="muCtl('skip')">⏭ Пропустить</button>
+        <button class="small" id="muPause" onclick="muCtl(MU && MU.paused ? 'resume' : 'pause')">⏸ Пауза</button>
+        <button class="small" onclick="if (confirm('Очистить очередь заказов?')) muCtl('clear')">🗑 Очистить</button>
+      </div>
+      <div class="hint">Зритель пишет в чат <b>!трек исполнитель песня</b> — трек встаёт в очередь и играет в эфире.
+        В карточки подарков можно ставить команды <code>music:skip</code> (пропустить), <code>music:pause</code>,
+        <code>music:play</code> или <code>music:название</code> — например, пропуск трека за подарок.</div>
+      <div class="ia-opts" id="muSrc">
+        <span>Откуда музыка:</span>
+        <button class="small" data-src="youtube" onclick="muSetSrc('youtube')">▶ YouTube Music</button>
+        <button class="small" data-src="spotify" onclick="muSetSrc('spotify')">🟢 Spotify</button>
+        <button class="small" data-src="yandex" onclick="muSetSrc('yandex')">🟡 Яндекс Музыка</button>
+      </div>
+      <div class="mu-set" id="muSet_youtube">
+        Работает сразу, без подписки. Трек играет во встроенном плеере YouTube в оверлее «🎵 Заказ музыки».
+        Ролик, который владелец запретил встраивать, программа пропустит и возьмёт другой вариант.
+        <div class="ia-opts"><label title="Необязательно. Поиск надёжнее и только среди роликов, которые можно встроить. console.cloud.google.com → YouTube Data API v3 → Ключ API">
+          Свой ключ YouTube API (необязательно) <input id="mu_yt_key" type="password" class="ia-txt" style="width:260px" oninput="iaSetStr('music_yt_key', this)"></label></div>
+      </div>
+      <div class="mu-set" id="muSet_spotify">
+        Трек встаёт в очередь <b>твоего</b> Spotify на ПК. Нужен <b>Spotify Premium</b> — без него Spotify не даёт программам ставить треки.
+        Один раз — своё «приложение» в Spotify (5 минут):
+        <ol class="mu-steps">
+          <li>Открой <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a> → войди → <b>Create app</b>.</li>
+          <li>Название любое. В <b>Redirect URIs</b> вставь <code id="muRedirect">http://127.0.0.1:8765/api/music/spotify/callback</code>
+            <button class="small" onclick="muCopy('muRedirect')">📋</button>, отметь <b>Web API</b> → Save.</li>
+          <li>Скопируй <b>Client ID</b> сюда: <input id="mu_sp_client" class="ia-txt" style="width:280px" oninput="iaSetStr('music_sp_client', this)">
+            <button class="small primary" onclick="muSpLogin()">Войти в Spotify</button> <span id="muSpState"></span></li>
+          <li>Открой Spotify на ПК и включи любой трек — заказы встанут в его очередь следом.</li>
+        </ol>
+        <div class="hint">Spotify ответил «403»? В приложении → Settings → <b>User Management</b> добавь свою почту Spotify и войди ещё раз.</div>
+      </div>
+      <div class="mu-set" id="muSet_yandex">
+        <b style="color:#fbbf24">Экспериментально.</b> У Яндекс Музыки нет открытого API для программ — работает через
+        неофициальную библиотеку и токен твоего аккаунта. Может перестать работать после обновлений Яндекса, а Яндекс
+        может ограничить аккаунт за такой доступ — решай сам. Для полных треков нужна подписка Плюс. Трек играет в оверлее «🎵 Заказ музыки».
+        <div class="ia-opts"><label title="Токен можно получить расширением браузера «Yandex Music Token» (автор MarshalX) или по инструкции библиотеки yandex-music">
+          Токен Яндекс Музыки <input id="mu_ya_token" type="password" class="ia-txt" style="width:280px" oninput="iaSetStr('music_ya_token', this)"></label></div>
+        <div class="hint">Где взять токен: расширение браузера «yandex-music-token» (автор MarshalX, есть для Chrome и Firefox) →
+          войди в Яндекс → скопируй токен сюда. Токен — как пароль от аккаунта: никому не показывай.</div>
+      </div>
+      <div class="hint" id="muOv"></div>
+      <div class="ia-opts">
+        <label>Команда <input id="mu_cmd" class="ia-txt" style="width:100px" oninput="iaSetStr('music_cmd', this)"></label>
+        <label title="0 — без очков">Цена <input type="number" min="0" id="mu_cost" class="ia-num" oninput="iaSetNum('music_cost', this, 0)"> очков</label>
+        <label title="Пусто — подарок не нужен">или подарок <input id="mu_gift" class="ia-txt" list="iaGiftList" placeholder="Rose или ID" oninput="iaSetStr('music_gift', this)"></label>
+        <label>= <input type="number" min="1" id="mu_gift_orders" class="ia-num" oninput="iaSetNum('music_gift_orders', this, 1)"> заказ(а)</label>
+        <label>Один зритель — раз в <input type="number" min="0" id="mu_user_cd" class="ia-num" oninput="iaSetNum('music_user_cd', this, 0)"> сек</label>
+        <label>Трек не длиннее <input type="number" min="1" id="mu_max_min" class="ia-num" oninput="iaSetNum('music_max_min', this, 1)"> мин</label>
+        <label>Очередь до <input type="number" min="1" id="mu_queue_max" class="ia-num" oninput="iaSetNum('music_queue_max', this, 1)"></label>
+        <label title="YouTube и Яндекс: громкость плеера в оверлее">🔊 <input type="range" min="0" max="100" id="mu_volume" style="width:110px" oninput="iaSetNum('music_volume', this, 0)"></label>
+        <label title="Трек с таким словом в названии или у исполнителя не ставится">Стоп-слова <input id="mu_block" class="ia-txt" style="width:220px" placeholder="через запятую" oninput="iaSetStr('music_block', this)"></label>
+      </div>
+      <div class="hint">Без цены и подарка заказывать может любой зритель (с паузой между заказами).</div>
+      <div id="muQueue" class="mu-queue"></div>
+      <div class="ia-opts">
+        <label>Заказать самому <input id="muTest" class="ia-txt" style="width:260px" placeholder="исполнитель песня" onkeydown="if (event.key === 'Enter') muOrder()"></label>
+        <button class="small primary" onclick="muOrder()">▶ В очередь</button><span class="hint" id="muTestRes"></span>
+      </div>
+    </div>
+
     <!-- 💎 Очки зрителей -->
     <div class="card ia-card">
       <div class="ia-head">
@@ -2472,5 +2548,6 @@
 <script src="/web/live.js?v=__VERSION__"></script>
 <script src="/web/interactive.js?v=__VERSION__"></script>
 <script src="/web/voice.js?v=__VERSION__"></script>
+<script src="/web/music.js?v=__VERSION__"></script>
 </body>
 </html>

@@ -19,10 +19,10 @@ if errorlevel 1 (
 )
 
 echo [1/3] Installing build tools and libraries...
-python -m pip install --quiet --no-warn-script-location -U pyinstaller aiohttp "TikTokLive==7.0.1" "edge-tts>=7.3.1" imageio-ffmpeg segno
+python -m pip install --quiet --no-warn-script-location -U pyinstaller aiohttp "TikTokLive==7.0.1" "edge-tts>=7.3.1" imageio-ffmpeg segno ytmusicapi yandex-music
 
 echo [2/3] Building exe (the longest step)...
-python -m PyInstaller --noconfirm --onefile --console --name "TakyLive" --icon web\takylive.ico --collect-all TikTokLive --collect-all imageio_ffmpeg --collect-all edge_tts --exclude-module numpy --exclude-module setuptools app.py
+python -m PyInstaller --noconfirm --onefile --console --name "TakyLive" --icon web\takylive.ico --collect-all TikTokLive --collect-all imageio_ffmpeg --collect-all ytmusicapi --collect-all yandex_music --collect-all edge_tts --exclude-module numpy --exclude-module setuptools app.py
 if errorlevel 1 (
     echo.
     echo [ERROR] Build failed. See messages above.

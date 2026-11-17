@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import urllib.parse
+import html as _html
 import sys
 import struct
 import threading
@@ -45,6 +46,8 @@ def _ensure_deps():
         ("edge_tts", "edge-tts"),      # озвучка чата (нейроголоса)
         ("imageio_ffmpeg", "imageio-ffmpeg"),  # ffmpeg — чинит видео из Telegram, iPhone и т.п.
         ("segno", "segno"),            # QR-код для пульта с телефона
+        ("ytmusicapi", "ytmusicapi"),  # 🎵 заказ музыки: поиск на YouTube Music
+        ("yandex_music", "yandex-music"),  # 🎵 заказ музыки: Яндекс Музыка (неофициальная библиотека)
     )
     need = []
     for module, package in checks:
@@ -452,7 +455,8 @@ class State:
         import interactive as _ia                    # очки, битва команд, колесо — настройки по умолчанию
         import cohost as _ch                         # ИИ-соведущий — настройки по умолчанию
         import voicechanger as _vc                   # 🎙 ИИ-голос — настройки по умолчанию
-        for _d in (_ia.PTS_DEFAULTS, _ia.BATTLE_DEFAULTS, _ia.WHEEL_DEFAULTS, _ch.DEFAULTS, _vc.DEFAULTS):
+        import music as _mu                          # 🎵 заказ музыки — настройки по умолчанию
+        for _d in (_ia.PTS_DEFAULTS, _ia.BATTLE_DEFAULTS, _ia.WHEEL_DEFAULTS, _ch.DEFAULTS, _vc.DEFAULTS, _mu.DEFAULTS):
             for _k, _v in _d.items():
                 self.config.setdefault(_k, _copy.deepcopy(_v))
         # profiles = { "Выживание": {gifts:[], likes:[], subs:[], follows:[]}, ... }
@@ -622,6 +626,13 @@ def bootstrap_fish_key():
         STATE.config["fish_api_key"] = key
         save_config()
         print("  Ключ Fish Audio подхвачен из fish_key.txt")
+
+
+def _int_or(v, default=0):
+    try:
+        return int(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def _q_int(request, name, default=0):
@@ -1168,6 +1179,12 @@ async def game_send(cmd, user=""):
         return False
     if c.lower().startswith(KB_PREFIXES):          # клавиатура работает в любой игре
         return await keyboard_do(c)
+    if c.lower().startswith("music:"):             # 🎵 заказ музыки: music:skip, music:pause, music:название
+        try:
+            return await STATE.music.command(c, user)
+        except Exception as e:
+            STATE.log("ОШИБКА", f"музыка: {e}")
+            return False
     if c.lower().startswith("voice:"):             # 🎙 ИИ-голос — работает в любой игре
         try:
             return await STATE.vc.command(c, user)
@@ -2112,6 +2129,10 @@ def check_chat_command(text, display, uid=None):
     msg = str(text).strip().lower()
     if not msg:
         return
+    mcmd = str(STATE.config.get("music_cmd") or "").strip().lower()
+    if STATE.config.get("music_on") and mcmd and (msg == mcmd or msg.startswith(mcmd + " ")):   # 🎵 «!трек название»
+        schedule(music_order(display, ia_key(display, uid), str(text).strip()[len(mcmd):]))
+        return
     prof_name = STATE.config.get("active_profile", "")
     prof = active_profile()
     for cc in prof.get("chatcmds", []):
@@ -3029,6 +3050,81 @@ async def h_vc_stop(request):
         "эта голосовая программа запущена не из папки TakyLive — закрой её окно сам") if ext else ""})
 
 
+# ── 🎵 Заказ музыки ──────────────────────────────────────────────────────────
+async def h_music(request):
+    """Состояние: ?ov=1 — для оверлея (он же играет YouTube и Яндекс), иначе — для окна."""
+    mb = STATE.music
+    return web.json_response(mb.public(overlay=True) if request.query.get("ov") else mb.status())
+
+
+async def h_music_event(request):
+    d = await _json_body(request)
+    STATE.music.event(_int_or(d.get("seq"), -1), str(d.get("kind") or ""), str(d.get("detail") or "")[:80])
+    return web.json_response({"ok": True})
+
+
+async def h_music_control(request):
+    d = await _json_body(request)
+    try:
+        await STATE.music.control(str(d.get("do") or ""), d.get("n"))
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e) or type(e).__name__})
+
+
+async def h_music_request(request):
+    """Заказ из окна программы (проверка или трек от стримера) — без оплаты и пауз."""
+    d = await _json_body(request)
+    r = await STATE.music.request(str(d.get("user") or "")[:40], str(d.get("query") or ""))
+    return web.json_response({"ok": r["ok"], "message": r.get("error") or r["msg"]})
+
+
+async def h_music_stream(request):
+    """Звук текущего трека Яндекс Музыки для оверлея (переадресация на прямую ссылку)."""
+    try:
+        raise web.HTTPFound(await STATE.music.stream_url(_q_int(request, "seq", -1)))
+    except web.HTTPFound:
+        raise
+    except Exception as e:
+        return web.Response(status=502, text=str(e) or type(e).__name__)
+
+
+def _spotify_redirect():
+    return f"http://127.0.0.1:{APP_PORT}/api/music/spotify/callback"
+
+
+async def h_music_spotify_login(request):
+    d = await _json_body(request)
+    if "client" in d:
+        STATE.config["music_sp_client"] = str(d.get("client") or "").strip()[:80]
+        save_config()
+    try:
+        return web.json_response({"ok": True, "url": STATE.music.spotify_login_url(_spotify_redirect()),
+                                  "redirect": _spotify_redirect()})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e), "redirect": _spotify_redirect()})
+
+
+async def h_music_spotify_callback(request):
+    page = ("<!doctype html><meta charset='utf-8'><title>TakyLive</title><body style='font:18px system-ui;"
+            "background:#0b1020;color:#e5e7eb;display:grid;place-items:center;height:100vh;margin:0'><div>{}</div>")
+    try:
+        if request.query.get("error"):
+            raise RuntimeError("вход отменён")
+        await STATE.music.spotify_finish(request.query.get("code", ""), request.query.get("state", ""))
+        return web.Response(text=page.format("✓ Spotify подключён. Эту вкладку можно закрыть."), content_type="text/html")
+    except Exception as e:
+        STATE.log("ОШИБКА", f"вход в Spotify: {e}")
+        return web.Response(text=page.format("✗ Не получилось: " + _html.escape(str(e))), content_type="text/html")
+
+
+async def h_music_spotify_logout(request):
+    STATE.config["music_sp_refresh"] = ""
+    STATE.music._sp_tok = ("", 0.0)
+    save_config()
+    return web.json_response({"ok": True})
+
+
 async def h_vc_tune(request):
     """Высота голоса: {"name": "Девушка", "tune": 12} (полутона, −24…24; "" — как в модели)."""
     d = await _json_body(request)
@@ -3243,12 +3339,52 @@ def ia_say(text):
         schedule(tts_speak("", text, read_name=False))
 
 
+async def music_order(display, key, query):
+    """🎵 Зритель написал «!трек …»: проверяем паузу между заказами и оплату (подарок или очки), ставим в очередь."""
+    cfg, mb = STATE.config, STATE.music
+
+    def say(text):                                              # ответ зрителю — плашкой в оверлее
+        STATE.log("МУЗЫКА", f"{display}: {text}")
+        if STATE.points.can_reply("music:" + key, 8):
+            STATE.push_overlay("points", display, text, icon="🎵", color="#34d399")
+    try:
+        left = mb.cooldown_left(key)
+        if left:
+            return say(f"следующий заказ — через {left} с")
+        cost, gift = max(0, _int_cfg("music_cost", 0)), str(cfg.get("music_gift") or "").strip()
+        pay = "credit" if mb.credits.get(key, 0) > 0 else ""
+        if not pay and cost > 0 and cfg.get("pts_on"):
+            if STATE.points.balance(key) < cost:
+                return say(f"заказ трека стоит {cost} 💎, у тебя {STATE.points.balance(key)}" +
+                           (f" — или подари «{gift}»" if gift else ""))
+            pay = "points"
+        elif not pay and gift:
+            return say(f"чтобы заказать трек, подари «{gift}»")
+        r = await mb.request(display, query)
+        if not r["ok"]:
+            return say(r["msg"])
+        if pay == "credit":
+            mb.credits[key] -= 1
+        elif pay == "points":
+            STATE.points.spend(key, display, cost)
+        mb.user_at[key] = time.time()
+        STATE.push_overlay("points", display, "заказал(а) трек: " + r["item"]["title"][:50], icon="🎵", color="#34d399")
+    except Exception as e:
+        STATE.log("ОШИБКА", f"заказ музыки: {e}")
+
+
 def ia_gift(user, gift_name, gift_id, count, diamonds):
     """Подарок: очки дарителю, очки битвы его команде, колесо — если это «колёсный» подарок."""
     cfg = STATE.config
     key = ia_key(user)
     count = max(1, int(count or 1))
     coins = int(diamonds or 0) * count
+    mg = str(cfg.get("music_gift") or "").strip()
+    if cfg.get("music_on") and mg and (mg == str(gift_id).strip() or
+                                       norm_gift(mg) in ({norm_gift(gift_name)} | ru_gift_names(gift_name, gift_id))):
+        n = STATE.music.gift(key, count)                        # 🎵 подарок = право заказать трек
+        STATE.log("МУЗЫКА", f"🎵 {user} может заказать трек ({n}): {cfg.get('music_cmd') or '!трек'} название")
+        STATE.push_overlay("points", user, f"закажи трек: {cfg.get('music_cmd') or '!трек'} название", icon="🎵", color="#34d399")
     if cfg.get("pts_on"):
         STATE.points.on_gift(cfg, key, user, coins)
     team = STATE.battle.gift(cfg, key, user, coins)
@@ -3518,7 +3654,7 @@ async def h_get_log(request):
     return web.json_response({"log": STATE.event_log[-80:], "seen_gifts": gifts})
 
 
-SERVER_ONLY_KEYS = ("remote_on", "remote_token", "update_repo", "update_api")      # меняются только своими кнопками, не общим сохранением
+SERVER_ONLY_KEYS = ("remote_on", "remote_token", "update_repo", "update_api", "music_sp_refresh")      # меняются только своими кнопками, не общим сохранением
 
 
 async def h_save_config(request):
@@ -4295,8 +4431,8 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.71.1"
-APP_DATE = "2026-11-16"
+APP_VERSION = "1.72"
+APP_DATE = "2026-11-17"
 
 
 def load_changelog():
@@ -5107,6 +5243,7 @@ def make_app():
                     ia_tick()                             # битва команд, колесо, очки за активность
                     ai_tick()                             # соведущий болтает с чатом
                     await STATE.vc.tick()                 # время ИИ-голоса вышло — обычный голос; следим за запуском
+                    await STATE.music.tick()              # 🎵 очередь заказов музыки
                     # Случайные события
                     if (STATE.config.get("random_enabled") and STATE.connected):
                         try:
@@ -5221,7 +5358,8 @@ def make_app():
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             if (origin and not _is_local(origin)) or (not origin and site == "cross-site"):
                 return web.json_response({"ok": False, "error": "запрос с чужого сайта отклонён"}, status=403)
-        elif site == "cross-site" and request.path.startswith(("/api/", "/media/")):
+        elif site == "cross-site" and request.path.startswith(("/api/", "/media/")) \
+                and request.path != "/api/music/spotify/callback":   # возврат после входа в Spotify (защищён state)
             src = origin or request.headers.get("Referer", "")
             if not (src and _is_local(src)):             # localhost ↔ 127.0.0.1 — свои, пускаем
                 return web.json_response({"ok": False, "error": "запрос с чужого сайта отклонён"}, status=403)
@@ -5301,6 +5439,14 @@ def make_app():
     app.router.add_post("/api/vc/voice", h_vc_voice)
     app.router.add_post("/api/vc/normal", h_vc_normal)
     app.router.add_post("/api/vc/tune", h_vc_tune)
+    app.router.add_get("/api/music", h_music)
+    app.router.add_post("/api/music/event", h_music_event)
+    app.router.add_post("/api/music/control", h_music_control)
+    app.router.add_post("/api/music/request", h_music_request)
+    app.router.add_get("/api/music/stream", h_music_stream)
+    app.router.add_post("/api/music/spotify/login", h_music_spotify_login)
+    app.router.add_get("/api/music/spotify/callback", h_music_spotify_callback)
+    app.router.add_post("/api/music/spotify/logout", h_music_spotify_logout)
     app.router.add_post("/api/vc/upload", h_vc_upload)
     app.router.add_post("/api/vc/open", h_vc_open)
     app.router.add_get("/api/vc/presets", h_vc_presets)
@@ -5488,6 +5634,8 @@ def main():
     STATE.wheel = _ia.Wheel(STATE.log)
     import voicechanger as _vcm
     STATE.vc = _vcm.VoiceChanger(BASE_DIR, STATE.log, lambda: STATE.config)
+    import music as _music
+    STATE.music = _music.MusicBox(STATE.log, lambda: STATE.config, save_config)
     try:
         repair_media_refs()                  # эдиты .mov/.webm, которые стали .mp4, — вернуть в карточки
     except Exception as e:
