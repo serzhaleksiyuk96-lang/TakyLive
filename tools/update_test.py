@@ -112,7 +112,9 @@ def make_user_data(base, api_port):
         "Вторая вкладка": {"game": "gta5", "gifts": [{"name": "Lion", "commands": ["chaos"]}]}}
     config = {"active_profile": "Мой стрим", "tiktok_username": "my_nick", "tts_enabled": True, "tts_voice": "ru-RU-DmitryNeural",
               "fish_api_key": "MY-OWN-FISH-KEY", "ai_on": True, "ai_key": "MY-AI-KEY", "ai_tg": "@my_tg", "ai_avatar": "ai_avatar_я.png",
-              "pts_on": True, "wheel_on": True, "ann_tg_token": "123:ABC", "vc_mic_name": "Мой микрофон", "vc_normal": "Демон",
+              "pts_on": True, "wheel_on": True, "ann_tg_token": "123:ABC", "vc_mic_name": "Мой микрофон",
+              "music_on": True, "music_source": "spotify", "music_gift": "Rose", "music_cost": 70, "music_sp_client": "my-client-id",
+              "music_sp_refresh": "MY-SPOTIFY-LOGIN", "music_ya_token": "MY-YANDEX-LOGIN", "wheel_gift": "Lion", "vc_normal": "Демон",
               "random_items": [{"command": "say rnd", "media_file": "мой эдит.mp4", "sound_file": "моя музыка.mp3"}],
               "auto_update": "notify", "update_repo": "test/TakyLive", "update_api": f"http://127.0.0.1:{api_port}"}
     files = {

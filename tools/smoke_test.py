@@ -1371,6 +1371,18 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     api.sim(kind="chat", user="viewer1", text="!трек ария")
     check("заказ за очки — очки списываются", wait_until(lambda: api.balance("viewer1") == 60, 4),
           str(api.balance("viewer1")) + " " + str([e["text"] for e in api.log() if e["kind"] in ("МУЗЫКА", "ОЧКИ")][-4:]))
+    api.sim(kind="gift", name="Rose", gift_id="5655", count=3, user="saver", diamonds=1)
+    stf = os.path.join(copy_dir, "music_state.json")
+    def read_state():
+        try:
+            d = json.load(open(stf, encoding="utf-8"))
+            return d if d.get("credits", {}).get("saver") else None
+        except (OSError, ValueError):
+            return None
+    saved = wait_until(read_state, 6) or {}
+    check("очередь и оплаченные заказы сохраняются на диск (переживут перезапуск и обновление)",
+          saved.get("credits", {}).get("saver") == 3 and [t["title"] for t in saved.get("queue", [])] == ["Беспечный ангел"]
+          and saved.get("source") == "youtube", str(saved)[:300])
     r = api.post("/api/music/control", {"do": "remove", "n": mu()["queue"][-1]["n"] if mu()["queue"] else -1})
     api.post("/api/music/control", {"do": "skip"})
     api.cfg(music_gift="", music_cost=0, pts_on=False, music_block="")

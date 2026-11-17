@@ -44,3 +44,4 @@ media/.tmp_*
 smoke_test_result.txt
 voice-changer/
 gift_names_ru_full.json
+music_state.json

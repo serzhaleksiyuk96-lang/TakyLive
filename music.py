@@ -76,8 +76,9 @@ def _int(v, d=0):
 
 
 class MusicBox:
-    def __init__(self, log, get_cfg, save_cfg):
+    def __init__(self, log, get_cfg, save_cfg, state_path=""):
         self.log, self.get_cfg, self.save_cfg = log, get_cfg, save_cfg
+        self.state_path, self._saved = state_path, None
         self.queue, self.cur = [], None
         self.n = self.seq = 0
         self.paused = False
@@ -90,6 +91,43 @@ class MusicBox:
         self._src = None
         self.ya_login = {"running": False, "error": "", "ok": False}
         self.lock = asyncio.Lock()
+        self._load()
+
+    # ── очередь и оплаченные заказы переживают перезапуск и обновление программы ──
+    def _load(self):
+        try:
+            import safeio
+            d = safeio.read_json(self.state_path) if self.state_path and os.path.isfile(self.state_path) else {}
+        except Exception:
+            d = {}
+        if not isinstance(d, dict):
+            return
+        need = ("n", "src", "tid", "title", "artist", "dur", "user", "alts", "at")
+        q = [it for it in d.get("queue") or [] if isinstance(it, dict) and all(k in it for k in need)]
+        if d.get("source") == self.src():
+            self.queue = q[:50]
+            self.n = max([_int(it["n"]) for it in q] + [0])
+        self.credits = {str(k): _int(v) for k, v in (d.get("credits") or {}).items() if _int(v) > 0}
+        self._src = self.src()
+        self._saved = self._snapshot()
+
+    def _snapshot(self):
+        cur = [{k: self.cur[k] for k in ("n", "src", "tid", "title", "artist", "dur", "user", "alts", "at")}] if self.cur else []
+        return {"source": self.src(), "queue": cur + self.queue, "credits": {k: v for k, v in self.credits.items() if v > 0}}
+
+    def save(self):
+        """Пишет на диск, только если что-то изменилось (зовётся раз в секунду и перед выходом)."""
+        if not self.state_path:
+            return
+        snap = self._snapshot()
+        if snap == self._saved:
+            return
+        try:
+            import safeio
+            safeio.write_json(self.state_path, snap)
+            self._saved = snap
+        except Exception:
+            pass
 
     # ── общее ────────────────────────────────────────────────────────────────
     def _check_src(self):
@@ -413,6 +451,7 @@ class MusicBox:
         """Раз в секунду."""
         now = time.time()
         src = self._check_src()
+        self.save()
         if not self.get_cfg().get("music_on"):
             return
         if src == "spotify":

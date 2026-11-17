@@ -5595,6 +5595,7 @@ def before_restart(reason="перед_обновлением"):
     except Exception:
         pass
     try:
+        STATE.music.save()                   # очередь заказов музыки и оплаченные заказы
         STATE.stats.on_end = None            # отчёт эфира сохраняем, в чаты уже не успеть
         STATE.stats.end("программа закрыта")
     except Exception:
@@ -5649,7 +5650,7 @@ def main():
     import voicechanger as _vcm
     STATE.vc = _vcm.VoiceChanger(BASE_DIR, STATE.log, lambda: STATE.config)
     import music as _music
-    STATE.music = _music.MusicBox(STATE.log, lambda: STATE.config, save_config)
+    STATE.music = _music.MusicBox(STATE.log, lambda: STATE.config, save_config, os.path.join(BASE_DIR, "music_state.json"))
     try:
         repair_media_refs()                  # эдиты .mov/.webm, которые стали .mp4, — вернуть в карточки
     except Exception as e:
