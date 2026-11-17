@@ -2298,22 +2298,17 @@
       </div>
       <div class="mu-set" id="muSet_spotify">
         Трек встаёт в очередь <b>твоего</b> Spotify на ПК. Нужен <b>Spotify Premium</b> — без него Spotify не даёт программам ставить треки.
-        Один раз — своё «приложение» в Spotify (5 минут):
-        <ol class="mu-steps">
-          <li>Открой <a href="https://developer.spotify.com/dashboard" target="_blank">developer.spotify.com/dashboard</a> → войди → <b>Create app</b>.</li>
-          <li>Название любое. В <b>Redirect URIs</b> вставь <code id="muRedirect">http://127.0.0.1:8765/api/music/spotify/callback</code>
-            <button class="small" onclick="muCopy('muRedirect')">📋</button>, отметь <b>Web API</b> → Save.</li>
-          <li>Скопируй <b>Client ID</b> сюда: <input id="mu_sp_client" class="ia-txt" style="width:280px" oninput="iaSetStr('music_sp_client', this)">
-            <button class="small primary" onclick="muSpLogin()">Войти в Spotify</button> <span id="muSpState"></span></li>
-          <li>Открой Spotify на ПК и включи любой трек — заказы встанут в его очередь следом.</li>
-        </ol>
-        <div class="hint">Spotify ответил «403»? В приложении → Settings → <b>User Management</b> добавь свою почту Spotify и войди ещё раз.</div>
+        <div class="ia-opts"><button class="small primary" id="muSpLoginBtn" onclick="muSpLogin()">Войти в Spotify</button> <span id="muSpState"></span></div>
+        <div class="hint">Откроется настоящая страница входа Spotify — войди и нажми «Принять». Потом открой Spotify на ПК и
+          включи любой трек: заказы встанут в его очередь следом.</div>
+        <div class="hint">Spotify пишет, что доступа нет (403)? Приложение TakyLive в Spotify пока открыто только тем, кого
+          добавили вручную (Spotify разрешает до 5 человек) — попроси автора программы добавить почту твоего Spotify.</div>
       </div>
       <div class="mu-set" id="muSet_yandex">
         <b style="color:#fbbf24">Экспериментально.</b> У Яндекс Музыки нет открытого API для программ — работает через
         неофициальную библиотеку и токен твоего аккаунта. Может перестать работать после обновлений Яндекса, а Яндекс
         может ограничить аккаунт за такой доступ — решай сам. Для полных треков нужна подписка Плюс. Трек играет в оверлее «🎵 Заказ музыки».
-        <div class="ia-opts"><button class="small primary" onclick="muYaLogin()">Войти в Яндекс</button> <span id="muYaState"></span></div>
+        <div class="ia-opts"><button class="small primary" id="muYaLoginBtn" onclick="muYaLogin()">Войти в Яндекс</button> <span id="muYaState"></span></div>
         <div class="hint">Откроется отдельное окно с настоящей страницей входа Яндекса. Войди — программа сама получит доступ
           и закроет окно. Пароль программа не видит и не хранит.</div>
       </div>
@@ -2329,7 +2324,7 @@
         <label title="YouTube и Яндекс: громкость плеера в оверлее">🔊 <input type="range" min="0" max="100" id="mu_volume" style="width:110px" oninput="iaSetNum('music_volume', this, 0)"></label>
         <label title="Трек с таким словом в названии или у исполнителя не ставится">Стоп-слова <input id="mu_block" class="ia-txt" style="width:220px" placeholder="через запятую" oninput="iaSetStr('music_block', this)"></label>
       </div>
-      <div class="hint">Без цены и подарка заказывать может любой зритель (с паузой между заказами).</div>
+      <div class="hint" id="muFreeHint">Без цены и подарка заказывать может любой зритель (с паузой между заказами).</div>
       <div id="muQueue" class="mu-queue"></div>
       <div class="ia-opts">
         <label>Заказать самому <input id="muTest" class="ia-txt" style="width:260px" placeholder="исполнитель песня" onkeydown="if (event.key === 'Enter') muOrder()"></label>

@@ -17,10 +17,28 @@ window.fetch = async (url, opt) => {
                         {status: 409, headers: {"Content-Type": "application/json"}});
   const headers = new Headers(opt.headers || {});
   headers.set("X-Taky-Win", WIN_ID);
+  // Настройки: шлём только то, что поменяли в этом окне. Иначе окно со старой копией затирало то, что поменялось
+  // мимо него (пульт с телефона, вход в Spotify/Яндекс, настройки через API)
+  let sent = null;
+  if (url === "/api/config" && CFG_BASE && typeof opt.body === "string") {
+    try {
+      const all = JSON.parse(opt.body);
+      if (all && typeof all === "object" && !Array.isArray(all)) {
+        sent = {};
+        for (const [k, v] of Object.entries(all))
+          if (!(k in CFG_BASE) || JSON.stringify(CFG_BASE[k]) !== JSON.stringify(v)) sent[k] = v;
+        if (!Object.keys(sent).length)
+          return new Response('{"ok": true}', {status: 200, headers: {"Content-Type": "application/json"}});
+        opt = {...opt, body: JSON.stringify(sent)};
+      }
+    } catch (e) { sent = null; }
+  }
   const r = await _fetch(url, {...opt, headers});
   if (r.status === 409) { try { if ((await r.clone().json()).stale_window) winStale(); } catch (e) {} }
+  if (sent && r.ok) for (const [k, v] of Object.entries(sent)) CFG_BASE[k] = JSON.parse(JSON.stringify(v));
   return r;
 };
+let CFG_BASE = null;                    // настройки, какими их знает сервер (с последней загрузки и сохранений)
 
 function winStale() {
   if (WIN_STALE) return;
@@ -140,6 +158,7 @@ async function loadState() {
   }
   const r = await fetch("/api/state");
   DATA = await r.json();
+  CFG_BASE = JSON.parse(JSON.stringify(DATA.config || {}));
   activeProfile = DATA.config.active_profile;
   if (!DATA.profiles[activeProfile]) {
     activeProfile = Object.keys(DATA.profiles)[0] || null;

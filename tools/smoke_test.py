@@ -429,7 +429,8 @@ class MockMusic(http.server.BaseHTTPRequestHandler):
             if q.get("key") != "ytkey":
                 return self._send({"error": {"message": "API key not valid"}}, 400)
             word = q.get("q", "").split()[0].lower() if q.get("q") else ""
-            return self._send({"items": [{"id": {"videoId": v[0]}, "snippet": {"title": v[1], "channelTitle": v[2]}}
+            return self._send({"items": [{"id": {"videoId": v[0]}, "snippet": {"title": v[1], "channelTitle": v[2],
+                                          "thumbnails": {"high": {"url": f"https://i.ytimg.com/vi/{v[0]}/hq.jpg"}}}}
                                          for v in YT_VIDEOS.get(word, [])]})
         if p == "/yt/videos":
             ids = q.get("id", "").split(",")
@@ -454,7 +455,8 @@ class MockMusic(http.server.BaseHTTPRequestHandler):
                     return self._send({"tracks": {"items": [{"uri": "spotify:track:prem", "name": "Премиум", "duration_ms": 1000,
                                                              "artists": [{"name": "X"}]}]}})
                 return self._send({"tracks": {"items": [{"uri": "spotify:track:t1", "name": "Беспечный ангел", "duration_ms": 301000,
-                                                         "artists": [{"name": "Ария"}]}]}})
+                                                         "artists": [{"name": "Ария"}],
+                                                         "album": {"images": [{"url": "https://i.scdn.co/image/aria"}]}}]}})
             if p == "/sp/me/player/queue" and method == "POST":
                 if q.get("uri") == "spotify:track:prem":
                     return self._send({"error": {"status": 403, "message": "Player command failed: Premium required",
@@ -477,6 +479,7 @@ class MockMusic(http.server.BaseHTTPRequestHandler):
             return self._send({"result": {"text": q.get("text", ""), "type": "track", "page": 0, "perPage": 10,
                                           "tracks": {"type": "track", "total": 1, "perPage": 10, "order": 0, "results": [
                                               {"id": "777", "title": "Кукла колдуна", "durationMs": 200000, "available": True,
+                                               "coverUri": "avatars.yandex.net/get-music-content/kish/%%",
                                                "artists": [{"id": 1, "name": "Король и Шут"}], "albums": []}]}}})
         if p == "/ya/tracks/777/download-info":
             return self._send({"result": [{"codec": "mp3", "bitrateInKbps": 192, "gain": False, "preview": False,
@@ -1365,12 +1368,28 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     api.post("/api/music/event", {"seq": seq, "kind": "ended"})
     check("событие от старого ролика не сбивает текущий", ov()["current"]["tid"] == "yt_kino2")
     api.post("/api/music/event", {"seq": o2["seq"], "kind": "playing"})
+    time.sleep(1.2)
+    api.post("/api/music/control", {"do": "pause"})
+    p1 = ov()["current"]["pos"]
+    time.sleep(1.5)
+    p2 = ov()["current"]["pos"]
+    api.post("/api/music/control", {"do": "resume"})
+    time.sleep(1.1)
+    p3 = ov()["current"]["pos"]
+    check("пауза: время трека стоит, после — идёт дальше", p1 >= 1 and abs(p2 - p1) < 0.3 and p3 > p2 + 0.6, f"{p1} {p2} {p3}")
+    check("обложка трека приходит в оверлей (YouTube)", o2.get("cover") == "https://i.ytimg.com/vi/yt_kino/hq.jpg"
+          or ov()["current"].get("cover", "").startswith("https://i.ytimg.com/vi/yt_kino"), str(ov()["current"]))
     api.post("/api/music/event", {"seq": o2["seq"], "kind": "ended"})
     check("доиграл — следующий из очереди", wait_until(lambda: (ov().get("current") or {}).get("tid") == "yt_aria", 4),
           str(ov())[:200])
     api.sim(kind="chat", user="viewerX", text="!скип")
     check("карточка с командой music:skip пропускает трек",
           wait_until(lambda: api.log_has("МУЗЫКА", "Пропущен: Беспечный ангел"), 4) and not mu()["current"])
+    r = api.post("/api/music/request", {"query": "кино"})
+    cur_k = wait_until(lambda: ov().get("current"), 4) or {}
+    check("ролик, который нельзя встроить, больше не пробуется — сразу другой вариант",
+          r.get("ok") and cur_k.get("tid") == "yt_kino2", f"{r} {cur_k}")
+    api.post("/api/music/control", {"do": "skip"})
     api.cfg(music_block="плохая")
     r = api.post("/api/music/request", {"query": "шансон"})
     check("стоп-слова: трек не ставится", r.get("ok") is False and "стоп" in r.get("message", ""), str(r))
@@ -1386,6 +1405,16 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     check("подарок Rose ×2 — два заказа", wait_until(lambda: api.log_has("МУЗЫКА", r"payer может заказать трек \(2\)"), 4))
     api.sim(kind="chat", user="payer", text="!трек ария")
     check("заказ за подарок", wait_until(lambda: api.log_has("МУЗЫКА", "payer заказал\\(а\\): Ария — Беспечный ангел"), 4))
+    api.post("/api/music/control", {"do": "clear"})
+    api.post("/api/music/control", {"do": "skip"})
+    api.sim(kind="gift", name="Rose", gift_id="5655", count=1, user="racer", diamonds=1)
+    wait_until(lambda: api.log_has("МУЗЫКА", r"racer может заказать трек \(1\)"), 4)
+    for q in ("ария", "кино группа крови", "ария беспечный"):           # три «!трек» подряд на одну Розу
+        api.sim(kind="chat", user="racer", text="!трек " + q)
+    time.sleep(2.5)
+    n_racer = sum(1 for e in api.log() if e["kind"] == "МУЗЫКА" and e["text"].startswith("🎵 racer заказал"))
+    check("одна Роза — один заказ, даже если написать «!трек» три раза подряд", n_racer == 1,
+          str([e["text"] for e in api.log() if "racer" in e["text"]][-5:]))
     api.post("/api/music/control", {"do": "clear"})
     api.post("/api/music/control", {"do": "skip"})
     api.post("/api/points/set", {"key": "viewer1", "amount": 100})       # viewer1 уже есть в таблице очков
@@ -1410,6 +1439,9 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
 
     # Spotify
     api.cfg(music_source="spotify")
+    r0 = api.post("/api/music/spotify/login", {})
+    check("Spotify: вход без своего Client ID — через общее приложение TakyLive",
+          r0.get("ok") and "client_id=e6e71a791a6644cbae7cba6b0ba92f82" in r0.get("url", ""), str(r0)[:160])
     r = api.post("/api/music/spotify/login", {"client": "cid123"})
     qs = urllib.parse.parse_qs(urllib.parse.urlparse(r.get("url", "")).query)
     check("Spotify: ссылка входа — официальный вход с PKCE и адресом возврата 127.0.0.1",
@@ -1428,7 +1460,8 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     MUSIC["sp_playing"] = "spotify:track:t1"
     check("Spotify заиграл заказ — в оверлее «сейчас играет» и кто заказал",
           wait_until(lambda: (ov().get("current") or {}).get("title") == "Беспечный ангел", 8)
-          and ov()["current"]["kind"] == "external" and ov()["current"]["user"] == "sp1", str(ov())[:200])
+          and ov()["current"]["kind"] == "external" and ov()["current"]["user"] == "sp1"
+          and ov()["current"].get("cover") == "https://i.scdn.co/image/aria", str(ov())[:300])
     n_next = sum(1 for x in MUSIC["log"] if x[1] == "/sp/me/player/next")
     api.post("/api/music/control", {"do": "skip"})
     check("Spotify: «Пропустить» листает трек в самом Spotify",
@@ -1456,6 +1489,7 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     loc = api.redirect_of(f"/api/music/stream?seq={cur.get('seq', -1)}")
     check("Яндекс: трек найден, оверлей играет его по прямой ссылке",
           r.get("ok") and cur.get("kind") == "audio" and cur.get("title") == "Кукла колдуна"
+          and cur.get("cover") == "https://avatars.yandex.net/get-music-content/kish/400x400"
           and loc.startswith("https://s1.example.net/get-mp3/"), f"{r} {cur} {loc}")
     check("ссылка на звук — только для текущего трека", api.status_of("/api/music/stream?seq=99999") == 502)
     api.post("/api/music/control", {"do": "skip"})

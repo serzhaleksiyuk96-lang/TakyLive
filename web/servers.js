@@ -197,7 +197,10 @@ async function srvAction(id, action, sub) {
     else alert(d.error);
   }
   if (action === "connect" && d.ok) {
-    try { DATA.config = (await (await fetch("/api/state", {cache: "no-store"})).json()).config || DATA.config; } catch (e) {}
+    try {
+      DATA.config = (await (await fetch("/api/state", {cache: "no-store"})).json()).config || DATA.config;
+      if (typeof CFG_BASE !== "undefined") CFG_BASE = JSON.parse(JSON.stringify(DATA.config));
+    } catch (e) {}
     // поля «Настроек» — тоже на новые значения, иначе следующее сохранение вернёт старый сервер
     if (typeof fillSettings === "function") fillSettings();
   }

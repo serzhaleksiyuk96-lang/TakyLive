@@ -33,6 +33,10 @@ SP_SCOPES = "user-modify-playback-state user-read-playback-state user-read-curre
 # (другого способа получить доступ к Музыке Яндекс не даёт) и забирает токен из адреса после входа.
 YA_LOGIN = os.environ.get("TAKY_YA_LOGIN_URL") or \
     "https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbbdc6cd418abb4b39c32c41195d"
+# Приложение TakyLive в Spotify (общее для всех: вход без своего Client ID). Client ID — не секрет: вход идёт
+# по PKCE, без пароля приложения. Пока приложение в режиме разработки, Spotify пускает до 5 человек, которых
+# владелец добавил в User Management.
+SP_CLIENT = os.environ.get("TAKY_SPOTIFY_CLIENT") or "e6e71a791a6644cbae7cba6b0ba92f82"
 SOURCES = {"youtube": "YouTube Music", "spotify": "Spotify", "yandex": "Яндекс Музыка"}
 
 DEFAULTS = {
@@ -48,7 +52,7 @@ DEFAULTS = {
     "music_block": "",             # стоп-слова через запятую: трек с таким словом в названии не ставится
     "music_volume": 60,            # громкость в оверлее (YouTube, Яндекс), 0–100
     "music_yt_key": "",            # необязательно: свой ключ YouTube Data API
-    "music_sp_client": "",         # Client ID приложения из developer.spotify.com
+    "music_sp_client": "",         # свой Client ID приложения Spotify (пусто — общее приложение TakyLive)
     "music_sp_refresh": "",        # выдаёт Spotify после входа (меняется только сервером)
     "music_ya_token": "",          # токен Яндекс Музыки
 }
@@ -84,6 +88,7 @@ class MusicBox:
         self.paused = False
         self.credits, self.user_at = {}, {}        # заказы за подарки; когда зритель заказывал в прошлый раз
         self.ov_seen = self.ov_hint = 0.0          # оверлей открыт? (он играет YouTube и Яндекс)
+        self.blocked = set()                       # ролики YouTube, которые нельзя встроить — больше не пробуем
         self._sp_tok, self._pkce = ("", 0.0), {}
         self._sp_at = self._sp_err = 0.0
         self._sp_now = None
@@ -103,7 +108,7 @@ class MusicBox:
         if not isinstance(d, dict):
             return
         need = ("n", "src", "tid", "title", "artist", "dur", "user", "alts", "at")
-        q = [it for it in d.get("queue") or [] if isinstance(it, dict) and all(k in it for k in need)]
+        q = [dict({"cover": ""}, **it) for it in d.get("queue") or [] if isinstance(it, dict) and all(k in it for k in need)]
         if d.get("source") == self.src():
             self.queue = q[:50]
             self.n = max([_int(it["n"]) for it in q] + [0])
@@ -112,7 +117,8 @@ class MusicBox:
         self._saved = self._snapshot()
 
     def _snapshot(self):
-        cur = [{k: self.cur[k] for k in ("n", "src", "tid", "title", "artist", "dur", "user", "alts", "at")}] if self.cur else []
+        cur = [{k: self.cur.get(k, "") for k in ("n", "src", "tid", "title", "artist", "dur", "user", "alts", "at", "cover")}] \
+            if self.cur else []
         return {"source": self.src(), "queue": cur + self.queue, "credits": {k: v for k, v in self.credits.items() if v > 0}}
 
     def save(self):
@@ -177,7 +183,8 @@ class MusicBox:
                 msg = str(((d or {}).get("error") or {}).get("message") or "")[:120] if isinstance(d, dict) else ""
                 raise RuntimeError("ключ YouTube не подошёл или кончился его дневной лимит" + (f" ({msg})" if msg else ""))
             items = [{"tid": i["id"]["videoId"], "title": i["snippet"].get("title", ""),
-                      "artist": i["snippet"].get("channelTitle", ""), "dur": 0}
+                      "artist": i["snippet"].get("channelTitle", ""), "dur": 0,
+                      "cover": str(((i["snippet"].get("thumbnails") or {}).get("high") or {}).get("url") or "")}
                      for i in d.get("items", []) if isinstance(i.get("id"), dict) and i["id"].get("videoId")]
             if items:
                 st, d = await self._http("GET", YT_API + "/videos", params={
@@ -194,23 +201,33 @@ class MusicBox:
 
         def go():
             from ytmusicapi import YTMusic
-            yt, out = YTMusic(), []
-            for flt in ("songs", "videos"):        # сначала песни; клипы — запасные (песню могут запретить встраивать)
+            try:
+                yt = YTMusic(language="ru")        # названия по-русски, а не «Arija — Bespechnyy angel»
+            except Exception:
+                yt = YTMusic()
+            res = {}
+            for flt in ("songs", "videos"):
                 try:
-                    res = yt.search(q, filter=flt, limit=4)
+                    res[flt] = [r for r in yt.search(q, filter=flt, limit=5) if r.get("videoId")][:4]
                 except Exception:
-                    res = []
-                for r in res[:4]:
-                    if r.get("videoId"):
-                        out.append({"tid": r["videoId"], "title": r.get("title", ""), "dur": _int(r.get("duration_seconds")),
-                                    "artist": ", ".join(a.get("name", "") for a in (r.get("artists") or [])[:2])})
+                    res[flt] = []
+            # песни и клипы вперемешку: дорожки лейблов («… - Topic») часто запрещают встраивать, а официальный
+            # клип того же трека — играет. Так до клипа доходит очередь, а не только до 4 запрещённых дорожек
+            mixed = [r for pair in zip(res["songs"] + [None] * 4, res["videos"] + [None] * 4) for r in pair if r]
+            out = []
+            for r in mixed:
+                th = r.get("thumbnails") or []
+                out.append({"tid": r["videoId"], "title": r.get("title", ""), "dur": _int(r.get("duration_seconds")),
+                            "artist": ", ".join(a.get("name", "") for a in (r.get("artists") or [])[:2]),
+                            "cover": re.sub(r"=w\d+-h\d+", "=w400-h400", str(th[-1].get("url") or "")) if th else ""})
             return out
         return await asyncio.to_thread(go)
 
     async def _search_spotify(self, q):
-        d = await self._sp("GET", "/search", params={"q": q, "type": "track", "limit": "5"})
+        d = await self._sp("GET", "/search", params={"q": q, "type": "track", "limit": "5", "market": "from_token"})
         return [{"tid": t["uri"], "title": t.get("name", ""), "dur": _int(t.get("duration_ms")) // 1000,
-                 "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])[:2])}
+                 "artist": ", ".join(a.get("name", "") for a in (t.get("artists") or [])[:2]),
+                 "cover": str((((t.get("album") or {}).get("images") or [{}])[0] or {}).get("url") or "")}
                 for t in ((d.get("tracks") or {}).get("items") or []) if t and t.get("uri")]
 
     async def _ya_client(self):
@@ -305,8 +322,9 @@ class MusicBox:
         except Exception as e:
             raise RuntimeError(f"поиск в Яндекс Музыке не сработал: {str(e)[:120] or type(e).__name__}")
         res = (getattr(getattr(r, "tracks", None), "results", None) or [])[:5]
+        cover = lambda t: ("https://" + str(t.cover_uri).replace("%%", "400x400")) if getattr(t, "cover_uri", None) else ""
         return [{"tid": str(t.id), "title": t.title or "", "dur": _int(t.duration_ms) // 1000,
-                 "artist": ", ".join(a.name or "" for a in (t.artists or [])[:2])}
+                 "artist": ", ".join(a.name or "" for a in (t.artists or [])[:2]), "cover": cover(t)}
                 for t in res if getattr(t, "available", True)]
 
     async def stream_url(self, seq):
@@ -324,9 +342,7 @@ class MusicBox:
 
     # ── Spotify ──────────────────────────────────────────────────────────────
     def spotify_login_url(self, redirect):
-        cid = str(self.get_cfg().get("music_sp_client") or "").strip()
-        if not cid:
-            raise RuntimeError("сначала впиши Client ID приложения Spotify")
+        cid = self._sp_cid()
         ver = secrets.token_urlsafe(64)
         state = secrets.token_urlsafe(16)
         self._pkce = {"ver": ver, "state": state, "redirect": redirect, "cid": cid}
@@ -334,6 +350,9 @@ class MusicBox:
         return SP_ACC + "/authorize?" + urllib.parse.urlencode({
             "client_id": cid, "response_type": "code", "redirect_uri": redirect, "scope": SP_SCOPES,
             "code_challenge_method": "S256", "code_challenge": ch, "state": state})
+
+    def _sp_cid(self):
+        return str(self.get_cfg().get("music_sp_client") or "").strip() or SP_CLIENT
 
     async def spotify_finish(self, code, state):
         p = self._pkce
@@ -358,7 +377,7 @@ class MusicBox:
         if self._sp_tok[0] and time.time() < self._sp_tok[1] and not force:
             return self._sp_tok[0]
         cfg = self.get_cfg()
-        ref, cid = str(cfg.get("music_sp_refresh") or ""), str(cfg.get("music_sp_client") or "").strip()
+        ref, cid = str(cfg.get("music_sp_refresh") or ""), self._sp_cid()
         if not ref or not cid:
             raise RuntimeError("Spotify не подключён — нажми «Войти в Spotify» в настройках заказа музыки")
         st, d = await self._http("POST", SP_ACC + "/api/token", data={
@@ -374,7 +393,8 @@ class MusicBox:
 
     async def _sp(self, method, path, params=None, _retry=True):
         tok = await self._sp_token()
-        st, d = await self._http(method, SP_API + path, params=params, headers={"Authorization": "Bearer " + tok})
+        st, d = await self._http(method, SP_API + path, params=params,
+                                 headers={"Authorization": "Bearer " + tok, "Accept-Language": "ru-RU,ru;q=0.9"})
         if st == 401 and _retry:
             await self._sp_token(force=True)
             return await self._sp(method, path, params, _retry=False)
@@ -387,8 +407,8 @@ class MusicBox:
         if st == 404 or reason == "NO_ACTIVE_DEVICE":
             raise RuntimeError("Spotify молчит: открой Spotify на ПК и включи любой трек — заказы встанут в его очередь")
         if st == 403:
-            raise RuntimeError("Spotify отказал (403): в приложении на developer.spotify.com добавь свой аккаунт в "
-                               "User Management и войди ещё раз")
+            raise RuntimeError("Spotify не пускает этот аккаунт (403): приложение TakyLive в Spotify пока открыто только "
+                               "тем, кого добавили вручную — попроси автора программы добавить почту твоего Spotify")
         if st == 429:
             raise RuntimeError("Spotify просит подождать — слишком много запросов")
         raise RuntimeError(f"Spotify: ошибка {st} {str(msg)[:100]}")
@@ -416,7 +436,8 @@ class MusicBox:
             self.log("ОШИБКА", f"заказ музыки: поиск не сработал — {type(e).__name__}: {str(e)[:120]}")
             return {"ok": False, "msg": "заказ музыки сейчас не работает", "error": str(e)}
         mx = max(1, _int(cfg.get("music_max_min"), 6)) * 60
-        ok = [c for c in cands if c.get("tid") and (not c["dur"] or c["dur"] <= mx) and not bad(c["title"] + " " + c["artist"])]
+        ok = [c for c in cands if c.get("tid") and c["tid"] not in self.blocked
+              and (not c["dur"] or c["dur"] <= mx) and not bad(c["title"] + " " + c["artist"])]
         if not ok:
             return {"ok": False, "msg": f"«{q[:40]}» — не нашёл" if not cands else
                     f"«{q[:40]}» — нашёл только длиннее {mx // 60} мин или из стоп-списка"}
@@ -433,7 +454,8 @@ class MusicBox:
                     return {"ok": False, "msg": "заказ музыки сейчас не работает", "error": str(e)}
             self.n += 1
             item = {"n": self.n, "src": src, "tid": c["tid"], "title": c["title"][:120], "artist": c["artist"][:80],
-                    "dur": c["dur"], "user": str(user or "")[:40], "alts": [x["tid"] for x in ok[1:4]], "at": time.time()}
+                    "dur": c["dur"], "user": str(user or "")[:40], "alts": [x["tid"] for x in ok[1:8]], "at": time.time(),
+                    "cover": str(c.get("cover") or "")[:400]}
             self.queue.append(item)
         name = (item["artist"] + " — " if item["artist"] else "") + item["title"]
         self.log("МУЗЫКА", f"🎵 {user or 'Стример'} заказал(а): {name} (в очереди: {len(self.queue)})")
@@ -443,7 +465,8 @@ class MusicBox:
     def _start_next(self):
         self.cur = self.queue.pop(0)
         self.seq += 1
-        self.cur.update(seq=self.seq, t0=time.time(), started=0.0)
+        self.cur.update(seq=self.seq, t0=time.time(), started=0.0, paused_at=0.0, paused_total=0.0)
+        self.cur.setdefault("cover", "")
         self.log("МУЗЫКА", f"🎵 Играет: {self.cur['artist']} — {self.cur['title']}" +
                  (f" · заказал(а) {self.cur['user']}" if self.cur["user"] else ""))
 
@@ -475,10 +498,18 @@ class MusicBox:
                 self.ov_hint = now
                 self.log("МУЗЫКА", "⚠ Музыка играет в оверлее «🎵 Заказ музыки» — добавь его в OBS (📺 Оверлеи OBS), "
                                    "иначе заказы не зазвучат")
-        elif not cur["started"] and not self.paused and now - cur["t0"] > 25:
-            self.event(cur["seq"], "error", "не запустился за 25 секунд")
-        elif cur["started"] and cur["dur"] and not self.paused and now - cur["started"] > cur["dur"] + 30:
+        elif not cur["started"] and not self.paused and now - cur["t0"] > 12:
+            self.event(cur["seq"], "error", "не запустился за 12 секунд")
+        elif cur["started"] and cur["dur"] and not self.paused and self._played(cur) > cur["dur"] + 30:
             self.cur = None                                      # оверлей не сообщил о конце — идём дальше
+
+    def _played(self, c, now=None):
+        """Сколько трек уже играет — без пауз."""
+        now = now or time.time()
+        if not c.get("started"):
+            return 0.0
+        paused = c.get("paused_total", 0.0) + ((now - c["paused_at"]) if c.get("paused_at") else 0.0)
+        return max(0.0, now - c["started"] - paused)
 
     async def _spotify_sync(self):
         d = await self._sp("GET", "/me/player/currently-playing")
@@ -506,10 +537,12 @@ class MusicBox:
         elif kind == "ended":
             self.cur = None
         elif kind == "error":
+            if cur["src"] == "youtube" and ("встраив" in detail or "150" in detail or "101" in detail or not detail):
+                self.blocked.add(cur["tid"])
             if cur["alts"]:                                      # тот же трек в другом ролике
                 cur["tid"] = cur["alts"].pop(0)
                 self.seq += 1
-                cur.update(seq=self.seq, t0=time.time(), started=0.0)
+                cur.update(seq=self.seq, t0=time.time(), started=0.0, paused_at=0.0, paused_total=0.0)
                 self.log("МУЗЫКА", f"🎵 «{cur['title'][:50]}» не запустился ({detail or 'запрещено встраивание'}) — пробую другой вариант")
             else:
                 self.log("МУЗЫКА", f"🎵 «{cur['title'][:50]}» не играется ({detail or 'владелец запретил встраивание'}) — пропускаю")
@@ -526,6 +559,13 @@ class MusicBox:
         elif do in ("pause", "resume"):
             if spotify:
                 await self._sp("PUT", "/me/player/" + ("pause" if do == "pause" else "play"))
+            c, now = self.cur, time.time()
+            if c and c.get("started"):                           # время на паузе не считаем
+                if do == "pause" and not c.get("paused_at"):
+                    c["paused_at"] = now
+                elif do == "resume" and c.get("paused_at"):
+                    c["paused_total"] = c.get("paused_total", 0.0) + now - c["paused_at"]
+                    c["paused_at"] = 0.0
             self.paused = do == "pause"
         elif do == "clear":
             self.queue = []
@@ -561,12 +601,12 @@ class MusicBox:
         src, cur, now = self.src(), None, time.time()
         if self.cur:
             c = self.cur
-            pos = (now - c["started"]) if c["started"] else 0
+            pos = self._played(c, now)
             if src == "spotify" and self._sp_now:
                 pos = self._sp_now["pos"] + (now - self._sp_now["at"] if self._sp_now["playing"] else 0)
             cur = {"seq": c["seq"], "kind": {"youtube": "youtube", "yandex": "audio"}.get(c["src"], "external"),
                    "tid": c["tid"] if c["src"] == "youtube" else "", "title": c["title"], "artist": c["artist"],
-                   "user": c["user"], "dur": c["dur"], "pos": round(max(0, pos), 1)}
+                   "user": c["user"], "dur": c["dur"], "pos": round(max(0, pos), 1), "cover": c.get("cover", "")}
         return {"on": bool(cfg.get("music_on")), "source": src, "source_name": SOURCES[src], "paused": self.paused,
                 "volume": max(0, min(100, _int(cfg.get("music_volume"), 60))), "cmd": str(cfg.get("music_cmd") or "!трек"),
                 "current": cur, "queue": [{k: it[k] for k in ("n", "title", "artist", "user", "dur")} for it in self.queue]}
@@ -577,5 +617,6 @@ class MusicBox:
         st.update(sp_linked=bool(cfg.get("music_sp_refresh")), ov_open=time.time() - self.ov_seen < 10,
                   libs={"ytmusicapi": _lib("ytmusicapi"), "yandex_music": _lib("yandex_music")},
                   sources=SOURCES, credits=sum(self.credits.values()), ya_login=self.ya_login,
-                  ya_linked=bool(str(cfg.get("music_ya_token") or "").strip()))
+                  ya_linked=bool(str(cfg.get("music_ya_token") or "").strip()),
+                  sp_own_client=bool(str(cfg.get("music_sp_client") or "").strip()))
         return st

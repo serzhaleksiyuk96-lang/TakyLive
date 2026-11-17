@@ -104,6 +104,16 @@ class Points:
             self.active_at[key] = time.time()
             self.dirty = True
 
+    def refund(self, key, name, n):
+        """Вернуть потраченное (заказ не состоялся)."""
+        if not key or n <= 0:
+            return
+        with self.lock:
+            r = self._rec(key, name)
+            r["p"] += int(n)
+            r["s"] = max(0, r["s"] - int(n))
+            self.dirty = True
+
     def balance(self, key):
         r = self.data.get(key)
         return int(r["p"]) if r else 0

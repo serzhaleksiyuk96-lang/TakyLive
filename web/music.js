@@ -13,9 +13,7 @@ function muOpen() {
   iaVal("mu_user_cd", c.music_user_cd ?? 120); iaVal("mu_max_min", c.music_max_min ?? 6);
   iaVal("mu_queue_max", c.music_queue_max ?? 15); iaVal("mu_block", c.music_block ?? "");
   iaVal("mu_volume", c.music_volume ?? 60); iaVal("mu_yt_key", c.music_yt_key ?? "");
-  iaVal("mu_sp_client", c.music_sp_client ?? "");
-  const rd = document.getElementById("muRedirect");
-  if (rd) rd.textContent = `http://127.0.0.1:${location.port || 80}/api/music/spotify/callback`;
+
   muSrcUI();
   muRefresh();
   clearInterval(muTimer);
@@ -52,6 +50,10 @@ async function muRefresh() {
   const badge = document.getElementById("muBadge");
   badge.textContent = !c.music_on ? "выключено" : !ok ? "не готово: " + why
     : MU.current ? (MU.paused ? "⏸ пауза" : "🎵 играет") : "ждёт заказов";
+  const show = (id, on) => { const el = document.getElementById(id); if (el) el.style.display = on ? "" : "none"; };
+  show("muSpLoginBtn", !MU.sp_linked);                    // вошёл — кнопка «Войти» не нужна
+  show("muYaLoginBtn", !MU.ya_linked && !(MU.ya_login || {}).running);
+  show("muFreeHint", !(+c.music_cost > 0) && !String(c.music_gift || "").trim());
   const spSt = document.getElementById("muSpState");
   if (spSt) spSt.innerHTML = MU.sp_linked
     ? `<span style="color:#34d399">✓ Spotify подключён</span> <button class="small" onclick="muSpLogout()">Выйти</button>`
@@ -93,11 +95,9 @@ async function muOrder() {
 }
 
 async function muSpLogin() {
-  const client = document.getElementById("mu_sp_client").value.trim();
   const r = await (await fetch("/api/music/spotify/login", {method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({client})})).json();
+    body: "{}"})).json();
   if (!r.ok) { alert(r.error); return; }
-  iaC().music_sp_client = client;
   window.open(r.url, "_blank");
 }
 

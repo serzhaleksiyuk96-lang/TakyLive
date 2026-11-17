@@ -3374,14 +3374,25 @@ async def music_order(display, key, query):
             pay = "points"
         elif not pay and gift:
             return say(f"чтобы заказать трек, подари «{gift}»")
-        r = await mb.request(display, query)
-        if not r["ok"]:
-            return say(r["msg"])
+        # оплату и паузу занимаем ДО поиска (он идёт секунды): иначе несколько «!трек» подряд проходили по одной Розе
+        prev_at = mb.user_at.get(key, 0)
+        mb.user_at[key] = time.time()
         if pay == "credit":
             mb.credits[key] -= 1
-        elif pay == "points":
-            STATE.points.spend(key, display, cost)
-        mb.user_at[key] = time.time()
+        elif pay == "points" and not STATE.points.spend(key, display, cost):
+            mb.user_at[key] = prev_at
+            return say(f"заказ трека стоит {cost} 💎, у тебя {STATE.points.balance(key)}")
+        try:
+            r = await mb.request(display, query)
+        except Exception:
+            r = {"ok": False, "msg": "заказ музыки сейчас не работает"}
+        if not r["ok"]:                                         # не вышло — всё возвращаем
+            mb.user_at[key] = prev_at
+            if pay == "credit":
+                mb.credits[key] = mb.credits.get(key, 0) + 1
+            elif pay == "points":
+                STATE.points.refund(key, display, cost)
+            return say(r["msg"])
         STATE.push_overlay("points", display, "заказал(а) трек: " + r["item"]["title"][:50], icon="🎵", color="#34d399")
     except Exception as e:
         STATE.log("ОШИБКА", f"заказ музыки: {e}")
@@ -4458,7 +4469,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.72"
+APP_VERSION = "1.72.1"
 APP_DATE = "2026-11-17"
 
 

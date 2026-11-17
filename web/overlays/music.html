@@ -21,6 +21,13 @@
            display: grid; place-items: center; position: relative; }
   #media.nov { width: 200px; background: radial-gradient(circle at 35% 30%, #065f46, #0b1020); }
   #media .disc { font-size: 84px; animation: spin 4s linear infinite; }
+  #media img.cover { width: 100%; height: 100%; object-fit: cover; transition: filter .4s; }
+  #media img.cover.stop { filter: grayscale(.6) brightness(.6); }
+  /* обложка размыто — фоном карточки */
+  #bg { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; z-index: -1; }
+  #bg img { width: 120%; height: 160%; margin: -10% -10%; object-fit: cover; filter: blur(28px) saturate(1.4); opacity: .32;
+            transition: opacity .6s; }
+  #card { isolation: isolate; }
   #media .disc.stop { animation-play-state: paused; }
   @keyframes spin { to { transform: rotate(360deg); } }
   #yt, #yt iframe { width: 100%; height: 100%; border: 0; }
@@ -43,6 +50,7 @@
 </head>
 <body>
 <div id="card">
+  <div id="bg"></div>
   <div id="media"><div id="yt"></div></div>
   <div class="body">
     <div class="lbl" id="lbl">🎵 Сейчас играет</div>
@@ -103,8 +111,17 @@ au.addEventListener("playing", () => report("playing"));
 au.addEventListener("ended", () => report("ended"));
 au.addEventListener("error", () => { if (au.getAttribute("src")) report("error", "трек не загрузился"); });
 
+function setBg(url) {
+  const bg = $("bg");
+  if (!url) { bg.innerHTML = ""; return; }
+  if (bg.dataset.url === url) return;
+  bg.dataset.url = url;
+  bg.innerHTML = '<img alt="" src="' + esc(url) + '">';
+}
+
 function start(c) {
   seq = c.seq; kind = c.kind;
+  setBg(c.cover);
   stopYT(); au.pause(); au.removeAttribute("src");
   const m = $("media");
   m.classList.toggle("nov", kind !== "youtube");
@@ -114,6 +131,12 @@ function start(c) {
   } else {
     if (ytPlayer) { try { ytPlayer.destroy(); } catch (e) {} ytPlayer = null; }
     m.innerHTML = '<div class="disc">💿</div>';
+    if (c.cover) {                                   // обложка трека; не загрузилась — остаётся диск
+      const img = new Image();
+      img.className = "cover"; img.alt = "";
+      img.onload = () => { if (seq === c.seq) { m.innerHTML = ""; m.appendChild(img); } };
+      img.src = c.cover;
+    }
     if (kind === "audio") {
       au.src = "/api/music/stream?seq=" + c.seq;
       au.volume = (st ? st.volume : 60) / 100;
@@ -155,8 +178,12 @@ function render(d) {
       else if (!d.paused && au.paused && au.src && !au.ended) au.play().catch(() => {});
     }
   } catch (e) {}
-  const disc = document.querySelector("#media .disc");
+  const disc = document.querySelector("#media .disc, #media img.cover");
   if (disc) disc.classList.toggle("stop", !!d.paused);
+  if (c.cover && c.cover !== $("bg").dataset.url) {       // Spotify: обложка могла прийти позже
+    setBg(c.cover);
+    if (kind !== "youtube" && !document.querySelector("#media img.cover")) start(Object.assign({}, c));
+  }
   $("lbl").textContent = (d.paused ? "⏸ Пауза" : "🎵 Сейчас играет") + " · " + d.source_name;
   $("title").textContent = c.title;
   $("artist").textContent = c.artist;
