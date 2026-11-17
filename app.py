@@ -1502,6 +1502,7 @@ def find_gift_action(gift_name, gift_id):
     gid = str(gift_id or "").strip()
     names = {norm_gift(gift_name)} | ru_gift_names(gift_name, gid)
     names.discard("")
+    gifts = [g for g in gifts if _is_enabled(g)] or gifts   # выключенная карточка не перехватывает подарок у включённой
     if names:
         for g in gifts:
             if norm_gift(g.get("name", "")) in names:
@@ -3714,20 +3715,33 @@ async def h_test_rcon(request):
 
 
 async def h_test_action(request):
-    """Тест-режим: выполнить действие + показать медиа на оверлее."""
-    data = await request.json()
-    action = data.get("action", {})
-    count = data.get("count", 1)
-    user = data.get("user", "ТестЗритель")
-    STATE.log("ТЕСТ", f"Симуляция действия (x{count})")
-    # Показываем медиа на оверлее (если у действия задано)
+    """Тест-режим: выполнить действие ×N + показать медиа на оверлее.
+
+    Подарок ×N — как настоящий подарок ×N: с «Повтором по количеству» — N раз (не больше max_repeat),
+    без него — один раз, а N уходит в {count}. Остальные карточки — N раз. «⚡ Активаций» умножает."""
+    data = await _json_body(request)
+    action = data.get("action") if isinstance(data.get("action"), dict) else {}
+    count = max(1, min(100, _int_or(data.get("count"), 1)))
+    user = str(data.get("user") or "ТестЗритель")[:40]
+    gift = data.get("section") == "gifts"
+    if gift and not action.get("repeat_by_count"):
+        times = 1
+    else:
+        times = count
+        if gift:
+            times = min(times, max(1, _int_cfg("max_repeat", 30)))
+    try:
+        mult = max(1, min(100, int(action.get("multiplier", 1) or 1)))
+    except (TypeError, ValueError):
+        mult = 1
+    STATE.log("ТЕСТ", f"Тест ×{count}: команды выполнятся {times * mult} раз" +
+              (" (включи «Повтор по количеству», чтобы ×N = N раз)" if gift and count > 1 and times == 1 else ""))
     media = _extract_media(action)
     if media:
-        STATE.push_overlay("test", user, "тест медиа",
-                           icon="🧪", color="#00d4ff", media=media)
-    # Выполняем команды
-    await run_chain(action, count=count, user=user)
-    return web.json_response({"ok": True})
+        STATE.push_overlay("test", user, "тест медиа", icon="🧪", color="#00d4ff", media=media)
+    for _ in range(times):
+        fire_action(action, count=count, user=user)
+    return web.json_response({"ok": True, "runs": times * mult})
 
 
 async def h_simulate(request):

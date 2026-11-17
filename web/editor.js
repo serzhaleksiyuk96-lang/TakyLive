@@ -417,6 +417,13 @@ function buildCard(action, idx) {
     : (activeSection === "subs") ? "Подписка" : "Фоллов";
   const title = action.title || autoTitle;
 
+  // Тот же подарок уже в карточке выше? Сработает только первая включённая
+  let dupOf = -1;
+  if (activeSection === "gifts" && normGift(action.name)) {
+    const mine = new Set(giftKeys(action.name));
+    dupOf = curList().findIndex((b, j) => j < idx && b.enabled !== false && enabled && giftKeys(b.name).some(k => mine.has(k)));
+  }
+
   // ── Шапка: тумблер, иконка, сводка «Роза → ×50 зомби», метка типа ──
   const typeIco = (activeSection === "gifts")
     ? giftIconHtml(action.name, 30)
@@ -429,6 +436,7 @@ function buildCard(action, idx) {
       ${typeIco}
       <span class="card-title card-sum">${cardSummaryHtml(activeSection, action)}</span>
       ${giftNeedsId(activeSection, action) ? '<span class="warn-badge" title="Программа пока не знает это русское название">⚠ проверь название</span>' : ""}
+      ${dupOf >= 0 ? `<span class="warn-badge" title="Этот подарок уже стоит в карточке №${dupOf + 1}">⚠ повтор №${dupOf + 1}</span>` : ""}
       ${!enabled?'<span class="off-badge">выкл</span>':''}
     </div>
     <span class="t-badge t-${activeSection}">${TYPE_META[activeSection].n.toLowerCase()}</span>
@@ -436,6 +444,11 @@ function buildCard(action, idx) {
     <button class="icon danger" onclick="event.stopPropagation();delAction(${idx})">🗑</button>
   </div>`;
 
+  if (dupOf >= 0) {
+    bar += `<div class="warn-line">⚠ Подарок «${esc(action.name)}» уже стоит в карточке №${dupOf + 1}
+      «${esc(curList()[dupOf].title || curList()[dupOf].name)}». Сработает только та, что выше. Выбери другой подарок
+      или выключи одну из карточек.</div>`;
+  }
   if (giftNeedsId(activeSection, action)) {
     bar += `<div class="warn-line">⚠ Программа пока не знает подарок «${esc(action.name)}». TikTok присылает
       названия по-английски, а русские программа узнаёт у TikTok сама — при подключении к эфиру. Если после
@@ -578,7 +591,12 @@ function buildCard(action, idx) {
              onchange="upd(${idx},'showcase',this.checked)"> 🎁 На витрине</label>`;
   }
   foot += `<div class="spacer"></div>`;
-  foot += `<button class="small" onclick="testAction(${idx})">▶ Тест</button>`;
+  if (activeSection === "welcome") {
+    foot += `<button class="small" onclick="testAction(${idx})">▶ Тест</button>`;
+  } else {
+    foot += `<span class="test-split"><button class="small" onclick="testAction(${idx}, 1, this)">▶ Тест</button><button
+      class="small test-more" title="Тест сразу несколько раз: ×5, ×10, ×50, ×100" onclick="event.stopPropagation(); testMenu(${idx}, this)">▾</button></span>`;
+  }
   foot += `</div>`;
   body += foot;
 
@@ -2275,7 +2293,31 @@ async function testRcon() {
 }
 
 // ── Тест действия ────────────────────────────────────────────
-async function testAction(idx) {
+// Меню «▾» у кнопки «Тест»: проверить карточку сразу ×5, ×10, ×50, ×100 (как будто подарили столько подарков)
+function testMenu(idx, btn) {
+  document.querySelectorAll(".test-menu").forEach(m => m.remove());
+  const a = curList()[idx], gift = activeSection === "gifts";
+  const mult = Math.max(1, Math.min(100, parseInt(a.multiplier) || 1));
+  const runs = n => gift && !a.repeat_by_count ? mult : n * mult;
+  const m = document.createElement("div");
+  m.className = "test-menu";
+  m.innerHTML = `<div class="tm-h">${gift ? "Как будто подарили" : "Запустить"}</div>
+    <div class="tm-row">${[1, 5, 10, 50, 100].map(n =>
+      `<button class="small${n >= 50 ? " tm-big" : ""}" onclick="testAction(${idx}, ${n}, this)">×${n}</button>`).join("")}</div>
+    <div class="tm-note">${gift && !a.repeat_by_count
+      ? `Сейчас ×N выполнит команды <b>${mult === 1 ? "1 раз" : mult + " раз"}</b> (число N попадёт только в {count}).
+         Чтобы ×100 = 100 раз — включи «✖ Повтор по количеству».`
+      : `×N выполнит команды <b>N${mult > 1 ? " × " + mult : ""} раз</b>${gift ? ` (не больше ${DATA.config.max_repeat || 30} — защита сервера)` : ""}.`}</div>`;
+  btn.closest(".test-split").appendChild(m);
+  setTimeout(() => document.addEventListener("click", function off(e) {
+    if (!m.contains(e.target)) { m.remove(); document.removeEventListener("click", off); }
+  }), 0);
+}
+
+async function testAction(idx, times, btnEl) {
+  times = Math.max(1, Math.min(100, parseInt(times) || 1));
+  const srcBtn = btnEl || (typeof event !== "undefined" && event && event.target);
+  const split = srcBtn && srcBtn.closest ? srcBtn.closest(".test-split") : null;   // до того, как меню закроется
   collectSettings();
   await fetch("/api/config", {
     method:"POST", headers:{"Content-Type":"application/json"},
@@ -2294,14 +2336,17 @@ async function testAction(idx) {
   } else {
     await fetch("/api/test_action", {
       method:"POST", headers:{"Content-Type":"application/json"},
-      body: JSON.stringify({ action, count: 1, user: "ТестЗритель" })
+      body: JSON.stringify({ action, count: times, section: activeSection, user: "ТестЗритель" })
     });
+    document.querySelectorAll(".test-menu").forEach(m => m.remove());
   }
-  if (action.media_file || action.sound_file) {
-    const btn = event.target;
-    const old = btn.textContent;
-    btn.textContent = "✓ Отправлено на оверлей";
-    setTimeout(() => btn.textContent = old, 2000);
+  const btn = split ? split.querySelector("button") : srcBtn;
+  if (btn) {
+    const old = btn.dataset.old || btn.textContent;
+    btn.dataset.old = old;
+    btn.textContent = (action.media_file || action.sound_file) ? "✓ Отправлено на оверлей" : times > 1 ? `✓ ×${times}` : "✓ Готово";
+    clearTimeout(btn._t);
+    btn._t = setTimeout(() => { btn.textContent = old; delete btn.dataset.old; }, 2000);
   }
 }
 
@@ -3212,6 +3257,34 @@ let GIFT_IDS = {};           // {название_lowercase: ID} — ID один
 let GIFT_RU = {};            // {ID: «Роза»} — русские названия, TikTok отдаёт их при подключении
 const normGift = s => String(s || "").toLowerCase().replace(/ё/g, "е").replace(/[’‘`ʼ]/g, "'").replace(/[–—]/g, "-").split(/\s+/).filter(Boolean).join(" ");
 function ruNameOf(en) { const id = GIFT_IDS[String(en).toLowerCase()]; return id ? (GIFT_RU[id] || "") : ""; }
+// Все имена одного подарка (английское и русское) — чтобы «Rose» и «Роза» считались одним подарком
+let RU_TO_EN = null, RU_TO_EN_N = -1;
+function giftKeys(name) {
+  const n = normGift(name);
+  if (!n) return [];
+  const out = new Set([n]);
+  const ru = ruNameOf(name);
+  if (ru) out.add(normGift(ru));
+  const ids = Object.keys(GIFT_RU).length;
+  if (!RU_TO_EN || RU_TO_EN_N !== ids) {
+    RU_TO_EN = {}; RU_TO_EN_N = ids;
+    for (const [en, id] of Object.entries(GIFT_IDS)) if (GIFT_RU[id]) (RU_TO_EN[normGift(GIFT_RU[id])] ||= []).push(normGift(en));
+  }
+  for (const en of RU_TO_EN[n] || []) out.add(en);
+  return [...out];
+}
+// Какие подарки уже стоят в карточках вкладки: имя → [{i: номер карточки, t: что делает, on: включена}]
+function usedGifts(skipIdx) {
+  const m = new Map();
+  ((DATA.profiles[activeProfile] || {}).gifts || []).forEach((a, i) => {
+    if (i === skipIdx) return;
+    for (const k of giftKeys(a.name)) {
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push({i, t: a.title || "", on: a.enabled !== false});
+    }
+  });
+  return m;
+}
 function ruKnown(name) { const n = normGift(name); return Object.values(GIFT_RU).some(v => normGift(v) === n); }
 let libTarget = -1;   // индекс карточки, в которую подставляем подарок
 let libSection = "gifts";
@@ -3332,13 +3405,28 @@ function renderGiftLib() {
   if (!box || libTarget < 0) return;
   const q = (document.getElementById("libSearch")?.value || "").toLowerCase();
   const onlyPic = document.getElementById("libOnlyPic")?.checked;
+  const hideUsed = document.getElementById("libHideUsed")?.checked;
+  const used = usedGifts(libPick ? -1 : libTarget);            // занятые другими карточками вкладки
+  const usedOf = n => { for (const k of giftKeys(n)) if (used.has(k)) return used.get(k); return null; };
+  const cfg = DATA.config || {};
+  const extra = {};                                            // где ещё стоит подарок: колесо, заказ музыки
+  for (const [key, lbl] of [["wheel_gift", "🎡 колесо"], ["music_gift", "🎵 музыка"]])
+    for (const k of giftKeys(cfg[key])) (extra[k] ||= []).push(lbl);
+  const extraOf = n => [...new Set(giftKeys(n).flatMap(k => extra[k] || []))];
   LIB_ALL = libItems();
   const items = LIB_ALL
     .map((g, i) => [g.name, g.coins, i, g.regions])
     .filter(([n]) => !q || n.toLowerCase().includes(q) || normGift(ruNameOf(n)).includes(normGift(q)))
     .filter(([n]) => !onlyPic || GIFT_ICONS[n.toLowerCase()] || GIFT_ICONS_ONLINE[n.toLowerCase()])
     .filter(([, , , rg]) => !LIB_REGION || (LIB_REGION === "tiktok" ? fromTikTok(rg) : (rg || []).includes(LIB_REGION)))
+    .filter(([n]) => !hideUsed || !usedOf(n))
     .sort((a, b) => a[1] - b[1]);
+  const usedN = LIB_ALL.filter(g => usedOf(g.name)).length;
+  // полоска «уже в карточках»: по одной записи на карточку (её название как в карточке)
+  const usedList = ((DATA.profiles[activeProfile] || {}).gifts || [])
+    .map((a, i) => [a, i]).filter(([a, i]) => normGift(a.name) && (libPick || i !== libTarget))
+    .reduce((acc, [a, i]) => { const k = giftKeys(a.name)[0], e = acc.find(x => giftKeys(x[0]).includes(k));
+      const it = {i, t: a.title || ""}; e ? e[1].push(it) : acc.push([a.name, [it]]); return acc; }, []);
   const known = GIFT_CAT.known || [];
   const loaded = Object.entries(GIFT_CAT.regions || {});
   const rname = code => (known.find(k => k[0] === code) || [code, code])[1];
@@ -3346,11 +3434,13 @@ function renderGiftLib() {
   const cur = libPick ? libPick.cur : ((DATA.profiles[activeProfile][libSection] || [])[libTarget] || {}).name || "";
   box.innerHTML = `
     <div class="row" style="margin-bottom:12px">
-      <h3 style="margin:0">📚 Библиотека подарков</h3>
+      <h3 style="margin:0;white-space:nowrap">📚 Библиотека подарков</h3>
       <input id="libSearch" placeholder="поиск: Rose или Роза" value="${esc(q)}"
              oninput="renderGiftLib()" style="max-width:200px">
       <label class="chk"><input type="checkbox" id="libOnlyPic" ${onlyPic?"checked":""}
              onchange="renderGiftLib()"> только с картинками</label>
+      <label class="chk" title="Подарки, которые уже стоят в других карточках этой вкладки"><input type="checkbox" id="libHideUsed" ${hideUsed?"checked":""}
+             onchange="renderGiftLib()"> скрыть занятые${usedN ? ` (${usedN})` : ""}</label>
       <div class="spacer"></div>
       <span class="hint">найдено: ${items.length}</span>
       <button class="icon danger" onclick="closeGiftLib()">✕</button>
@@ -3364,6 +3454,9 @@ function renderGiftLib() {
       ${tiktokN ? `<span class="fish-tag${LIB_REGION === "tiktok" ? " active" : ""}" onclick="LIB_REGION='tiktok'; renderGiftLib()">🌍 Список TikTok · ${tiktokN}</span>` : ""}
       ${GIFT_CAT.regions["эфир"] ? `<span class="fish-tag${LIB_REGION === "эфир" ? " active" : ""}" onclick="LIB_REGION='эфир'; renderGiftLib()">📡 Мой эфир · ${GIFT_CAT.regions["эфир"].count}</span>` : ""}
     </div>` : ""}
+    ${usedList.length ? `<div class="gl-usedbar"><span class="lib-reg-t">✓ Уже в карточках:</span>
+      ${usedList.map(([n, u]) => `<span class="gl-chip" title="${esc(u.map(x => "№" + (x.i + 1) + (x.t ? " «" + x.t + "»" : "")).join(", "))}">${giftIconHtml(n, 22)}${esc(n)} <b>№${u.map(x => x.i + 1).join(", ")}</b></span>`).join("")}
+    </div>` : ""}
     <div class="gift-lib-grid">
       ${items.map(([n, p, gi]) => {
         const key = n.toLowerCase();
@@ -3375,12 +3468,16 @@ function renderGiftLib() {
           ? `<img src="${url}" alt="" loading="lazy" onerror="imgFail(this)" data-ph="${letter}">`
           : `<div class="gl-ph">${letter}</div>`;
         const sel = (n === cur) ? ' style="border-color:var(--cyan)"' : "";
-        return `<div class="gift-lib-item"${sel} onclick="pickGift(${gi})">
-          ${img}<div class="gl-name">${esc(n)}</div>${ruNameOf(n) ? `<div class="gl-ru">${esc(ruNameOf(n))}</div>` : ""}
-          <div class="gl-price">${p} 🪙</div></div>`;
+        const u = usedOf(n), ex = extraOf(n);
+        const tag = u ? `<div class="gl-used" title="${esc(u.map(x => "№" + (x.i + 1) + (x.t ? " «" + x.t + "»" : "") + (x.on ? "" : " (выкл)")).join(", "))}">✓ №${u.map(x => x.i + 1).join(", №")}</div>` : "";
+        const tag2 = ex.length ? `<div class="gl-extra">${ex.join(" · ")}</div>` : "";
+        return `<div class="gift-lib-item${u ? " used" : ""}"${sel} onclick="pickGift(${gi})">
+          ${tag}${img}<div class="gl-name">${esc(n)}</div>${ruNameOf(n) ? `<div class="gl-ru">${esc(ruNameOf(n))}</div>` : ""}
+          <div class="gl-price">${p} 🪙</div>${u ? `<div class="gl-used-t">уже в карточке${u.length > 1 ? "х" : ""} ${u.map(x => "№" + (x.i + 1)).join(", ")}</div>` : tag2}</div>`;
       }).join("")}
     </div>
     <div class="hint" style="margin-top:10px">
+      ${usedN ? `<span class="gl-legend">✓ №</span> — подарок уже стоит в карточке с этим номером: второй раз он не сработает. ` : ""}
       💡 Свои картинки: положи файл в <b>media/gifts/</b> с именем как у подарка (например <b>Rose.png</b>).
     </div>`;
   const s = document.getElementById("libSearch");
@@ -3392,6 +3489,12 @@ function pickGift(gi) {
   const g = LIB_ALL[gi];
   if (!g || libTarget < 0) return;
   if (libPick) { const cb = libPick.cb; closeGiftLib(); cb(g.name); return; }
+  const u = [...usedGifts(libTarget).entries()].find(([k]) => giftKeys(g.name).includes(k));
+  if (u) {
+    const c = u[1][0], card = curList()[c.i] || {};
+    if (!confirm(`«${g.name}» уже стоит в карточке №${c.i + 1}${card.title ? " «" + card.title + "»" : ""}.\n` +
+                 `Два раза один подарок не сработает — выполнится только карточка выше.\n\nВсё равно поставить?`)) return;
+  }
   activeSection = libSection;
   const a = curList()[libTarget];
   a.name = g.name;

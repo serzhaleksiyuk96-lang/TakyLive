@@ -1306,6 +1306,27 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     api.post("/api/disconnect")
     api.cfg(tiktok_username="smoke_nick")
 
+    print("\n• ▶ Тест ×N")
+    tn = [0]
+
+    def run_test(action, count, section, wait_n):       # журнал держит 200 строк — ищем по своей метке
+        tn[0] += 1
+        tag = f"test-x{tn[0]}"
+        action = dict(action, commands=[c.replace("test-x", tag) for c in action["commands"]])
+        r = api.post("/api/test_action", {"action": action, "count": count, "section": section, "user": "t"})
+        mine = lambda: [e["text"] for e in api.log() if e["kind"] == "КОМАНДА" and e["text"].split(" ")[1:2] == [tag]]
+        wait_until(lambda: len(mine()) >= wait_n, 6)
+        time.sleep(0.4)
+        return r, [t.replace(tag, "test-x") for t in mine()]
+    r, got = run_test({"commands": ["say test-x {count}"], "delays": [0], "repeat_by_count": True}, 10, "gifts", 10)
+    check("подарок ×10 с «Повтором по количеству» — команды 10 раз", r.get("runs") == 10 and len(got) == 10, f"{r} {len(got)}")
+    r, got = run_test({"commands": ["say test-x {count}"], "delays": [0]}, 50, "gifts", 1)
+    check("подарок ×50 без повтора — 1 раз, {count}=50 (как настоящий подарок)", r.get("runs") == 1 and got == ["say test-x 50"], f"{r} {got}")
+    r, got = run_test({"commands": ["say test-x"], "delays": [0], "repeat_by_count": True}, 100, "gifts", 30)
+    check("подарок ×100 — не больше max_repeat (30), защита сервера", r.get("runs") == 30 and len(got) == 30, f"{r} {len(got)}")
+    r, got = run_test({"commands": ["say test-x"], "delays": [0], "multiplier": 2}, 5, "chatcmds", 10)
+    check("чат-команда ×5 с «⚡ Активаций 2» — 10 раз", r.get("runs") == 10 and len(got) == 10, f"{r} {len(got)}")
+
     print("\n• 🎵 Заказ музыки")
     time.sleep(3.5)                       # первые 3 с после подключения к TikTok сообщения считаются историей чата
     mu = lambda: api.get("/api/music")
