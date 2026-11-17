@@ -3118,6 +3118,19 @@ async def h_music_spotify_callback(request):
         return web.Response(text=page.format("✗ Не получилось: " + _html.escape(str(e))), content_type="text/html")
 
 
+async def h_music_yandex_login(request):
+    d = await _json_body(request)
+    try:
+        if d.get("logout"):
+            STATE.config["music_ya_token"] = ""
+            save_config()
+        else:
+            await STATE.music.yandex_login()
+        return web.json_response({"ok": True})
+    except Exception as e:
+        return web.json_response({"ok": False, "error": str(e) or type(e).__name__})
+
+
 async def h_music_spotify_logout(request):
     STATE.config["music_sp_refresh"] = ""
     STATE.music._sp_tok = ("", 0.0)
@@ -3654,7 +3667,7 @@ async def h_get_log(request):
     return web.json_response({"log": STATE.event_log[-80:], "seen_gifts": gifts})
 
 
-SERVER_ONLY_KEYS = ("remote_on", "remote_token", "update_repo", "update_api", "music_sp_refresh")      # меняются только своими кнопками, не общим сохранением
+SERVER_ONLY_KEYS = ("remote_on", "remote_token", "update_repo", "update_api", "music_sp_refresh", "music_ya_token")      # меняются только своими кнопками, не общим сохранением
 
 
 async def h_save_config(request):
@@ -5447,6 +5460,7 @@ def make_app():
     app.router.add_post("/api/music/spotify/login", h_music_spotify_login)
     app.router.add_get("/api/music/spotify/callback", h_music_spotify_callback)
     app.router.add_post("/api/music/spotify/logout", h_music_spotify_logout)
+    app.router.add_post("/api/music/yandex/login", h_music_yandex_login)
     app.router.add_post("/api/vc/upload", h_vc_upload)
     app.router.add_post("/api/vc/open", h_vc_open)
     app.router.add_get("/api/vc/presets", h_vc_presets)

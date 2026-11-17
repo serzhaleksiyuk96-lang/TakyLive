@@ -2285,10 +2285,9 @@
         <b style="color:#fbbf24">Экспериментально.</b> У Яндекс Музыки нет открытого API для программ — работает через
         неофициальную библиотеку и токен твоего аккаунта. Может перестать работать после обновлений Яндекса, а Яндекс
         может ограничить аккаунт за такой доступ — решай сам. Для полных треков нужна подписка Плюс. Трек играет в оверлее «🎵 Заказ музыки».
-        <div class="ia-opts"><label title="Токен можно получить расширением браузера «Yandex Music Token» (автор MarshalX) или по инструкции библиотеки yandex-music">
-          Токен Яндекс Музыки <input id="mu_ya_token" type="password" class="ia-txt" style="width:280px" oninput="iaSetStr('music_ya_token', this)"></label></div>
-        <div class="hint">Где взять токен: расширение браузера «yandex-music-token» (автор MarshalX, есть для Chrome и Firefox) →
-          войди в Яндекс → скопируй токен сюда. Токен — как пароль от аккаунта: никому не показывай.</div>
+        <div class="ia-opts"><button class="small primary" onclick="muYaLogin()">Войти в Яндекс</button> <span id="muYaState"></span></div>
+        <div class="hint">Откроется отдельное окно с настоящей страницей входа Яндекса. Войди — программа сама получит доступ
+          и закроет окно. Пароль программа не видит и не хранит.</div>
       </div>
       <div class="hint" id="muOv"></div>
       <div class="ia-opts">

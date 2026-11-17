@@ -15,6 +15,11 @@ import hashlib
 import os
 import re
 import secrets
+import shutil
+import socket
+import subprocess
+import sys
+import tempfile
 import time
 import urllib.parse
 
@@ -24,6 +29,10 @@ YT_API = (os.environ.get("TAKY_YT_API") or "https://www.googleapis.com/youtube/v
 SP_API = (os.environ.get("TAKY_SPOTIFY_API") or "https://api.spotify.com/v1").rstrip("/")
 SP_ACC = (os.environ.get("TAKY_SPOTIFY_ACCOUNTS") or "https://accounts.spotify.com").rstrip("/")
 SP_SCOPES = "user-modify-playback-state user-read-playback-state user-read-currently-playing"
+# Вход в Яндекс: настоящая страница входа Яндекса; программа представляется приложением Яндекс Музыки
+# (другого способа получить доступ к Музыке Яндекс не даёт) и забирает токен из адреса после входа.
+YA_LOGIN = os.environ.get("TAKY_YA_LOGIN_URL") or \
+    "https://oauth.yandex.ru/authorize?response_type=token&client_id=23cabbbdc6cd418abb4b39c32c41195d"
 SOURCES = {"youtube": "YouTube Music", "spotify": "Spotify", "yandex": "Яндекс Музыка"}
 
 DEFAULTS = {
@@ -79,6 +88,7 @@ class MusicBox:
         self._sp_now = None
         self._ya = (None, "")
         self._src = None
+        self.ya_login = {"running": False, "error": "", "ok": False}
         self.lock = asyncio.Lock()
 
     # ── общее ────────────────────────────────────────────────────────────────
@@ -178,6 +188,77 @@ class MusicBox:
             except Exception as e:
                 raise RuntimeError(f"Яндекс Музыка не приняла токен ({type(e).__name__}) — получи его заново")
         return self._ya[0]
+
+    @staticmethod
+    def _browser():
+        fake = os.environ.get("TAKY_YA_BROWSER")                   # для автопроверки
+        if fake:
+            return [sys.executable, fake]
+        names = ("msedge", "chrome") if sys.platform == "win32" else ("google-chrome", "chromium", "microsoft-edge")
+        for n in names:
+            p = shutil.which(n)
+            if p:
+                return [p]
+        if sys.platform == "win32":
+            for root in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA")):
+                for sub in (r"Microsoft\Edge\Application\msedge.exe", r"Google\Chrome\Application\chrome.exe"):
+                    p = os.path.join(root or "", sub)
+                    if root and os.path.isfile(p):
+                        return [p]
+        return None
+
+    async def yandex_login(self):
+        """Открывает отдельное окно браузера со страницей входа Яндекса, ждёт входа и сама забирает токен."""
+        if self.ya_login["running"]:
+            return
+        exe = self._browser()
+        if not exe:
+            raise RuntimeError("не нашёл браузер Edge или Chrome")
+        with socket.socket() as so:
+            so.bind(("127.0.0.1", 0))
+            port = so.getsockname()[1]
+        prof = tempfile.mkdtemp(prefix="taky_ya_")                 # чистый профиль: твой обычный браузер не трогаем
+        kw = {"creationflags": 0x08000000} if sys.platform == "win32" else {}
+        proc = subprocess.Popen(exe + [f"--remote-debugging-port={port}", f"--user-data-dir={prof}", "--no-first-run",
+                                       "--no-default-browser-check", "--window-size=520,760", f"--app={YA_LOGIN}"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, **kw)
+        self.ya_login = {"running": True, "error": "", "ok": False}
+        asyncio.ensure_future(self._yandex_wait(proc, port, prof))
+
+    async def _yandex_wait(self, proc, port, prof):
+        st, token, end, seen = self.ya_login, "", time.time() + 600, False
+        try:
+            while time.time() < end and not token:
+                await asyncio.sleep(1)
+                try:
+                    code, tabs = await self._http("GET", f"http://127.0.0.1:{port}/json/list", timeout=3)
+                except Exception:
+                    if proc.poll() is not None or seen:            # окно закрыли
+                        break
+                    continue
+                seen = True
+                for t in tabs if isinstance(tabs, list) else []:
+                    m = re.search(r"[#&?]access_token=([^&\s]+)", str(t.get("url") or ""))
+                    if m:
+                        token = urllib.parse.unquote(m.group(1))
+            if token:
+                self.get_cfg()["music_ya_token"] = token
+                self.save_cfg()
+                self._ya = (None, "")
+                st["ok"] = True
+                self.log("МУЗЫКА", "🎵 Яндекс Музыка подключена")
+            else:
+                st["error"] = "вход не завершён — окно закрыто или прошло 10 минут"
+        except Exception as e:
+            st["error"] = str(e) or type(e).__name__
+        finally:
+            st["running"] = False
+            try:
+                proc.terminate()
+            except Exception:
+                pass
+            await asyncio.sleep(1)
+            shutil.rmtree(prof, ignore_errors=True)                # вход в Яндекс в этом окне не сохраняем
 
     async def _search_yandex(self, q):
         c = await self._ya_client()
@@ -456,5 +537,6 @@ class MusicBox:
         st = self.public()
         st.update(sp_linked=bool(cfg.get("music_sp_refresh")), ov_open=time.time() - self.ov_seen < 10,
                   libs={"ytmusicapi": _lib("ytmusicapi"), "yandex_music": _lib("yandex_music")},
-                  sources=SOURCES, credits=sum(self.credits.values()))
+                  sources=SOURCES, credits=sum(self.credits.values()), ya_login=self.ya_login,
+                  ya_linked=bool(str(cfg.get("music_ya_token") or "").strip()))
         return st

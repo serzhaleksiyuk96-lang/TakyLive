@@ -13,7 +13,7 @@ function muOpen() {
   iaVal("mu_user_cd", c.music_user_cd ?? 120); iaVal("mu_max_min", c.music_max_min ?? 6);
   iaVal("mu_queue_max", c.music_queue_max ?? 15); iaVal("mu_block", c.music_block ?? "");
   iaVal("mu_volume", c.music_volume ?? 60); iaVal("mu_yt_key", c.music_yt_key ?? "");
-  iaVal("mu_sp_client", c.music_sp_client ?? ""); iaVal("mu_ya_token", c.music_ya_token ?? "");
+  iaVal("mu_sp_client", c.music_sp_client ?? "");
   const rd = document.getElementById("muRedirect");
   if (rd) rd.textContent = `http://127.0.0.1:${location.port || 80}/api/music/spotify/callback`;
   muSrcUI();
@@ -47,7 +47,7 @@ async function muRefresh() {
   if (src === "youtube" && !MU.libs.ytmusicapi && !String(c.music_yt_key || "").trim()) {
     ok = false; why = "нет библиотеки поиска — впиши ключ YouTube или обнови программу";
   } else if (src === "spotify" && !MU.sp_linked) { ok = false; why = "войди в Spotify"; }
-  else if (src === "yandex" && !String(c.music_ya_token || "").trim()) { ok = false; why = "впиши токен"; }
+  else if (src === "yandex" && !MU.ya_linked) { ok = false; why = "войди в Яндекс"; }
   else if (src === "yandex" && !MU.libs.yandex_music) { ok = false; why = "нет библиотеки yandex-music"; }
   const badge = document.getElementById("muBadge");
   badge.textContent = !c.music_on ? "выключено" : !ok ? "не готово: " + why
@@ -56,6 +56,10 @@ async function muRefresh() {
   if (spSt) spSt.innerHTML = MU.sp_linked
     ? `<span style="color:#34d399">✓ Spotify подключён</span> <button class="small" onclick="muSpLogout()">Выйти</button>`
     : `<span class="hint">не подключён</span>`;
+  const yaSt = document.getElementById("muYaState"), yl = MU.ya_login || {};
+  if (yaSt) yaSt.innerHTML = yl.running ? `<span class="hint">⏳ жду входа в открывшемся окне…</span>`
+    : MU.ya_linked ? `<span style="color:#34d399">✓ Яндекс Музыка подключена</span> <button class="small" onclick="muYaLogin(true)">Выйти</button>`
+    : yl.error ? `<span style="color:#f87171">✗ ${esc(yl.error)}</span>` : `<span class="hint">не подключена</span>`;
   const ov = document.getElementById("muOv");
   if (ov) ov.innerHTML = src === "spotify" ? "Звук идёт из приложения Spotify на ПК (захвати его в OBS как обычно)."
     : MU.ov_open ? `<span style="color:#34d399">✓ Оверлей «🎵 Заказ музыки» открыт — звук идёт в OBS через него</span>`
@@ -99,6 +103,13 @@ async function muSpLogin() {
 
 async function muSpLogout() {
   await fetch("/api/music/spotify/logout", {method: "POST"});
+  muRefresh();
+}
+
+async function muYaLogin(logout) {
+  const r = await (await fetch("/api/music/yandex/login", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({logout: !!logout})})).json();
+  if (!r.ok) alert(r.error);
   muRefresh();
 }
 

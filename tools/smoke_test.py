@@ -497,6 +497,21 @@ class MockMusic(http.server.BaseHTTPRequestHandler):
         self._req("PUT")
 
 
+# поддельный браузер для «Войти в Яндекс»: отдаёт адрес вкладки, как Edge с --remote-debugging-port
+FAKE_BROWSER = r'''import http.server, json, sys
+port = int([a for a in sys.argv if a.startswith("--remote-debugging-port=")][0].split("=")[1])
+n = [0]
+class H(http.server.BaseHTTPRequestHandler):
+    def log_message(self, *a): pass
+    def do_GET(self):
+        n[0] += 1
+        url = "https://passport.yandex.ru/auth" if n[0] < 3 else "https://music.yandex.ru/#access_token=yatok&token_type=bearer&expires_in=31536000"
+        b = json.dumps([{"type": "page", "url": url}]).encode()
+        self.send_response(200); self.send_header("Content-Length", str(len(b))); self.end_headers(); self.wfile.write(b)
+http.server.HTTPServer(("127.0.0.1", port), H).serve_forever()
+'''
+
+
 def start_mock_music():
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), MockMusic)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -1393,10 +1408,16 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     check("Spotify не подключён — «нажми Войти в Spotify»", r.get("ok") is False and "Войти в Spotify" in r.get("message", ""), str(r))
 
     # Яндекс Музыка
-    api.cfg(music_source="yandex", music_ya_token="badtok")
+    api.cfg(music_source="yandex")
     r = api.post("/api/music/request", {"query": "кукла колдуна"})
-    check("Яндекс: неверный токен — «получи его заново»", r.get("ok") is False and "токен" in r.get("message", ""), str(r))
-    api.cfg(music_ya_token="yatok")
+    check("Яндекс не подключён — понятная ошибка", r.get("ok") is False and "Яндекс" in r.get("message", ""), str(r))
+    r = api.post("/api/music/yandex/login", {})
+    linked = wait_until(lambda: mu().get("ya_linked"), 15)
+    check("«Войти в Яндекс»: программа сама забирает доступ после входа и закрывает окно",
+          r.get("ok") and bool(linked) and api.log_has("МУЗЫКА", "Яндекс Музыка подключена")
+          and "yatok" not in json.dumps(api.get("/api/music")), str(mu().get("ya_login")))
+    api.cfg(music_ya_token="")
+    check("общее сохранение настроек не стирает вход в Яндекс", mu().get("ya_linked") is True)
     r = api.post("/api/music/request", {"query": "кукла колдуна"})
     cur = wait_until(lambda: ov().get("current"), 4) or {}
     loc = api.redirect_of(f"/api/music/stream?seq={cur.get('seq', -1)}")
@@ -1435,6 +1456,8 @@ def main():
     global MOCK_AI_PORT
     MOCK_AI_PORT = start_mock_ai()[1]
     start_mock_music()
+    with open(os.path.join(tmp, "fake_browser.py"), "w", encoding="utf-8") as f:
+        f.write(FAKE_BROWSER)
     report_id = make_copy(copy_dir, rport)
     MOCK_VC["logfile"] = os.path.join(copy_dir, "voice-changer", "voice_changer_log.txt")
     os.makedirs(os.path.dirname(MOCK_VC["logfile"]), exist_ok=True)
@@ -1447,7 +1470,7 @@ def main():
                TAKY_OPENROUTER_BASE=f"http://127.0.0.1:{MOCK_AI_PORT}/v1",
                TAKY_YT_API=f"http://127.0.0.1:{MUSIC['port']}/yt", TAKY_SPOTIFY_API=f"http://127.0.0.1:{MUSIC['port']}/sp",
                TAKY_SPOTIFY_ACCOUNTS=f"http://127.0.0.1:{MUSIC['port']}/spacc",
-               TAKY_YANDEX_API=f"http://127.0.0.1:{MUSIC['port']}/ya", PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
+               TAKY_YANDEX_API=f"http://127.0.0.1:{MUSIC['port']}/ya", TAKY_YA_BROWSER=os.path.join(tmp, "fake_browser.py"), PYTHONIOENCODING="utf-8", PYTHONUTF8="1",
                TAKY_HF_BASE=f"http://127.0.0.1:{MOCK_HF_PORT}",
                TAKY_PRESETS_URL=f"http://127.0.0.1:{MOCK_HF_PORT}/presets.json")
     out_path = os.path.join(tmp, "app_output.txt")
