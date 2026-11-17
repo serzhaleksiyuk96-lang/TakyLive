@@ -19,7 +19,7 @@ function iaOpen() {
   iaChk("bt_auto", c.battle_auto !== false); iaChk("bt_say", c.battle_say !== false);
   btTeams();
   // 🎡
-  iaChk("wh_on", c.wheel_on); iaVal("wh_gift", c.wheel_gift); iaVal("wh_min", c.wheel_min_coins ?? 0);
+  iaChk("wh_on", c.wheel_on); iaGiftBtn("wh_gift", "wheel_gift"); iaVal("wh_min", c.wheel_min_coins ?? 0);
   iaVal("wh_cost", c.wheel_pts_cost ?? 0); iaVal("wh_cmd", c.wheel_cmd ?? "!колесо"); iaVal("wh_secs", c.wheel_secs ?? 7);
   iaVal("wh_style", c.wheel_style === "gold" ? "gold" : "modern");
   const dl = document.getElementById("iaGiftList");
@@ -45,6 +45,23 @@ function iaOpen() {
     if (!v || v.classList.contains("hidden")) { clearInterval(iaTimer); return; }
     btPoll();
   }, 1000);
+}
+
+// ── Подарок из библиотеки с картинками (колесо, заказ музыки) ──
+function iaGiftBtn(id, key) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const n = String(iaC()[key] || "").trim();
+  el.innerHTML = n ? `${giftIconHtml(n, 26)}<span>${esc(n)}</span>` : `<span class="hint">🎁 выбрать подарок</span>`;
+  const x = document.getElementById(id + "X");
+  if (x) x.style.display = n ? "" : "none";
+}
+function iaGiftPick(id, key) {
+  openGiftLibFor(iaC()[key], name => iaGiftSet(id, key, name));
+}
+function iaGiftSet(id, key, name) {
+  iaC()[key] = name; iaSave(); iaGiftBtn(id, key);
+  if (key.startsWith("wheel")) whState();
 }
 
 // ── Команды из карточек вкладки — чтобы не набирать заново ──

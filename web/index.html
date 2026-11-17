@@ -1036,6 +1036,9 @@
               border: 1px solid var(--border); background: var(--panel); font-size: 13px; }
   .vc-voice.on { border-color: #a855f7; box-shadow: 0 0 0 2px rgba(168,85,247,.3); }
   .vc-voice button { padding: 2px 8px; font-size: 12px; }
+  .ia-gift { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 6px; min-height: 36px; border-radius: 10px;
+             background: rgba(255,255,255,.06); border: 1px solid var(--border, rgba(255,255,255,.14)); color: var(--text); cursor: pointer; }
+  .ia-gift:hover { border-color: #22d3ee; }
   .mu-set { margin: 8px 0; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.04); font-size: 13.5px; color: var(--text-dim); }
   .mu-set b { color: var(--text); }
   .mu-set a { color: #22d3ee; }
@@ -2079,7 +2082,7 @@
       <div class="hint">Подарок или очки крутят колесо на экране — что выпало, то и случится. Шанс сектора — его вес среди всех.
         Оверлей «🎡 Колесо фортуны» — в «📺 Оверлеи OBS».</div>
       <div class="ia-opts">
-        <label>Крутит подарок <input id="wh_gift" class="ia-txt" list="iaGiftList" placeholder="Rose или ID" oninput="iaSetStr('wheel_gift', this)"></label>
+        <label>Крутит подарок <button type="button" class="ia-gift" id="wh_gift" onclick="iaGiftPick('wh_gift', 'wheel_gift')"></button><button type="button" class="small" id="wh_giftX" title="Убрать подарок" onclick="iaGiftSet('wh_gift', 'wheel_gift', '')">✕</button></label>
         <label title="0 — выкл">или любой подарок от <input type="number" min="0" id="wh_min" class="ia-num" oninput="iaSetNum('wheel_min_coins', this, 0)"> монет</label>
         <label title="0 — за очки не крутится">или за <input type="number" min="0" id="wh_cost" class="ia-num" oninput="iaSetNum('wheel_pts_cost', this, 0)"> очков по команде
           <input id="wh_cmd" class="ia-txt" style="width:110px" oninput="iaSetStr('wheel_cmd', this)"></label>
@@ -2293,7 +2296,7 @@
       <div class="ia-opts">
         <label>Команда <input id="mu_cmd" class="ia-txt" style="width:100px" oninput="iaSetStr('music_cmd', this)"></label>
         <label title="0 — без очков">Цена <input type="number" min="0" id="mu_cost" class="ia-num" oninput="iaSetNum('music_cost', this, 0)"> очков</label>
-        <label title="Пусто — подарок не нужен">или подарок <input id="mu_gift" class="ia-txt" list="iaGiftList" placeholder="Rose или ID" oninput="iaSetStr('music_gift', this)"></label>
+        <label title="Не выбран — подарок не нужен">или подарок <button type="button" class="ia-gift" id="mu_gift" onclick="iaGiftPick('mu_gift', 'music_gift')"></button><button type="button" class="small" id="mu_giftX" title="Убрать подарок" onclick="iaGiftSet('mu_gift', 'music_gift', '')">✕</button></label>
         <label>= <input type="number" min="1" id="mu_gift_orders" class="ia-num" oninput="iaSetNum('music_gift_orders', this, 1)"> заказ(а)</label>
         <label>Один зритель — раз в <input type="number" min="0" id="mu_user_cd" class="ia-num" oninput="iaSetNum('music_user_cd', this, 0)"> сек</label>
         <label>Трек не длиннее <input type="number" min="1" id="mu_max_min" class="ia-num" oninput="iaSetNum('music_max_min', this, 1)"> мин</label>

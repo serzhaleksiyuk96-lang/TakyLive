@@ -9,7 +9,7 @@ function muOpen() {
   const c = iaC();
   iaChk("mu_on", c.music_on);
   iaVal("mu_cmd", c.music_cmd ?? "!трек"); iaVal("mu_cost", c.music_cost ?? 0);
-  iaVal("mu_gift", c.music_gift ?? ""); iaVal("mu_gift_orders", c.music_gift_orders ?? 1);
+  iaGiftBtn("mu_gift", "music_gift"); iaVal("mu_gift_orders", c.music_gift_orders ?? 1);
   iaVal("mu_user_cd", c.music_user_cd ?? 120); iaVal("mu_max_min", c.music_max_min ?? 6);
   iaVal("mu_queue_max", c.music_queue_max ?? 15); iaVal("mu_block", c.music_block ?? "");
   iaVal("mu_volume", c.music_volume ?? 60); iaVal("mu_yt_key", c.music_yt_key ?? "");

@@ -3215,6 +3215,7 @@ function ruNameOf(en) { const id = GIFT_IDS[String(en).toLowerCase()]; return id
 function ruKnown(name) { const n = normGift(name); return Object.values(GIFT_RU).some(v => normGift(v) === n); }
 let libTarget = -1;   // индекс карточки, в которую подставляем подарок
 let libSection = "gifts";
+let libPick = null;   // выбор подарка не для карточки (колесо, заказ музыки): {cur, cb}
 
 // Картинка подарка по названию — для карточек и библиотеки
 function giftIconHtml(name, size) {
@@ -3311,9 +3312,19 @@ async function openGiftLib(idx) {
   if (!document.getElementById("giftLibModal").classList.contains("hidden")) renderGiftLib();
 }
 
+// Та же библиотека подарков с картинками — для поля вне карточек: cb(название) при выборе
+async function openGiftLibFor(cur, cb) {
+  libPick = {cur: cur || "", cb};
+  libTarget = 0;
+  document.getElementById("giftLibModal").classList.remove("hidden");
+  renderGiftLib();
+  await loadGiftIcons();
+  if (!document.getElementById("giftLibModal").classList.contains("hidden")) renderGiftLib();
+}
+
 function closeGiftLib() {
   document.getElementById("giftLibModal").classList.add("hidden");
-  libTarget = -1;
+  libTarget = -1; libPick = null;
 }
 
 function renderGiftLib() {
@@ -3332,7 +3343,7 @@ function renderGiftLib() {
   const loaded = Object.entries(GIFT_CAT.regions || {});
   const rname = code => (known.find(k => k[0] === code) || [code, code])[1];
   const tiktokN = (GIFT_CAT.gifts || []).filter(g => fromTikTok(g.regions)).length;
-  const cur = ((DATA.profiles[activeProfile][libSection] || [])[libTarget] || {}).name || "";
+  const cur = libPick ? libPick.cur : ((DATA.profiles[activeProfile][libSection] || [])[libTarget] || {}).name || "";
   box.innerHTML = `
     <div class="row" style="margin-bottom:12px">
       <h3 style="margin:0">📚 Библиотека подарков</h3>
@@ -3380,6 +3391,7 @@ let LIB_ALL = [];
 function pickGift(gi) {
   const g = LIB_ALL[gi];
   if (!g || libTarget < 0) return;
+  if (libPick) { const cb = libPick.cb; closeGiftLib(); cb(g.name); return; }
   activeSection = libSection;
   const a = curList()[libTarget];
   a.name = g.name;
