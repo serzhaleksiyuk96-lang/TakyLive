@@ -27,7 +27,7 @@ from aiohttp import ClientSession, ClientTimeout, web
 API = "https://api.github.com"
 # что никогда не трогаем при обновлении — это данные пользователя
 KEEP_FILES = ["config.json", "profiles.json", "viewer_voices.json", "viewer_points.json", "fish_key.txt", "gift_icons_live.json",
-              "gift_names_ru.json", "gift_catalog.json", "music_state.json"]
+              "gift_names_ru.json", "gift_catalog.json", "music_state.json", "team_members.json"]
 KEEP_DIRS = ["voice-changer", "servers", "java", "steamcmd", "reports", "vault", "tts", "_thumbs", "_backup", "_update", "_проверка"]
 WIN = sys.platform == "win32"
 

@@ -2118,6 +2118,10 @@ function fillSettings() {
   chk("cfg_tts_dupes", c.tts_skip_dupes !== false);
   val2("cfg_tts_maxq", c.tts_max_queue ?? 5);
   val2("cfg_tts_block", c.tts_block_list || "");
+  chk("cfg_tts_trolls", c.tts_block_trolls !== false);
+  val2("cfg_tts_stop", c.tts_stop_phrases ?? "");
+  val2("cfg_tts_maxlen", c.tts_max_len ?? 120);
+  chk("cfg_tts_automute", c.tts_auto_mute !== false);
   chk("cfg_voice_on", c.voice_cmds_on !== false);
   val2("cfg_voice_reset", c.voice_reset_cmd || "!сброс");
   chk("cfg_voice_confirm", c.voice_cmd_confirm !== false);
@@ -2141,10 +2145,15 @@ function fillSettings() {
 
 function ttsFilterUI() {
   const m = document.getElementById("cfg_tts_filter").value;
-  document.getElementById("tts_f_list").style.display = (m === "list") ? "" : "none";
+  document.getElementById("tts_f_list").style.display = (m === "list" || m === "team") ? "" : "none";
+  document.getElementById("tts_f_team").style.display = (m === "team") ? "" : "none";
+  document.getElementById("tts_f_list_t").textContent = m === "team" ? "Озвучивать всегда" : "Ники";
+  document.getElementById("tts_f_list_d").textContent = m === "team"
+    ? "ники через запятую, без @ — их читать, даже если они не в команде" : "через запятую, без @";
   document.getElementById("tts_f_coins").style.display = (m === "gifters") ? "" : "none";
   document.getElementById("tts_f_likes").style.display = (m === "likers") ? "" : "none";
-  document.getElementById("tts_f_hint").style.display = (m === "all" || m === "list") ? "none" : "";
+  document.getElementById("tts_f_hint").style.display = (m === "all" || m === "list" || m === "team") ? "none" : "";
+  if (m === "team" && typeof tmLoad === "function") tmLoad();
 }
 
 function collectSettings() {
@@ -2175,6 +2184,10 @@ function collectSettings() {
   DATA.config.tts_skip_dupes = gchk("cfg_tts_dupes");
   DATA.config.tts_max_queue = Math.max(0, parseInt(gval("cfg_tts_maxq", 5)) || 0);
   DATA.config.tts_block_list = gval("cfg_tts_block", "");
+  DATA.config.tts_block_trolls = gchk("cfg_tts_trolls");
+  DATA.config.tts_stop_phrases = gval("cfg_tts_stop", "");
+  DATA.config.tts_max_len = Math.max(0, parseInt(gval("cfg_tts_maxlen", 120)) || 0);
+  DATA.config.tts_auto_mute = gchk("cfg_tts_automute");
   DATA.config.voice_cmds_on = gchk("cfg_voice_on");
   DATA.config.voice_reset_cmd = (gval("cfg_voice_reset", "!сброс") || "!сброс").trim();
   DATA.config.voice_cmd_confirm = gchk("cfg_voice_confirm");
@@ -2215,6 +2228,7 @@ function sxGo(s) {
   document.getElementById("sxSub").textContent = SX_META[s][1];
   if (s === "vvoices" && typeof vcRender === "function") { vcRender(); vvLoad(); roleRender(); vvRecentLoad(); }
   if (s === "guard" && typeof vvLoad === "function") vvLoad();
+  if (s === "filter" && typeof tmLoad === "function" && document.getElementById("cfg_tts_filter").value === "team") tmLoad();
   if (s === "backups") bkLoad();
 }
 

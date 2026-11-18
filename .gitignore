@@ -13,6 +13,7 @@ java/
 steamcmd/
 reports/
 viewer_points.json
+team_members.json
 media/vault/
 media/_thumbs/
 media/tts/*

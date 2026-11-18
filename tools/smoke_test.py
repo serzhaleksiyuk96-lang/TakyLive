@@ -46,7 +46,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # данные стримера — в копию не берём никогда
 SKIP_NAMES = {".git", "__pycache__", "build", "dist", "reports", "servers", "backups", "_update",
               "config.json", "profiles.json", "viewer_voices.json", "viewer_points.json",
-              "fish_key.txt", "gift_catalog.json", "live_gift_icons.json", "smoke_test_result.txt"}
+              "fish_key.txt", "gift_catalog.json", "live_gift_icons.json", "smoke_test_result.txt",
+              "team_members.json", "music_state.json"}
 
 RESULTS = []
 
@@ -989,6 +990,12 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     api.sim(kind="chat", user="q3", text="!очки")
     time.sleep(2)
     check("обычные сообщения и !команды не считаются вопросами", len(MOCK_LOG) == n1, f"{n1} → {len(MOCK_LOG)}")
+    api.sim(kind="chat", user="q6", text="ты гей?")
+    api.sim(kind="chat", user="q7", text="таки, ты даун?")
+    api.sim(kind="chat", user="q8", text="таки, сикс севен?")
+    time.sleep(2)
+    check("тролли («ты гей?», «таки, ты даун?», стоп-фраза) соведущему не достаются", len(MOCK_LOG) == n1,
+          f"{n1} → {len(MOCK_LOG)}")
     api.cfg(ai_on_questions=False)
     api.sim(kind="chat", user="q4", text="что за игра?")
     time.sleep(2)
@@ -1010,6 +1017,93 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
           od["ai"].get("avatar") == "/media/ai_avatar_test.png" and od["ai"].get("shape") == "free", str(od.get("ai")))
     api.cfg(ai_avatar="", ai_avatar_shape="circle")
     api.cfg(ai_on=False)
+
+    print("\n• 🧹 Защита озвучки и 👥 команда")
+    api.cfg(tts_enabled=True, tts_play_local=False, tts_read_name=True, tts_user_cooldown=0, tts_max_queue=0,
+            tts_filter_mode="all", tts_filter_list="", tts_guard=True, tts_auto_mute=True, tts_profanity="beep")
+
+    def said(marker):                                  # что прочитала (поддельная) озвучка — по своей метке
+        return [e["text"] for e in api.log() if e["kind"] == "ОЗВУЧКА-ТЕСТ" and marker in e["text"]]
+
+    def muted():
+        return {m["user"]: m for m in api.get("/api/tts/muted").get("items", [])}
+
+    api.sim(kind="chat", user="g_ok", text="привет алмаз101")
+    check("обычное сообщение озвучивается с ником", wait_until(lambda: said("алмаз101") == ["g_ok. привет алмаз101"], 8),
+          str(said("алмаз101")))
+    api.sim(kind="chat", user="g_troll", text="ягей")
+    api.sim(kind="chat", user="g_troll", text="привет алмаз102")
+    time.sleep(1.2)
+    check("«ягей» не озвучен, тролль заглушён на 5 минут — и его следующее сообщение тоже не читается",
+          not [e for e in api.log() if e["kind"] == "ОЗВУЧКА-ТЕСТ" and ("ягей" in e["text"] or "алмаз102" in e["text"])]
+          and "g_troll" in muted() and api.log_has("ОЗВУЧКА", r"g_troll заглушён на 5 мин: троллинг"), str(muted()))
+    api.post("/api/tts/unmute", {"user": "g_troll"})
+    api.sim(kind="chat", user="g_troll", text="привет алмаз103")
+    check("«Снять» — зритель снова озвучивается", wait_until(lambda: said("алмаз103"), 8) and "g_troll" not in muted())
+    for u, t in (("g_67", "сикс севен алмаз104"), ("g_gib", "даданетнетдабудетсвет"), ("g_sp", "я г е й"),
+                 ("g_long", "очень длинное сообщение алмаз118 " * 5)):
+        api.sim(kind="chat", user=u, text=t)
+    api.sim(kind="chat", user="g_mat", text="ты пиздец алмаз105")
+    api.sim(kind="chat", user="g_nick", display="ягей", text="привет алмаз106")
+    api.sim(kind="chat", user="g_font", display="𝓓𝓪𝓻𝓲", text="привет алмаз117")
+    check("мат заменён на «пип»", wait_until(lambda: said("алмаз105") == ["g_mat. ты пип алмаз105"], 8), str(said("алмаз105")))
+    check("ник-тролль читается как «зритель»", wait_until(lambda: said("алмаз106") == ["зритель. привет алмаз106"], 8),
+          str(said("алмаз106")))
+    check("ник «красивым» шрифтом читается обычными буквами", wait_until(lambda: said("алмаз117") == ["Dari. привет алмаз117"], 8),
+          str(said("алмаз117")))
+    st = api.get("/api/tts/muted").get("stats", {})
+    check("стоп-фраза «сикс севен», набор букв, «я г е й» и копипаста-простыня не озвучены",
+          not said("алмаз104") and not said("алмаз118") and not said("даданет") and not said("г е й")
+          and st.get("набор букв", 0) >= 1 and st.get("длиннее 120 символов", 0) >= 1 and "g_67" in muted() and "g_sp" in muted(),
+          str(st))
+    cp = "в класс заходит учительница и спрашивает почему парта алмаз107"
+    api.sim(kind="chat", user="g_cp1", text=cp)
+    api.sim(kind="chat", user="g_cp2", text=cp + "!!")
+    api.sim(kind="chat", user="g_cp3", text=cp.replace("почему", "почему у вас"))
+    time.sleep(1.5)
+    check("копипаста от разных зрителей читается один раз", len(said("алмаз107")) == 1
+          and api.get("/api/tts/muted")["stats"].get("копипаста", 0) >= 2, str(said("алмаз107")))
+    for t in ("как дела у всех", "что за игра сегодня", "го играть вместе", "сколько тебе лет", "откуда ты родом",
+              "покажи кота пожалуйста"):
+        api.sim(kind="chat", user="g_spam", text=t)
+    check("5 сообщений за 20 секунд — спамер заглушён", wait_until(lambda: "g_spam" in muted(), 5)
+          and muted()["g_spam"]["why"] == "много сообщений подряд", str(muted().get("g_spam")))
+    r = api.post("/api/tts/check", {"text": "я г е й"})
+    r2 = api.post("/api/tts/check", {"text": "six seven"})
+    r3 = api.post("/api/tts/check", {"text": "ты пиздец"})
+    check("🧪 Проверить фразу знает про троллинг, стоп-фразы и «пип»",
+          not r.get("ok") and "троллинг" in r.get("verdict", "") and not r2.get("ok") and "стоп-фраза" in r2.get("verdict", "")
+          and r3.get("ok") and "пип" in r3.get("verdict", ""), f"{r} {r2} {r3}")
+
+    api.cfg(tts_filter_mode="team", tts_filter_list="vip_nick")
+    api.sim(kind="chat", user="t_new", text="привет алмаз110")
+    time.sleep(1)
+    check("режим «Только команда»: не участник не озвучивается", not said("алмаз110")
+          and api.get("/api/tts/muted")["stats"].get("не в команде", 0) >= 1)
+    api.sim(kind="gift", name="Heart Me", gift_id="7934", count=1, user="t_new", diamonds=1)
+    check("подарок «Heart Me» — зритель в команде", wait_until(lambda: api.log_has("КОМАНДА", r"t_new — в команде \(подарок «Heart Me»\)"), 5))
+    api.sim(kind="chat", user="t_new", text="привет алмаз111")
+    api.sim(kind="chat", user="t_badge", team_level=3, text="привет алмаз112")
+    api.sim(kind="chat", user="vip_nick", text="привет алмаз113")
+    api.sim(kind="chat", user="t_mod", roles=["moderator"], text="привет алмаз114")
+    api.sim(kind="gift", name="От всего сердца", gift_id="", count=1, user="t_ru", diamonds=1)
+    check("участники команды (по подарку и по значку), ники из списка и модераторы озвучиваются",
+          all(wait_until(lambda m=m: said(m), 8) for m in ("алмаз111", "алмаз112", "алмаз113", "алмаз114")),
+          str([m for m in ("алмаз111", "алмаз112", "алмаз113", "алмаз114") if not said(m)]))
+    tm = api.get("/api/team")
+    lv = {m["user"]: m.get("level") for m in tm.get("recent", [])}
+    tf_path = os.path.join(copy_dir, "team_members.json")
+    saved = json.load(open(tf_path, encoding="utf-8")).get("members", {}) if os.path.exists(tf_path) else {}
+    check("список команды: по-русски «От всего сердца» тоже считается, уровень из значка, файл на диске",
+          {"t_new", "t_badge", "t_ru"} <= set(lv) and lv.get("t_badge") == 3 and lv.get("t_new") == 0
+          and {"@t_new", "@t_badge", "@t_ru"} <= set(saved), f"{tm} {list(saved)}")
+    api.post("/api/team/clear")
+    api.sim(kind="chat", user="t_new", text="привет алмаз115")
+    time.sleep(1)
+    check("«Очистить» — список команды пуст, бывший участник снова не озвучивается",
+          api.get("/api/team").get("count") == 0 and not said("алмаз115"))
+    api.cfg(tts_enabled=False, tts_filter_mode="all", tts_filter_list="", tts_user_cooldown=8, tts_max_queue=5)
+    api.post("/api/tts/unmute", {"user": "*"})
 
     print("\n• 🎙 ИИ-голос (поддельная голосовая программа)")
     st = api.get("/api/vc/status")
@@ -1533,7 +1627,7 @@ def main():
     with open(DEVSIG_FILE, "w", encoding="utf-8") as f:
         f.write("o:Динамики|o:Наушники|i:Микрофон")
 
-    env = dict(os.environ, TAKY_TEST="1", TAKY_FAKE_TIKTOK="1", TAKY_VC_DEVSIG=DEVSIG_FILE, TAKY_PORT=str(port),
+    env = dict(os.environ, TAKY_TEST="1", TAKY_FAKE_TIKTOK="1", TAKY_FAKE_TTS="1", TAKY_VC_DEVSIG=DEVSIG_FILE, TAKY_PORT=str(port),
                TAKY_OPENROUTER_BASE=f"http://127.0.0.1:{MOCK_AI_PORT}/v1",
                TAKY_YT_API=f"http://127.0.0.1:{MUSIC['port']}/yt", TAKY_SPOTIFY_API=f"http://127.0.0.1:{MUSIC['port']}/sp",
                TAKY_SPOTIFY_ACCOUNTS=f"http://127.0.0.1:{MUSIC['port']}/spacc",

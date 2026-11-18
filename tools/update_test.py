@@ -39,7 +39,8 @@ for _s in (sys.stdout, sys.stderr):
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP = {".git", "__pycache__", "build", "dist", "reports", "servers", "_backup", "_update", "voice-changer",
         "config.json", "profiles.json", "viewer_voices.json", "viewer_points.json", "fish_key.txt",
-        "gift_catalog.json", "gift_icons_live.json", "smoke_test_result.txt", "gift_names_ru_full.json"}
+        "gift_catalog.json", "gift_icons_live.json", "smoke_test_result.txt", "gift_names_ru_full.json",
+        "team_members.json", "music_state.json"}
 RESULTS = []
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -127,6 +128,8 @@ def make_user_data(base, api_port):
         "gift_catalog.json": J({"gifts": {"424242": {"name": "My Local Gift", "coins": 7, "icon": "", "regions": ["BY"]}},
                                 "regions": {"BY": {"count": 1, "at": "2026-01-01"}}}),
         "fish_key.txt": "MY-FISH-KEY-FILE",
+        "team_members.json": J({"members": {"@anya_1": {"nick": "Аня", "user": "anya_1", "acc": "111", "level": 3,
+                                                         "since": "2026-11-01 20:00", "seen": "2026-11-01 20:00", "via": "значок"}}}),
         "media/мой эдит.mp4": os.urandom(40000),
         "media/моя музыка.mp3": os.urandom(30000),
         "media/смешной кот.gif": b"GIF89a" + os.urandom(5000),
@@ -270,6 +273,9 @@ def main():
         cat = api(port, "/api/gift_catalog")
         check("свой каталог подарков на месте (+ встроенный)", any(g.get("name") == "My Local Gift" for g in cat.get("gifts", []))
               and len(cat.get("gifts", [])) > 700, f"подарков: {len(cat.get('gifts', []))}")
+        team = api(port, "/api/team")
+        check("команда (кто вступил через «Heart Me») на месте", team.get("count") == 1
+              and (team.get("recent") or [{}])[0].get("nick") == "Аня", str(team)[:200])
         reps = api(port, "/api/stats/list")
         check("отчёты эфиров на месте", any(i.get("id") == "20260101-200000" for i in reps.get("items", [])), str(reps)[:200])
 

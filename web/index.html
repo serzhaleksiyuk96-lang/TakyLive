@@ -589,6 +589,15 @@
   .vc-row { display: grid; grid-template-columns: 130px 130px 1fr auto auto; gap: 8px; align-items: center; margin-bottom: 8px; }
   .vc-row select, .vc-row input { width: 100%; }
   .vv-bar { display: flex; align-items: center; gap: 8px; margin: 18px 0 8px; flex-wrap: wrap; }
+  .tm-row { align-items: flex-start; }
+  .tm-box { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tm-count { font-weight: 600; color: var(--text); margin-right: 4px; }
+  .tm-chip { font-size: 12px; padding: 2px 9px; border-radius: 999px; background: rgba(167,139,250,.14);
+             color: var(--text); border: 1px solid rgba(167,139,250,.35); }
+  .tm-chip b { color: #c4b5fd; font-weight: 600; margin-left: 4px; }
+  .gm-row { display: flex; align-items: center; gap: 10px; padding: 6px 12px; border-radius: 10px; margin-top: 6px;
+            background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25); font-size: 13px; }
+  .gm-row .gm-why { color: var(--text-mut); flex: 1; }
   .vv-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 10px; margin-bottom: 6px;
             background: var(--panel2); border: 1px solid var(--border); font-size: 13px; }
   .vv-row .vv-nick { font-weight: 600; color: var(--text); }
@@ -1629,6 +1638,7 @@
           <div class="sx-l"><div class="t">Кого озвучивать</div><div class="d">чтобы не читать спам — только своих</div></div>
           <select id="cfg_tts_filter" class="sx-in" onchange="ttsFilterUI()">
             <option value="all">Всех зрителей</option>
+            <option value="team">👥 Только команду (фан-клуб)</option>
             <option value="list">Только ники из списка</option>
             <option value="gifters">Только донатеров (от N монет)</option>
             <option value="likers">Только по лайкам (от N лайков)</option>
@@ -1643,8 +1653,16 @@
           <div class="sx-l"><div class="t">Минимум лайков за стрим</div><div class="d">сколько надо налайкать</div></div>
           <input type="number" id="cfg_tts_likes" class="sx-in sx-short" min="1" value="100">
         </div>
+        <div class="sx-row tm-row" id="tts_f_team" style="display:none">
+          <div class="sx-l"><div class="t">👥 Команда</div><div class="d">Зритель вступает в команду (фан-клуб TikTok), подарив
+            «Heart Me» — «От всего сердца», 1 монета. Программа узнаёт участников по значку команды рядом с ником в чате
+            и по этому подарку и запоминает их — список не теряется после обновлений. Модераторы озвучиваются всегда.</div>
+            <div class="tm-box"><span class="tm-count" id="tmCount">В команде: …</span>
+              <span class="tm-list" id="tmList"></span></div></div>
+          <button class="small" onclick="tmClear()" title="Забыть всех — программа заново узнает их по значку">🗑 Очистить</button>
+        </div>
         <div class="sx-row " id="tts_f_list" style="display:none">
-          <div class="sx-l"><div class="t">Ники</div><div class="d">через запятую, без @</div></div>
+          <div class="sx-l"><div class="t" id="tts_f_list_t">Ники</div><div class="d" id="tts_f_list_d">через запятую, без @</div></div>
           <input id="cfg_tts_list" class="sx-in" placeholder="Takymi, drug123">
         </div>
         <div class="sx-note" id="tts_f_hint" style="display:none">💡 Донаты, лайки и подписки считаются с момента запуска программы.</div>
@@ -1653,20 +1671,39 @@
         <div class="sx-row "><div class="sx-l"><div class="t">Защита включена</div><div class="d">мат, растяжки «аааааа», флуд и повторы не попадут в озвучку</div></div>
           <label class="chk"><input type="checkbox" id="cfg_tts_guard"> Вкл</label>
         </div>
-        <div class="sx-row "><div class="sx-l"><div class="t">Мат и оскорбления</div><div class="d">ловит и хитрости: «x у й», «п1зд», «хууууй»</div></div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Мат и оскорбления</div><div class="d">ловит и хитрости: «x у й», «п1зд», «хууууй»,
+            «huy», «𝔥𝔲𝔦», «х уй». Ник с матом читается как «зритель»</div></div>
           <select id="cfg_tts_profanity" class="sx-in"><option value="beep">Заменять на «пип»</option>
             <option value="skip">Не читать такое сообщение</option><option value="off">Читать как есть</option></select>
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Троллинг</div><div class="d">«я гей», «ягей», «я г е й», «ya gey», «ты даун»,
+            «стример лох» — чтобы озвучка не говорила такое твоим голосом. Такое сообщение не читается вовсе</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tts_trolls"> Вкл</label>
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Стоп-фразы</div><div class="d">мемы и копипасты, которые не читать, через запятую.
+            Ловятся слитно и раздельно: «сиксевен» = «сикс севен» = «six seven». Звёздочка в конце — «начинается с»: левитир*</div></div>
+          <textarea id="cfg_tts_stop" class="sx-in" rows="2" placeholder="сиксевен, парта левитирует"></textarea>
         </div>
         <div class="sx-row "><div class="sx-l"><div class="t">Свои запрещённые слова</div><div class="d">через запятую — ловятся и в начале слова</div></div>
           <input id="cfg_tts_bad_words" class="sx-in" placeholder="кринж, скам">
         </div>
-        <div class="sx-row "><div class="sx-l"><div class="t">Пропускать мусор</div><div class="d">растяжки «нооооогггг», одни смайлы, ссылки, «лол лол лол»</div></div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Пропускать мусор</div><div class="d">растяжки «нооооогггг», одни смайлы, ссылки, «лол лол лол»,
+            набор букв «даданетнетдабудетсвет», «фывапролдж»</div></div>
           <label class="chk"><input type="checkbox" id="cfg_tts_skip_junk"> Вкл</label>
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Длинные сообщения</div><div class="d">длиннее стольких символов — не читать
+            (обычно это копипаста); 0 — без ограничения</div></div>
+          <input type="number" id="cfg_tts_maxlen" class="sx-in sx-short" min="0" value="120">
+        </div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Заглушать спамеров</div><div class="d">кто пишет 5 сообщений за 20 секунд, одно и то же
+            три раза или троллит — не озвучивается 5 минут</div></div>
+          <label class="chk"><input type="checkbox" id="cfg_tts_automute"> Вкл</label>
         </div>
         <div class="sx-row "><div class="sx-l"><div class="t">Пауза для одного зрителя</div><div class="d">секунд между его сообщениями — спамер не займёт всю озвучку</div></div>
           <input type="number" id="cfg_tts_cooldown" class="sx-in sx-short" min="0" value="8">
         </div>
-        <div class="sx-row "><div class="sx-l"><div class="t">Не повторять одинаковое</div><div class="d">одно и то же сообщение подряд читается один раз</div></div>
+        <div class="sx-row "><div class="sx-l"><div class="t">Не повторять одинаковое</div><div class="d">одно и то же (и почти то же) от зрителя читается
+            раз в 10 минут, копипаста от разных зрителей — один раз</div></div>
           <label class="chk"><input type="checkbox" id="cfg_tts_dupes"> Вкл</label>
         </div>
         <div class="sx-row "><div class="sx-l"><div class="t">Очередь не больше</div><div class="d">если в очереди уже столько — новые пропускаются, озвучка не отстаёт от чата</div></div>
@@ -1679,6 +1716,7 @@
           <input id="guardTest" class="sx-in" placeholder="аааааа нооооогггг" oninput="guardCheck()">
         </div>
         <div class="sx-note" id="guardStats">Отфильтровано за этот запуск: пока ничего.</div>
+        <div id="guardMuted"></div>
         </section>
 
         <section class="sx-sec hidden" data-s="backups">

@@ -137,6 +137,43 @@ async function vvLoad() {
       : "Отфильтровано за этот запуск: пока ничего.";
   } catch (e) { VV = []; }
   vvRender();
+  gmLoad();
+}
+
+// ── 🔇 Заглушённые (спам/троллинг) ──
+async function gmLoad() {
+  const box = document.getElementById("guardMuted");
+  if (!box) return;
+  try {
+    const d = await (await fetch("/api/tts/muted", {cache: "no-store"})).json();
+    const items = d.items || [];
+    box.innerHTML = items.length ? `<div class="sx-note">🔇 Сейчас не озвучиваются — заглушены автоматически:</div>` +
+      items.map(x => `<div class="gm-row"><b>${esc(x.nick)}</b><span class="gm-why">${esc(x.why)} · ещё ${Math.max(1, Math.ceil(x.left / 60))} мин</span>
+        <button class="small" onclick='gmLift(${JSON.stringify(x.user)})'>Снять</button></div>`).join("") : "";
+  } catch (e) { box.innerHTML = ""; }
+}
+
+async function gmLift(user) {
+  await fetch("/api/tts/unmute", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({user})});
+  gmLoad();
+}
+
+// ── 👥 Команда (фан-клуб TikTok) ──
+async function tmLoad() {
+  const c = document.getElementById("tmCount"), l = document.getElementById("tmList");
+  if (!c || !l) return;
+  try {
+    const d = await (await fetch("/api/team?limit=40", {cache: "no-store"})).json();
+    c.textContent = d.count ? `В команде: ${d.count}` : "В команде пока никого — участники появятся, когда напишут в чат или подарят «Heart Me»";
+    l.innerHTML = (d.recent || []).map(m => `<span class="tm-chip" title="${esc((m.since ? "с " + m.since : "") + (m.via ? " · " + m.via : ""))}">${esc(m.nick || m.user)}${m.level ? `<b>${m.level}</b>` : ""}</span>`).join("")
+      + (d.count > (d.recent || []).length ? `<span class="tm-chip">ещё ${d.count - d.recent.length}</span>` : "");
+  } catch (e) { c.textContent = "✗ " + e.message; }
+}
+
+async function tmClear() {
+  if (!confirm("Забыть весь список команды?\nПрограмма заново узнает участников по значку в чате и по «Heart Me».")) return;
+  await fetch("/api/team/clear", {method: "POST", headers: {"Content-Type": "application/json"}, body: "{}"});
+  tmLoad();
 }
 
 function vvRender() {

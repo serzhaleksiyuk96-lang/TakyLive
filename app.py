@@ -395,8 +395,8 @@ class State:
             "tts_voice": "ru-RU-DmitryNeural",
             "tts_volume": 100,
             "tts_read_name": True,            # читать имя перед сообщением
-            "tts_filter_mode": "all",         # all|list|gifters|likers|followers
-            "tts_filter_list": "",            # ники через запятую (режим list)
+            "tts_filter_mode": "all",         # all|list|gifters|likers|followers|team
+            "tts_filter_list": "",            # ники через запятую (режим list; в режиме team — озвучивать всегда)
             "tts_filter_coins": 1,            # мин. монет (режим gifters)
             "tts_filter_likes": 100,          # мин. лайков (режим likers)
             "tts_play_local": True,           # играть озвучку в окне программы
@@ -408,6 +408,10 @@ class State:
             "tts_skip_dupes": True,           # одинаковые сообщения подряд
             "tts_max_queue": 5,               # больше в очереди — новые пропускаем
             "tts_block_list": "",             # ники, которых не озвучивать никогда
+            "tts_block_trolls": True,         # «я гей», «ягей», «ты даун» — не читать вовсе
+            "tts_stop_phrases": "сиксевен, сикс севен, six seven, 67 летний, парта левитирует",
+            "tts_max_len": 120,               # длиннее (копипасты) — не читать; 0 — без ограничения
+            "tts_auto_mute": True,            # спамит или троллит — не озвучивать его 5 минут
             "voice_cmds_on": True,            # зрители выбирают голос командой в чате
             "voice_cmds": [{"cmd": "!девочка", "label": "Девочка", "voice": "ru-RU-SvetlanaNeural"},
                            {"cmd": "!мальчик", "label": "Мальчик", "voice": "ru-RU-DmitryNeural"}],
@@ -476,6 +480,11 @@ class State:
         self.tts_user_last = {}       # зритель → время последней озвучки
         self.tts_recent = []          # (время, зритель, текст) — для поиска повторов
         self.tts_guard_stats = {}     # причина → сколько отфильтровано
+        self.tts_spam = {}            # зритель → [(время, сообщение)] — для поиска спама
+        self.tts_muted = {}           # зритель → {"until", "nick", "why"} — заглушён автоматически
+        self.tts_skip_log_at = 0.0    # «🔇 не озвучил» в журнал — не чаще раза в 2 секунды
+        self.anchor_id = ""           # ID аккаунта стримера (узнаём, когда он пишет в свой чат)
+        self.team = None              # 👥 участники команды (team.Team)
         self.viewer_voices = {}       # аккаунт → {nick, voice, label, …}
         self.media_meta_busy = False  # идёт ли фоновое создание превью
         self.recent_viewers = {}      # кто писал в чат — для выбора «особенных» зрителей
@@ -1769,7 +1778,7 @@ def handle_sub(user):
     check_goals()
     if STATE.config.get("pts_on"):
         STATE.points.on_sub(STATE.config, ia_key(user), user)
-    ai_event("sub", user, f"{user} оформил платную подписку ⭐ на стримера. Поблагодари.", "ai_on_sub")
+    ai_event("sub", nice_name(user), f"{nice_name(user)} оформил платную подписку ⭐ на стримера. Поблагодари.", "ai_on_sub")
     for a in subs:
         fire_action(a, count=1, user=user)
 
@@ -1785,23 +1794,44 @@ def handle_follow(user):
     check_goals()
     if STATE.config.get("pts_on"):
         STATE.points.on_follow(STATE.config, ia_key(user), user)
-    ai_event("follow", user, f"{user} подписался на профиль стримера. Коротко поприветствуй.", "ai_on_follow")
+    ai_event("follow", nice_name(user), f"{nice_name(user)} подписался на профиль стримера. Коротко поприветствуй.", "ai_on_follow")
     for a in follows:
         fire_action(a, count=1, user=user)
 
 
-def tts_allowed(display, uid="", is_follower=False):
+TEAM_FILE = os.path.join(BASE_DIR, "team_members.json")
+
+
+def team_note(uid, display, acc=None, level=0, via="значок"):
+    """👥 Зритель в команде стримера — запоминаем (файл переживает обновления)."""
+    if STATE.team is None or not str(uid or display or "").strip():
+        return False
+    new = STATE.team.add(uid or display, display or uid, acc or "", level, via)
+    if new:
+        lvl = f", ур. {level}" if level else ""
+        STATE.log("КОМАНДА", f"👥 {display or uid} — в команде ({via}{lvl})")
+    return new
+
+
+def tts_allowed(display, uid="", is_follower=False, roles=(), acc=None):
     """Проверка: озвучивать ли сообщение этого зрителя (фильтр озвучки)."""
     mode = STATE.config.get("tts_filter_mode", "all")
     if mode == "all":
         return True
     d = str(display).strip().lstrip("@").lower()
     u = str(uid).strip().lstrip("@").lower()
+    raw = str(STATE.config.get("tts_filter_list", ""))
+    nicks = {n.strip().lstrip("@").lower()
+             for n in raw.replace("\n", ",").split(",") if n.strip()}
     if mode == "list":
-        raw = str(STATE.config.get("tts_filter_list", ""))
-        nicks = {n.strip().lstrip("@").lower()
-                 for n in raw.replace("\n", ",").split(",") if n.strip()}
         return d in nicks or u in nicks
+    if mode == "team":                      # 👥 только команда (+ модераторы, сам стример и ники из списка)
+        roles = roles or ()
+        if ("team" in roles or "moderator" in roles or "anchor" in roles or d in nicks or u in nicks
+                or (STATE.team is not None and STATE.team.has(uid, display, acc))):
+            return True
+        STATE.tts_guard_stats["не в команде"] = STATE.tts_guard_stats.get("не в команде", 0) + 1
+        return False
     if mode == "gifters":
         try:
             need = int(STATE.config.get("tts_filter_coins", 1) or 1)
@@ -2026,6 +2056,11 @@ async def _tts_generate(msg, voice, out_path):
     Голоса вида "se:Maxim" → StreamElements (простой HTTPS, как в TikFinity-подобных
     тулзах, надёжно проходит файрволы). Остальные → Edge TTS (Microsoft).
     """
+    if TEST_MODE and os.environ.get("TAKY_FAKE_TTS") == "1":     # автопроверка: без интернета, пишем что прочитали бы
+        with open(out_path, "wb") as f:
+            f.write(b"ID3" + b"\x00" * 64)
+        STATE.log("ОЗВУЧКА-ТЕСТ", msg)
+        return
     if voice.startswith("gt:"):
         # Google Translate TTS — открытый, простой, почти не блокируется
         import aiohttp
@@ -2062,7 +2097,8 @@ async def tts_speak(display, text, voice=None, read_name=None):
     if not msg:
         return False
     if STATE.config.get("tts_read_name", True) if read_name is None else read_name:
-        msg = f"{display}. {msg}"
+        msg = f"{nice_name(display)}. {msg}"
+    msg = clean_speech(msg)
     voice = voice or STATE.config.get("tts_voice", "ru-RU-DmitryNeural")
     epoch = STATE.tts_epoch
     STATE.tts_pending += 1
@@ -2195,9 +2231,125 @@ def save_viewer_voices():
         STATE.log("ОШИБКА", f"не сохранил голоса зрителей: {e}")
 
 
-def _guard_skip(reason):
+_QUIET_SKIPS = {"слишком часто", "очередь полна", "заглушён", "спам", "в чёрном списке"}
+
+
+def _guard_skip(reason, display="", log=True):
     STATE.tts_guard_stats[reason] = STATE.tts_guard_stats.get(reason, 0) + 1
+    if log and display and reason not in _QUIET_SKIPS and time.time() - STATE.tts_skip_log_at >= 2:
+        STATE.tts_skip_log_at = time.time()                       # не чаще раза в 2 секунды — журнал не забьётся
+        STATE.log("ОЗВУЧКА", f"🔇 Не озвучил {display}: {reason}")
     return False, reason
+
+
+def _cfg_list(key):
+    return [w.strip() for w in str(STATE.config.get(key, "") or "").replace("\n", ",").split(",") if w.strip()]
+
+
+def tts_mute(user, display, why, minutes=5):
+    """🔇 Не озвучивать зрителя N минут (спамит или троллит)."""
+    key = str(user).lstrip("@").lower()
+    STATE.tts_muted[key] = {"until": time.time() + minutes * 60, "nick": str(display or user), "why": str(why)}
+    STATE.log("ОЗВУЧКА", f"🔇 {display or user} заглушён на {minutes} мин: {why}")
+
+
+def tts_is_muted(user):
+    key = str(user).lstrip("@").lower()
+    m = STATE.tts_muted.get(key)
+    if m and m["until"] <= time.time():
+        STATE.tts_muted.pop(key, None)
+        return False
+    return bool(m)
+
+
+def _spam_reason(key, squashed):
+    """Запоминаем сообщение зрителя → «много сообщений подряд» / «одно и то же» или None."""
+    import textfilter as tf
+    now = time.time()
+    hist = [h for h in STATE.tts_spam.get(key, []) if now - h[0] < 120]
+    hist.append((now, squashed))
+    STATE.tts_spam.pop(key, None)
+    STATE.tts_spam[key] = hist[-12:]
+    while len(STATE.tts_spam) > 1500:                                 # самые давние зрители — забываем
+        STATE.tts_spam.pop(next(iter(STATE.tts_spam)))
+    if sum(1 for t, _ in hist if now - t < 20) >= 5:
+        return "много сообщений подряд"
+    if squashed and sum(1 for _, m in hist if tf.similar(m, squashed)) >= 3:
+        return "пишет одно и то же"
+    return None
+
+
+def nice_name(display):
+    """Имя для озвучки и соведущего: «красивые» шрифты → обычные буквы; мат или троллинг в нике → «зритель»."""
+    import textfilter as tf
+    cfg = STATE.config
+    if not cfg.get("tts_guard", True) or cfg.get("tts_profanity", "beep") == "off":
+        return tf.plain_name(display) or str(display or "")
+    return tf.safe_name(display, _cfg_list("tts_bad_words"))
+
+
+def clean_speech(text):
+    """Последний рубеж перед озвучкой: мат и «ягей» в любом тексте (ники в объявлениях, ответы ИИ) → «пип»."""
+    cfg = STATE.config
+    if not cfg.get("tts_guard", True) or cfg.get("tts_profanity", "beep") == "off":
+        return text
+    import textfilter as tf
+    return tf.censor(text, _cfg_list("tts_bad_words"))[0]
+
+
+def chat_trash(uid, text):
+    """Троллинг, мат, мусор, стоп-фраза или заглушённый зритель — соведущий такое не подхватывает."""
+    cfg = STATE.config
+    if not cfg.get("tts_guard", True):
+        return False
+    import textfilter as tf
+    if tts_is_muted(uid):
+        return True
+    if cfg.get("tts_block_trolls", True) and tf.troll_reason(text):
+        return True
+    if cfg.get("tts_skip_junk", True) and tf.junk_reason(text):
+        return True
+    if tf.phrase_hit(text, _cfg_list("tts_stop_phrases")):
+        return True
+    return cfg.get("tts_profanity", "beep") != "off" and tf.censor(text, _cfg_list("tts_bad_words"))[1]
+
+
+def _maxlen():
+    try:
+        return max(0, int(STATE.config.get("tts_max_len", 120) or 0))
+    except (TypeError, ValueError):
+        return 120
+
+
+def guard_verdict(text):
+    """Что защита сделает с текстом, без учёта зрителя → (None, текст_для_чтения) или (причина, None).
+    Ничего не меняет — этим же отвечает «🧪 Проверить фразу»."""
+    import textfilter as tf
+    cfg = STATE.config
+    n = _maxlen()
+    if n and len(str(text).strip()) > n:
+        return f"длиннее {n} символов", None
+    if cfg.get("tts_skip_junk", True):
+        why = tf.junk_reason(text)
+        if why:
+            return why, None
+    if cfg.get("tts_block_trolls", True):
+        why = tf.troll_reason(text)
+        if why:
+            return why, None
+    hit = tf.phrase_hit(text, _cfg_list("tts_stop_phrases"))
+    if hit:
+        return f"стоп-фраза «{hit}»", None
+    mode = cfg.get("tts_profanity", "beep")
+    if mode != "off":
+        kinds = set()
+        clean, bad = tf.censor(text, _cfg_list("tts_bad_words"), kinds=kinds)
+        if bad:
+            label = ", ".join(sorted(kinds)) or "мат"
+            if mode == "skip" or not re.sub(r"(?i)\bпип\b|[\W\d_]", "", clean):
+                return label, None                                      # одни «пип» — читать нечего
+            text = clean
+    return None, tf.collapse(text)
 
 
 def tts_guard(display, user, text):
@@ -2206,43 +2358,53 @@ def tts_guard(display, user, text):
     cfg = STATE.config
     if not cfg.get("tts_guard", True):
         return True, text
-    nicks = {n.strip().lstrip("@").lower() for n in str(cfg.get("tts_block_list", "")).replace("\n", ",").split(",") if n.strip()}
+    nicks = {n.lstrip("@").lower() for n in _cfg_list("tts_block_list")}
     if nicks and ({str(display).lstrip("@").lower(), str(user).lstrip("@").lower()} & nicks):
-        return _guard_skip("в чёрном списке")
-    if cfg.get("tts_skip_junk", True):
-        why = tf.junk_reason(text)
-        if why:
-            return _guard_skip(why)
-    mode = cfg.get("tts_profanity", "beep")
-    if mode != "off":
-        extra = [w for w in str(cfg.get("tts_bad_words", "")).replace("\n", ",").split(",") if w.strip()]
-        clean, bad = tf.censor(text, extra)
-        if bad:
-            if mode == "skip":
-                return _guard_skip("мат")
-            STATE.tts_guard_stats["мат заменён"] = STATE.tts_guard_stats.get("мат заменён", 0) + 1
-            text = clean
+        return _guard_skip("в чёрном списке", display)
+    key = str(user).lstrip("@").lower()
+    if tts_is_muted(key):
+        return _guard_skip("заглушён", display)
+    sq = tf.squash(text)
+    auto = cfg.get("tts_auto_mute", True)
+    spam = _spam_reason(key, sq)
+    if spam and auto:
+        tts_mute(key, display, spam)
+        return _guard_skip("спам", display)
+    why, say = guard_verdict(text)
+    if not why and say != tf.collapse(text):
+        STATE.tts_guard_stats["мат заменён"] = STATE.tts_guard_stats.get("мат заменён", 0) + 1
+    if why:
+        if auto and (why == "троллинг" or why.startswith("стоп-фраза")):
+            tts_mute(key, display, why)                              # пытался подставить стримера — 5 минут тишины
+            return _guard_skip("троллинг" if why == "троллинг" else "стоп-фраза", display, log=False)
+        return _guard_skip(why.split(" «")[0] if why.startswith("стоп-фраза") else why, display)
     now = time.time()
-    key = str(user).lower()
     try:
         cd = float(cfg.get("tts_user_cooldown", 8) or 0)
     except (TypeError, ValueError):
         cd = 8
     if cd and now - STATE.tts_user_last.get(key, 0) < cd:
-        return _guard_skip("слишком часто")
-    norm = " ".join(tf.collapse(text).lower().split())
-    STATE.tts_recent = [r for r in STATE.tts_recent if now - r[0] < 60]
-    if cfg.get("tts_skip_dupes", True) and any(r[2] == norm and (r[1] == key or now - r[0] < 10) for r in STATE.tts_recent):
-        return _guard_skip("повтор")
+        return _guard_skip("слишком часто", display)
+    STATE.tts_recent = [r for r in STATE.tts_recent if now - r[0] < 600][-400:]
+    if cfg.get("tts_skip_dupes", True) and sq:
+        for t, who, m in STATE.tts_recent:
+            if who == key:
+                if tf.similar(m, sq):                                # он же, почти то же — за 10 минут
+                    return _guard_skip("повтор", display)
+            elif len(sq) >= 15:
+                if now - t < 300 and tf.similar(m, sq):              # длинное от другого — копипаста, 5 минут
+                    return _guard_skip("копипаста", display)
+            elif now - t < 10 and m == sq:                            # «привет» от разных — не чаще раза в 10 с
+                return _guard_skip("повтор", display)
     try:
         cap = int(cfg.get("tts_max_queue", 5) or 0)
     except (TypeError, ValueError):
         cap = 5
     if cap and STATE.tts_pending + TTS_PLAY_QUEUE.qsize() >= cap:
-        return _guard_skip("очередь полна")
+        return _guard_skip("очередь полна", display)
     STATE.tts_user_last[key] = now
-    STATE.tts_recent.append((now, key, norm))
-    return True, tf.collapse(text)
+    STATE.tts_recent.append((now, key, sq))
+    return True, say
 
 
 def voice_command(text):
@@ -2322,9 +2484,9 @@ def handle_comment(user, text, display=None, is_follower=False, acc=None, roles=
             STATE.log("ГОЛОС", f"{display} выбрал голос «{label}»")
         save_viewer_voices()
         if STATE.config.get("tts_enabled") and STATE.config.get("voice_cmd_confirm", True):
-            schedule(tts_speak(display, f"{display}, теперь у тебя голос: {label}", voice=voice, read_name=False))
+            schedule(tts_speak(display, f"{nice_name(display)}, теперь у тебя голос: {label}", voice=voice, read_name=False))
     elif (fresh and STATE.config.get("tts_enabled") and str(text).strip()
-            and tts_allowed(display, user, is_follower)):
+            and tts_allowed(display, user, is_follower, roles, acc)):
         ok, say = tts_guard(display, user, text)
         if ok:
             schedule(tts_speak(display, say, voice=viewer_voice(user, acc, roles)))
@@ -2519,6 +2681,16 @@ def tiktok_worker():
                         break
             except Exception:
                 pass
+            try:
+                import team as _team
+                gu = getattr(event, "user", None)
+                lvl = _team.badge_level(gu, STATE.anchor_id)
+                if _team.is_join_gift(name, gid):                       # «Heart Me» — вступил в команду
+                    team_note(uid, display, getattr(gu, "id", None), lvl, f"подарок «{name}»")
+                elif lvl:
+                    team_note(uid, display, getattr(gu, "id", None), lvl, "значок")
+            except Exception:
+                pass
             streakable = getattr(g, "streakable", False) or (getattr(getattr(g, "info", None), "type", 0) == 1)
             if streakable:
                 # Ждём конца серии
@@ -2569,6 +2741,18 @@ def tiktok_worker():
                                         ("follower", "is_follower_of_anchor")) if getattr(ident, a, False)]
                 if (st or 0) >= 1 and "follower" not in roles:
                     roles.append("follower")
+                if getattr(ident, "is_anchor", False):
+                    roles.append("anchor")
+                    if acc:
+                        STATE.anchor_id = str(acc)
+                try:
+                    import team as _team
+                    lvl = _team.badge_level(u, STATE.anchor_id)       # значок команды рядом с ником
+                except Exception:
+                    lvl = 0
+                if lvl:
+                    roles.append("team")
+                    team_note(uid, display, acc, lvl, "значок")
                 handle_comment(uid, text, display, is_follower=(st or 0) >= 1, acc=acc, roles=roles)
                 if time.time() - STATE.connected_at > 3.0:          # история чата при подключении — не считаем
                     STATE.stats.comment(display)
@@ -2918,9 +3102,10 @@ def ai_mentioned(text):
 
 def ai_chat(uid, display, text):
     text = str(text or "").strip()
-    if not text:
+    if not text or chat_trash(uid, text):                        # тролли, мат, спам — соведущий не подхватывает
         return
     import cohost
+    display = nice_name(display)
     STATE.cohost.note(f"{display}: {text[:140]}")
     cfg = STATE.config
     if not cfg.get("ai_on") or (STATE.connected and time.time() - STATE.connected_at < 3):
@@ -2960,6 +3145,7 @@ def ai_tick():
 
 
 def ai_gift(user, gift_name, gift_id, count, diamonds):
+    user = nice_name(user)
     count = max(1, int(count or 1))
     coins = int(diamonds or 0) * count
     STATE.cohost.note(f"{user} подарил «{gift_name}» x{count} ({coins} монет)")
@@ -3761,6 +3947,9 @@ async def h_simulate(request):
     kind = data.get("kind")
     user = data.get("user", "ТестЗритель")
     if kind == "gift":
+        import team as _team
+        if _team.is_join_gift(data.get("name", ""), data.get("gift_id", "")):
+            team_note(data.get("uid") or user, user, data.get("acc"), 0, f"подарок «{data.get('name') or 'Heart Me'}»")
         handle_gift(data.get("name", ""), data.get("gift_id", ""),
                     data.get("count", 1), user, data.get("diamonds", 10))
     elif kind == "like":
@@ -3773,8 +3962,12 @@ async def h_simulate(request):
     elif kind == "follow":
         handle_follow(user)
     elif kind == "chat":
+        roles = [str(r) for r in (data.get("roles") or [])]
+        if data.get("team_level"):                                 # как будто у зрителя значок команды
+            roles.append("team")
+            team_note(user, data.get("display") or user, data.get("acc"), int(data.get("team_level")), "значок")
         handle_comment(user, data.get("text", "тест"), data.get("display"),
-                       is_follower=bool(data.get("is_follower")))
+                       is_follower=bool(data.get("is_follower")), acc=data.get("acc"), roles=roles)
     elif kind == "welcome":
         # Для теста разрешаем повторно (убираем из seen)
         STATE.seen_users.discard(user)
@@ -4469,7 +4662,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.72.1"
+APP_VERSION = "1.72.2"
 APP_DATE = "2026-11-17"
 
 
@@ -4951,20 +5144,56 @@ async def h_gta_mod_open(request):
 
 async def h_tts_check(request):
     """«🧪 Проверить фразу» в настройках: что сделает защита с этим сообщением."""
-    import textfilter as tf
     d = await request.json()
     text = str(d.get("text", ""))
     cfg = STATE.config
-    why = tf.junk_reason(text) if cfg.get("tts_skip_junk", True) else None
-    extra = [w for w in str(cfg.get("tts_bad_words", "")).replace("\n", ",").split(",") if w.strip()]
-    clean, bad = tf.censor(text, extra)
-    mode = cfg.get("tts_profanity", "beep")
+    if not cfg.get("tts_guard", True):
+        return web.json_response({"ok": True, "verdict": f"прочитаю как есть (защита выключена): «{text.strip()}»"})
+    why, say = guard_verdict(text)
     if why:
-        return web.json_response({"ok": False, "verdict": f"не прочитаю: {why}"})
-    if bad and mode == "skip":
-        return web.json_response({"ok": False, "verdict": "не прочитаю: мат"})
-    say = tf.collapse(clean if bad and mode == "beep" else text)
-    return web.json_response({"ok": True, "verdict": f"прочитаю: «{say}»", "bad": bad})
+        mute = (cfg.get("tts_auto_mute", True) and (why == "троллинг" or why.startswith("стоп-фраза")))
+        return web.json_response({"ok": False, "verdict": f"не прочитаю: {why}"
+                                  + (" — и заглушу автора на 5 минут" if mute else "")})
+    return web.json_response({"ok": True, "verdict": f"прочитаю: «{say}»", "bad": "пип" in say.lower()})
+
+
+async def h_tts_muted(request):
+    """Кто сейчас заглушён автоматически (спам/троллинг)."""
+    now = time.time()
+    items = [{"user": k, "nick": m["nick"], "why": m["why"], "left": int(m["until"] - now)}
+             for k, m in list(STATE.tts_muted.items()) if m["until"] > now]
+    return web.json_response({"items": sorted(items, key=lambda x: -x["left"]), "stats": STATE.tts_guard_stats})
+
+
+async def h_tts_unmute(request):
+    d = await request.json()
+    key = str(d.get("user", "")).lstrip("@").lower()
+    if key == "*":
+        n = len(STATE.tts_muted)
+        STATE.tts_muted.clear()
+    else:
+        n = 1 if STATE.tts_muted.pop(key, None) else 0
+    for k in ([key] if key != "*" else list(STATE.tts_spam)):
+        STATE.tts_spam.pop(k, None)
+    return web.json_response({"ok": True, "removed": n})
+
+
+async def h_team(request):
+    if STATE.team is None:
+        return web.json_response({"count": 0, "recent": []})
+    return web.json_response(STATE.team.public(int(request.query.get("limit", 30) or 30)))
+
+
+async def h_team_clear(request):
+    n = STATE.team.clear() if STATE.team is not None else 0
+    STATE.log("КОМАНДА", f"👥 Список команды очищен ({n})")
+    return web.json_response({"ok": True, "removed": n})
+
+
+async def h_team_remove(request):
+    d = await request.json()
+    ok = STATE.team.remove(d.get("user", "")) if STATE.team is not None else False
+    return web.json_response({"ok": bool(ok)})
 
 
 async def h_viewer_voices(request):
@@ -5442,6 +5671,11 @@ def make_app():
     app.router.add_post("/api/tts/stop", h_tts_stop)
     app.router.add_post("/api/tts/skip", h_tts_skip)
     app.router.add_post("/api/tts/check", h_tts_check)
+    app.router.add_get("/api/tts/muted", h_tts_muted)
+    app.router.add_post("/api/tts/unmute", h_tts_unmute)
+    app.router.add_get("/api/team", h_team)
+    app.router.add_post("/api/team/clear", h_team_clear)
+    app.router.add_post("/api/team/remove", h_team_remove)
     app.router.add_get("/api/mods/gta5", h_gta_mod)
     app.router.add_post("/api/mods/gta5/install", h_gta_mod_install)
     app.router.add_post("/api/mods/gta5/open", h_gta_mod_open)
@@ -5676,6 +5910,8 @@ def main():
     STATE.vc = _vcm.VoiceChanger(BASE_DIR, STATE.log, lambda: STATE.config)
     import music as _music
     STATE.music = _music.MusicBox(STATE.log, lambda: STATE.config, save_config, os.path.join(BASE_DIR, "music_state.json"))
+    import team as _team
+    STATE.team = _team.Team(TEAM_FILE)
     try:
         repair_media_refs()                  # эдиты .mov/.webm, которые стали .mp4, — вернуть в карточки
     except Exception as e:

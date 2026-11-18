@@ -5,12 +5,17 @@
 
 Подключается к эфиру (только чтение, как зритель-невидимка), считает сообщения
 от TikTok по видам и сколько из них библиотека TikTokLive смогла прочитать.
+Заодно показывает, у кого в чате значок команды (фан-клуба) и что защита озвучки
+не прочитала бы — чтобы проверить её на живом чате.
 Ничего не запускает, не пишет в чат и не трогает настройки программы.
 Бери ник любого идущего эфира с живым чатом (100+ зрителей).
 """
 import asyncio
+import os
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 for _s in (sys.stdout, sys.stderr):
     try:
@@ -20,6 +25,25 @@ for _s in (sys.stdout, sys.stderr):
 
 from TikTokLive import TikTokLiveClient                     # noqa: E402
 from TikTokLive.events import ConnectEvent, CommentEvent, LikeEvent, GiftEvent, DisconnectEvent  # noqa: E402
+
+import team as _team                                         # noqa: E402
+import textfilter as _tf                                     # noqa: E402
+
+STOP = ["сиксевен", "сикс севен", "six seven", "67 летний", "парта левитирует"]
+
+
+def verdict(text):
+    """Что сделала бы защита озвучки с настройками по умолчанию (None — прочитала бы как есть)."""
+    if len(text.strip()) > 120:
+        return "длинное"
+    why = _tf.junk_reason(text) or _tf.troll_reason(text)
+    if why:
+        return why
+    if _tf.phrase_hit(text, STOP):
+        return "стоп-фраза"
+    clean, bad = _tf.censor(text)
+    return f"пип → «{clean}»" if bad else None
+
 
 KINDS = {"WebcastChatMessage": "чат", "WebcastLikeMessage": "лайки", "WebcastGiftMessage": "подарки",
          "WebcastSocialMessage": "фолловы/репосты", "WebcastMemberMessage": "вход",
@@ -43,6 +67,8 @@ def main():
 
     recv, done, other = {}, {"чат": 0, "лайки": 0, "подарки": 0}, {}
     samples = []
+    team = {"msgs": 0, "users": {}, "badges": [], "joined": []}
+    filt = {"reasons": {}, "samples": []}
     client = TikTokLiveClient(unique_id="@" + nick)
     orig = client._parse_webcast_response_message
 
@@ -74,8 +100,25 @@ def main():
     @client.on(CommentEvent)
     async def on_comment(e):
         done["чат"] += 1
+        nick = getattr(e.user, 'nickname', '?')
         if len(samples) < 5:
-            samples.append(f"{getattr(e.user, 'nickname', '?')}: {e.comment}")
+            samples.append(f"{nick}: {e.comment}")
+        try:
+            lvl = _team.badge_level(e.user)
+            if lvl:
+                team["msgs"] += 1
+                team["users"][nick] = lvl
+            desc = _team.describe_badges(e.user)
+            if desc and len(team["badges"]) < 10:
+                team["badges"].append(f"{nick}: {', '.join(desc)}")
+            v = verdict(e.comment or "")
+            if v:
+                key = v.split(" →")[0]
+                filt["reasons"][key] = filt["reasons"].get(key, 0) + 1
+                if len(filt["samples"]) < 25:
+                    filt["samples"].append(f"[{v}] {nick}: {e.comment}")
+        except Exception as ex:
+            print(f"  (разбор сообщения: {type(ex).__name__}: {ex})")
 
     @client.on(LikeEvent)
     async def on_like(e):
@@ -84,6 +127,14 @@ def main():
     @client.on(GiftEvent)
     async def on_gift(e):
         done["подарки"] += 1
+        try:
+            g = e.gift
+            name = getattr(g, "name", "") or ""
+            gid = getattr(getattr(g, "info", None), "id", None) or getattr(g, "id", "")
+            if _team.is_join_gift(name, gid):
+                team["joined"].append(f"{getattr(e.user, 'nickname', '?')} — «{name}» (ID {gid})")
+        except Exception:
+            pass
 
     @client.on(DisconnectEvent)
     async def on_dc(e):
@@ -125,6 +176,20 @@ def main():
         print("  другое: " + ", ".join(f"{k} {v}" for k, v in top))
     if samples:
         print("\nПримеры чата:\n  " + "\n  ".join(samples))
+    if done["чат"]:
+        users = ", ".join(f"{n} (ур. {lv})" for n, lv in list(team["users"].items())[:15]) or "—"
+        print(f"\n👥 Команда: сообщений со значком команды {team['msgs']} из {done['чат']}; участники: {users}")
+        if team["joined"]:
+            print("   Вступили через подарок: " + "; ".join(team["joined"][:10]))
+        if team["badges"]:
+            print("   Значки, которые прислал TikTok (примеры):\n     " + "\n     ".join(team["badges"]))
+        else:
+            print("   Значков у зрителей не было ни одного.")
+        n = sum(filt["reasons"].values())
+        print(f"\n🧹 Защита озвучки (по умолчанию) не прочитала бы {n} из {done['чат']}: "
+              + (", ".join(f"{k} — {v}" for k, v in sorted(filt["reasons"].items(), key=lambda kv: -kv[1])) or "—"))
+        if filt["samples"]:
+            print("   Примеры (проверь, нет ли нормальных сообщений):\n     " + "\n     ".join(filt["samples"]))
     bad = [k for k in done if recv.get(k, 0) >= 3 and done[k] == 0]
     if bad:
         print(f"\n⚠ ОШИБКА: {', '.join(bad)} приходят, но не читаются (проблема библиотеки или версии Python).")
