@@ -1783,12 +1783,50 @@ def handle_sub(user):
         fire_action(a, count=1, user=user)
 
 
-def handle_follow(user):
-    STATE.log("ФОЛЛОВ", f"{user} зафолловил!")
-    STATE.follow_count += 1
+FOLLOWED_FILE = os.path.join(BASE_DIR, "followers_seen.json")
+_FOLLOWED = None
+
+
+def _followed():
+    """Кто уже подписывался на профиль (за все эфиры) — {ник: когда впервые}. Файл переживает обновления."""
+    global _FOLLOWED
+    if _FOLLOWED is None:
+        try:
+            with open(FOLLOWED_FILE, encoding="utf-8") as f:
+                d = json.load(f)
+            _FOLLOWED = dict(d.get("users") or {}) if isinstance(d, dict) else {}
+        except Exception:
+            _FOLLOWED = {}
+    return _FOLLOWED
+
+
+def handle_follow(user, uid=None):
+    """Фоллов. Переподписка (отписался и подписался снова — так накручивают события) срабатывает
+    только у карточек с галочкой «🔁 Переподписка тоже». → True, если подписался впервые."""
+    key = str(uid or user).strip().lstrip("@").lower()
+    seen = _followed()
+    refollow = bool(key) and key in seen
     STATE.followers.add(str(user).strip().lstrip("@").lower())
     prof = active_profile()
     follows = [a for a in prof.get("follows", []) if _is_enabled(a)]
+    if refollow:
+        again = [a for a in follows if a.get("refollow")]
+        STATE.log("ФОЛЛОВ", f"{user} подписался повторно (переподписка)"
+                  + (f" — сработает карточек: {len(again)}" if again else " — повторно не срабатывает"))
+        if again:
+            STATE.push_overlay("follow", user, "подписался на профиль!", icon="➕", color="#3fb950",
+                               media=_extract_media(again[0]))
+        for a in again:
+            fire_action(a, count=1, user=user)
+        return False
+    if key:
+        seen[key] = time.strftime("%Y-%m-%d %H:%M")
+        try:
+            safeio.write_json(FOLLOWED_FILE, {"users": seen})
+        except Exception as e:
+            STATE.log("ОШИБКА", f"не сохранил список подписавшихся: {e}")
+    STATE.log("ФОЛЛОВ", f"{user} зафолловил!")
+    STATE.follow_count += 1
     media = _extract_media(follows[0]) if follows else None
     STATE.push_overlay("follow", user, "подписался на профиль!", icon="➕", color="#3fb950", media=media)
     check_goals()
@@ -1797,6 +1835,7 @@ def handle_follow(user):
     ai_event("follow", nice_name(user), f"{nice_name(user)} подписался на профиль стримера. Коротко поприветствуй.", "ai_on_follow")
     for a in follows:
         fire_action(a, count=1, user=user)
+    return True
 
 
 TEAM_FILE = os.path.join(BASE_DIR, "team_members.json")
@@ -2778,8 +2817,8 @@ def tiktok_worker():
                 return
             try:
                 uid, display = _names(event)
-                handle_follow(display)
-                STATE.stats.follow()
+                if handle_follow(display, uid):           # переподписку в итогах эфира не считаем
+                    STATE.stats.follow()
             except Exception as e:
                 STATE.log("ОШИБКА", f"follow: {e}")
 
@@ -3960,7 +3999,7 @@ async def h_simulate(request):
     elif kind == "sub":
         handle_sub(user)
     elif kind == "follow":
-        handle_follow(user)
+        handle_follow(user, data.get("uid"))
     elif kind == "chat":
         roles = [str(r) for r in (data.get("roles") or [])]
         if data.get("team_level"):                                 # как будто у зрителя значок команды

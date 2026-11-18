@@ -40,7 +40,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP = {".git", "__pycache__", "build", "dist", "reports", "servers", "_backup", "_update", "voice-changer",
         "config.json", "profiles.json", "viewer_voices.json", "viewer_points.json", "fish_key.txt",
         "gift_catalog.json", "gift_icons_live.json", "smoke_test_result.txt", "gift_names_ru_full.json",
-        "team_members.json", "music_state.json"}
+        "team_members.json", "music_state.json", "followers_seen.json"}
 RESULTS = []
 OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
@@ -128,6 +128,7 @@ def make_user_data(base, api_port):
         "gift_catalog.json": J({"gifts": {"424242": {"name": "My Local Gift", "coins": 7, "icon": "", "regions": ["BY"]}},
                                 "regions": {"BY": {"count": 1, "at": "2026-01-01"}}}),
         "fish_key.txt": "MY-FISH-KEY-FILE",
+        "followers_seen.json": J({"users": {"anya_1": "2026-11-01 20:00"}}),
         "team_members.json": J({"members": {"@anya_1": {"nick": "Аня", "user": "anya_1", "acc": "111", "level": 3,
                                                          "since": "2026-11-01 20:00", "seen": "2026-11-01 20:00", "via": "значок"}}}),
         "media/мой эдит.mp4": os.urandom(40000),

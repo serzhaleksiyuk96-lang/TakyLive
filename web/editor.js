@@ -605,6 +605,10 @@ function buildCard(action, idx) {
              <input class="delay mono" type="number" min="1" max="100" style="width:58px"
              value="${action.multiplier||1}" oninput="upd(${idx},'multiplier',parseInt(this.value)||1)"></label>`;
   }
+  if (activeSection === "follows") {
+    foot += `<label class="chk" title="Зритель отписался и подписался снова. Обычно так накручивают события — поэтому по умолчанию выключено"><input type="checkbox" ${action.refollow?"checked":""}
+             onchange="upd(${idx},'refollow',this.checked)"> 🔁 Переподписка тоже</label>`;
+  }
   if (["gifts","likes","subs","follows","chatcmds"].includes(activeSection)) {
     foot += `<label class="chk"><input type="checkbox" ${action.showcase !== false ? "checked" : ""}
              onchange="upd(${idx},'showcase',this.checked)"> 🎁 На витрине</label>`;

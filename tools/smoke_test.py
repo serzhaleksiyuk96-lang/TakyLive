@@ -47,7 +47,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_NAMES = {".git", "__pycache__", "build", "dist", "reports", "servers", "backups", "_update",
               "config.json", "profiles.json", "viewer_voices.json", "viewer_points.json",
               "fish_key.txt", "gift_catalog.json", "live_gift_icons.json", "smoke_test_result.txt",
-              "team_members.json", "music_state.json"}
+              "team_members.json", "music_state.json", "followers_seen.json"}
 
 RESULTS = []
 
@@ -555,6 +555,7 @@ def make_copy(dst, remote_port):
                   {"name": "Doughnut", "title": "пончик", "commands": []},             # из библиотеки, по-английски
                   {"name": "Тестовый дракон", "title": "дракон", "commands": []},      # узнаем только от TikTok (ru-RU)
                   {"name": "Загадочный подарок", "title": "загадка", "commands": []}],  # такого названия нет
+        "follows": [{"title": "спасибо за фоллов", "commands": []}],
         "chatcmds": [{"trigger": "!крипер", "title": "Крипер", "cooldown": 0, "points_cost": 30,
                       "commands": ["say creeper"]},
                      {"trigger": "!демон", "title": "Голос демона", "cooldown": 0,
@@ -745,6 +746,21 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     time.sleep(0.5)
     check("повторный фоллов того же зрителя очков не даёт", api.balance("viewer1") == 150,
           f"баланс {api.balance('viewer1')}")
+    check("переподписка по умолчанию не срабатывает (карточка фоллова молчит)",
+          api.log_has("ФОЛЛОВ", r"viewer1 подписался повторно \(переподписка\) — повторно не срабатывает"))
+    pr = api.get("/api/state")["profiles"]
+    pr["Тест"]["follows"][0]["refollow"] = True
+    api.post("/api/profiles", {"profiles": pr})
+    api.sim(kind="follow", user="viewer1")
+    time.sleep(0.5)
+    check("галочка «🔁 Переподписка тоже» — карточка срабатывает, очки всё равно не даются",
+          api.log_has("ФОЛЛОВ", r"viewer1 подписался повторно \(переподписка\) — сработает карточек: 1")
+          and api.balance("viewer1") == 150, f"баланс {api.balance('viewer1')}")
+    sf = os.path.join(copy_dir, "followers_seen.json")
+    check("кто уже подписывался — запомнено на диске (переживёт перезапуск и обновление)",
+          os.path.exists(sf) and "viewer1" in json.load(open(sf, encoding="utf-8")).get("users", {}))
+    pr["Тест"]["follows"][0].pop("refollow", None)
+    api.post("/api/profiles", {"profiles": pr})
     n0 = len(api.log())
     api.sim(kind="chat", user="viewer1", text="!очки")
     check("!очки отвечает балансом", wait_until(lambda: api.log_has("ОЧКИ", r"viewer1: 150", n0), 5))
