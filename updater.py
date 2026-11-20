@@ -389,7 +389,7 @@ open(os.path.join(dst, "_update", "applied.txt"), "w").write("done")
 
     def status(self):
         auto = {"version": self.auto["version"], "left": max(0, round(self.auto["at"] - time.time()))} if self.auto else None
-        return {"current": self.version, "repo": self.repo(), "info": self.info, "error": self.error, "job": self.job,
+        return {"current": self.version, "info": self.info, "error": self.error, "job": self.job,
                 "mode": self.mode(), "auto": auto, "ready": self.ready, "live": bool(self.is_live())}
 
     async def h_status(self, request):

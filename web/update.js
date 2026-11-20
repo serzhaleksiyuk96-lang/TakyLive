@@ -57,8 +57,7 @@ function updRenderMain() {
         <span class="hint" style="margin-left:8px">${esc(meta)}</span>
         <div class="spacer"></div>
         <button class="primary" onclick="updInstall()">Обновить</button></div>
-      ${i.notes ? `<div class="upd-notes">${updMd(i.notes)}</div>`
-        : i.page ? `<div class="hint"><a href="${esc(i.page)}" target="_blank" rel="noopener">Что нового — на GitHub</a></div>` : ""}
+      ${i.notes ? `<div class="upd-notes">${updMd(i.notes)}</div>` : ""}
       <div class="hint">Настройки, вкладки, голоса зрителей и серверы не тронутся. Программа перезапустится сама.</div>
       ${j && j.state === "error" ? `<div class="upd-err">✗ ${esc(j.error)}</div>`
         : UPD.error ? `<div class="upd-err">⚠ ${esc(UPD.error)}</div>` : ""}</div>`;
@@ -67,8 +66,7 @@ function updRenderMain() {
   box.innerHTML = `<div class="upd-box"><div class="row">
       <span>${UPD.error ? "⚠ " + esc(UPD.error) : UPD.info ? "✅ У тебя последняя версия" : "Обновления ещё не проверялись"}</span>
       <div class="spacer"></div>
-      <button class="small" onclick="updCheckNow(this)">🔄 Проверить обновления</button></div>
-      ${UPD.repo ? `<div class="hint">Обновления берутся с GitHub: ${esc(UPD.repo)}</div>` : ""}</div>`;
+      <button class="small" onclick="updCheckNow(this)">🔄 Проверить обновления</button></div></div>`;
 }
 
 // окно версии: что с обновлением + выбор режима автообновления
