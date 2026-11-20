@@ -16,6 +16,8 @@ viewer_points.json
 team_members.json
 followers_seen.json
 timer_state.json
+owner.json
+owner_state.json
 media/vault/
 media/_thumbs/
 media/tts/*

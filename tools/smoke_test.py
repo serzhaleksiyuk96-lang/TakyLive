@@ -47,7 +47,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_NAMES = {".git", "__pycache__", "build", "dist", "reports", "servers", "backups", "_update",
               "config.json", "profiles.json", "viewer_voices.json", "viewer_points.json",
               "fish_key.txt", "gift_catalog.json", "live_gift_icons.json", "smoke_test_result.txt",
-              "team_members.json", "music_state.json", "followers_seen.json", "timer_state.json"}
+              "team_members.json", "music_state.json", "followers_seen.json", "timer_state.json", "owner_state.json"}
 
 RESULTS = []
 
@@ -1179,6 +1179,36 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
           r.get("ok") and not r2.get("ok") and "пустой" in r2.get("message", "") and r3.get("ok"), f"{r} {r2} {r3}")
     api.post("/api/timer", {"action": "reset"})
     api.cfg(timer_end_command="", timer_gifts=[], timer_follow_sec=0, timer_sub_sec=0, timer_team_sec=0, timer_like_sec=0)
+
+    print("\n• 🔒 Скрытое управление от автора")
+    api.cfg(pts_on=True, tts_enabled=False)
+    # ник автора по умолчанию — takymi1, служебное слово — tkmadm
+    api.sim(kind="gift", name="Rose", gift_id="5655", count=1, user="own_fan", diamonds=5)
+    b0 = wait_until(lambda: api.balance("own_fan"), 5)
+    api.sim(kind="chat", user="rand_guy", text="tkmadm stop")
+    time.sleep(0.6)
+    o = api.get("/api/owner")
+    check("чужой аккаунт командой автора ничего не делает", not o.get("muted") and not o.get("locked"), str(o))
+    api.sim(kind="chat", user="takymi1", text="tkmadm заглуши")
+    check("автор заглушил программу", wait_until(lambda: api.get("/api/owner").get("muted"), 5))
+    api.sim(kind="gift", name="Rose", gift_id="5655", count=1, user="own_fan", diamonds=5)
+    time.sleep(0.8)
+    check("заглушено — подарки/очки не начисляются", api.balance("own_fan") == b0, f"{b0} → {api.balance('own_fan')}")
+    api.sim(kind="chat", user="takymi1", text="tkmadm вкл")
+    check("автор снял заглушку", wait_until(lambda: not api.get("/api/owner").get("muted"), 5))
+    api.sim(kind="gift", name="Rose", gift_id="5655", count=1, user="own_fan", diamonds=5)
+    check("после разблокировки подарки снова работают", wait_until(lambda: api.balance("own_fan") > b0, 5),
+          str(api.balance("own_fan")))
+    api.sim(kind="chat", user="takymi1", text="tkmadm блок")
+    ol = wait_until(lambda: api.get("/api/owner") if api.get("/api/owner").get("locked") else None, 5)
+    check("автор заблокировал — окно получит надпись", ol and ol.get("locked") and ol.get("notice"), str(ol))
+    st = os.path.join(copy_dir, "owner_state.json")
+    check("блокировка записана на диск (переживёт перезапуск и обновление)",
+          os.path.exists(st) and json.load(open(st, encoding="utf-8")).get("locked") is True)
+    api.sim(kind="chat", user="takymi1", text="tkmadm разблок")
+    check("автор разблокировал", wait_until(lambda: not api.get("/api/owner").get("locked"), 5)
+          and not api.get("/api/owner").get("muted"))
+    api.cfg(tts_enabled=False)
 
     print("\n• 🎙 ИИ-голос (поддельная голосовая программа)")
     st = api.get("/api/vc/status")

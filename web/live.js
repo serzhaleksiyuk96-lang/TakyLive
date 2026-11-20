@@ -183,3 +183,46 @@ function annUseChat(id) {
   document.getElementById("annChats").innerHTML = "";
   scheduleCfgSave();
 }
+
+// ── Служебное: окно показывает блокировку, если она включена ──
+(function () {
+  let box = null;
+  function ensure() {
+    if (box) return box;
+    box = document.createElement("div");
+    box.id = "ownerLock";
+    box.style.cssText = "position:fixed;inset:0;z-index:99999;display:none;flex-direction:column;" +
+      "align-items:center;justify-content:center;gap:14px;text-align:center;padding:40px;" +
+      "background:rgba(8,10,16,.97);backdrop-filter:blur(6px);color:#fff;font-family:inherit";
+    box.innerHTML = '<div style="font-size:64px">🔒</div>' +
+      '<div id="ownerLockText" style="font-size:22px;font-weight:700;max-width:620px;line-height:1.4"></div>' +
+      '<div style="font-size:14px;color:#97a0b8">TakyLive</div>';
+    document.body.appendChild(box);
+    return box;
+  }
+  let banner = null;
+  function ensureBanner() {
+    if (banner) return banner;
+    banner = document.createElement("div");
+    banner.id = "ownerMute";
+    banner.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99998;display:none;" +
+      "background:#b91c1c;color:#fff;text-align:center;padding:8px;font-weight:700;font-size:14px";
+    banner.textContent = "⛔ Программа заглушена автором";
+    document.body.appendChild(banner);
+    return banner;
+  }
+  async function poll() {
+    try {
+      const d = await (await fetch("/api/owner", {cache: "no-store"})).json();
+      const lock = ensure(), mute = ensureBanner();
+      if (d.locked) {
+        document.getElementById("ownerLockText").textContent = d.notice || "Доступ ограничен автором.";
+        lock.style.display = "flex"; mute.style.display = "none";
+      } else {
+        lock.style.display = "none";
+        mute.style.display = d.muted ? "block" : "none";
+      }
+    } catch (e) {}
+  }
+  setInterval(poll, 3000); poll();
+})();

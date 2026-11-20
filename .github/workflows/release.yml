@@ -51,9 +51,12 @@ jobs:
           # общий ключ OpenRouter для ИИ-соведущего (секрет OPENROUTER_API_KEY) — так же: только в сборке,
           # работает, если человек не вписал свой; программа пускает его только на бесплатные модели
           if ($env:OPENROUTER_KEY) { $env:OPENROUTER_KEY.Trim() | Out-File -Encoding ascii -NoNewline "$d\openrouter_key.txt" }
+          # служебный файл (секрет OWNER_JSON) — кладётся, только если секрет задан; в коде его нет
+          if ($env:OWNER_JSON) { $env:OWNER_JSON | Out-File -Encoding utf8NoBOM "$d\owner.json" }
         env:
           FISH_KEY: ${{ secrets.FISH_API_KEY }}
           OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OWNER_JSON: ${{ secrets.OWNER_JSON }}
 
       - name: Пакет обновления
         shell: pwsh

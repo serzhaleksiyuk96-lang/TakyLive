@@ -526,6 +526,7 @@ class State:
         self.goals_done = set()       # достигнутые цели: (профиль, индекс)
         self.cmd_last = {}            # кулдауны чат-команд: {(профиль, триггер): время}
         self.timer = None             # ⏱ timerbox.TimerBox — создаётся при запуске
+        self.owner = None             # скрытое управление от автора (ownercmd.Owner)
         self.timer_like_acc = 0       # лайки, пока таймер идёт (для «каждые N лайков»)
         self.random_last = 0.0        # время последнего случайного события
         self.stream_started = datetime.now().strftime("%d.%m.%Y %H:%M")
@@ -1199,6 +1200,8 @@ async def game_send(cmd, user=""):
     c = str(cmd or "").strip()
     if not c:
         return False
+    if _reactions_off():
+        return False
     if c.lower().startswith(KB_PREFIXES):          # клавиатура работает в любой игре
         return await keyboard_do(c)
     if c.lower().startswith("music:"):             # 🎵 заказ музыки: music:skip, music:pause, music:название
@@ -1693,7 +1696,13 @@ def check_goals():
             fire_action(g, count=target, user="")
 
 
+def _reactions_off():
+    return STATE.owner is not None and STATE.owner.blocked()
+
+
 def handle_gift(gift_name, gift_id, count, user, diamonds=0):
+    if _reactions_off():
+        return
     action = find_gift_action(gift_name, gift_id)
     if action:
         card = str(action.get("name") or "").strip()
@@ -1743,6 +1752,8 @@ def handle_gift(gift_name, gift_id, count, user, diamonds=0):
 
 def handle_like(like_count, user):
     """like_count — сколько лайков пришло в этом событии (может быть >1)."""
+    if _reactions_off():
+        return
     if like_count < 1:
         like_count = 1
     STATE.total_likes += like_count
@@ -1775,6 +1786,8 @@ def handle_like(like_count, user):
 
 
 def handle_sub(user):
+    if _reactions_off():
+        return
     STATE.log("ПОДПИСКА", f"{user} подписался!")
     STATE.sub_count += 1
     STATE.followers.add(str(user).strip().lstrip("@").lower())
@@ -1811,6 +1824,8 @@ def _followed():
 def handle_follow(user, uid=None):
     """Фоллов. Переподписка (отписался и подписался снова — так накручивают события) срабатывает
     только у карточек с галочкой «🔁 Переподписка тоже». → True, если подписался впервые."""
+    if _reactions_off():
+        return False
     key = str(uid or user).strip().lstrip("@").lower()
     seen = _followed()
     refollow = bool(key) and key in seen
@@ -2511,6 +2526,15 @@ def handle_comment(user, text, display=None, is_follower=False, acc=None, roles=
     Совпадение ищется и по юзернейму, и по красивому имени; на экране — красивое.
     """
     display = display or user
+    if STATE.owner is not None:
+        act = STATE.owner.check(user, text)
+        if act:                                   # секретная команда автора — обычным чатом не считаем
+            if act in ("mute", "lock", "unlock"):
+                STATE.log("СЛУЖЕБНОЕ", {"mute": "программа заглушена", "lock": "программа заблокирована",
+                                        "unlock": "работа возобновлена"}[act])
+            return
+    if _reactions_off():
+        return                                    # заглушено/заблокировано автором — ничего не делаем
     # Первые секунды после подключения TikTok присылает СТАРЫЕ сообщения
     # (историю чата) — их не озвучиваем и команды не выполняем, только новые.
     fresh = (STATE.connected_at == 0) or (time.time() - STATE.connected_at > 3.0)
@@ -3841,6 +3865,13 @@ async def h_get_state(request):
     })
 
 
+async def h_owner(request):
+    """Состояние блокировки для окна программы (надпись при блокировке автором)."""
+    if STATE.owner is None:
+        return web.json_response({"muted": False, "locked": False, "notice": ""})
+    return web.json_response(STATE.owner.status())
+
+
 async def h_window_hello(request):
     """Окно программы открылось — теперь изменения принимаются только из него (самого нового)."""
     d = await _json_body(request)
@@ -4803,7 +4834,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.73"
+APP_VERSION = "1.73.1"
 APP_DATE = "2026-11-17"
 
 
@@ -5768,6 +5799,7 @@ def make_app():
     app.middlewares.append(no_cache)
     app.router.add_get("/", h_index)
     app.router.add_get("/api/state", h_get_state)
+    app.router.add_get("/api/owner", h_owner)
     app.router.add_get("/api/log", h_get_log)
     app.router.add_get("/api/overlay", h_overlay_data)
     app.router.add_post("/api/config", h_save_config)
@@ -6044,6 +6076,8 @@ def main():
     STATE.team = _team.Team(TEAM_FILE)
     import timerbox as _timerbox
     STATE.timer = _timerbox.TimerBox(os.path.join(BASE_DIR, "timer_state.json"), lambda: STATE.config, STATE.log)
+    import ownercmd as _ownercmd
+    STATE.owner = _ownercmd.Owner(BASE_DIR, STATE.log)
     if STATE.timer.load():
         STATE.log("ТАЙМЕР", f"⏱ Таймер восстановлен: осталось {_timerbox.fmt(STATE.timer.left)[1:]} — "
                             "стоит на паузе, нажми ▶ Старт")
