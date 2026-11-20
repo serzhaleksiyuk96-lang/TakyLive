@@ -1205,6 +1205,26 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
     st = os.path.join(copy_dir, "owner_state.json")
     check("блокировка записана на диск (переживёт перезапуск и обновление)",
           os.path.exists(st) and json.load(open(st, encoding="utf-8")).get("locked") is True)
+    r = api.post("/api/owner/unlock", {"word": "неверное"})
+    check("неверное слово на экране блокировки не снимает её",
+          r.get("ok") is False and api.get("/api/owner").get("locked"), str(r))
+    r = api.post("/api/owner/unlock", {"word": "  ЕЛЬФВЬ "})
+    check("тайное слово на экране блокировки снимает её без эфира (даже в русской раскладке)",
+          r.get("ok") is True and not api.get("/api/owner").get("locked"), str(r))
+    check("в журнале — «работа возобновлена»", api.log_has("СЛУЖЕБНОЕ", r"работа возобновлена"))
+    check("снятие с экрана записано на диск",
+          json.load(open(st, encoding="utf-8")).get("locked") is False)
+    api.sim(kind="chat", user="takymi1", text="tkmadm заглуши")
+    wait_until(lambda: api.get("/api/owner").get("muted"), 5)
+    r = api.post("/api/owner/unlock", {"word": "tkmadm разблок"})
+    check("«слово разблок» с плашки снимает и заглушку", r.get("ok") is True and not api.get("/api/owner").get("muted"), str(r))
+    api.sim(kind="chat", user="takymi1", text="tkmadm блок")
+    wait_until(lambda: api.get("/api/owner").get("locked"), 5)
+    bad = [api.post("/api/owner/unlock", {"word": f"подбор{i}"}) for i in range(5)]
+    r = api.post("/api/owner/unlock", {"word": "tkmadm"})
+    check("после 5 неверных попыток — пауза, даже верное слово ждёт",
+          all(b.get("ok") is False for b in bad) and r.get("ok") is False and r.get("wait", 0) > 0
+          and api.get("/api/owner").get("locked"), str(r))
     api.sim(kind="chat", user="takymi1", text="tkmadm разблок")
     check("автор разблокировал", wait_until(lambda: not api.get("/api/owner").get("locked"), 5)
           and not api.get("/api/owner").get("muted"))

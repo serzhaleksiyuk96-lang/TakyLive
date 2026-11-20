@@ -185,8 +185,47 @@ function annUseChat(id) {
 }
 
 // ── Служебное: окно показывает блокировку, если она включена ──
+// Снять её без эфира: набрать тайное слово на клавиатуре прямо на экране блокировки и нажать Enter
+// (поля не видно), либо 5 раз щёлкнуть по 🔒 (по красной плашке, если программа только заглушена) —
+// появится маленькое поле для слова.
 (function () {
-  let box = null;
+  let box = null, banner = null, locked = false, muted = false, typed = "", typedAt = 0, clicks = [];
+  async function tryWord(w) {
+    w = String(w || "").trim();
+    if (!w) return false;
+    try {
+      const r = await (await fetch("/api/owner/unlock", {method: "POST", cache: "no-store",
+        headers: {"Content-Type": "application/json"}, body: JSON.stringify({word: w})})).json();
+      if (r.ok) { poll(); return true; }
+      return r.wait ? "wait" : false;
+    } catch (e) { return false; }
+  }
+  function secretClick(form) {
+    const now = Date.now();
+    clicks = clicks.filter(t => now - t < 2500); clicks.push(now);
+    if (clicks.length >= 5) {
+      clicks = []; form.style.display = "flex";
+      const inp = form.querySelector("input"); inp.value = ""; inp.focus();
+    }
+  }
+  function makeForm(dark) {
+    const f = document.createElement("form");
+    f.style.cssText = "display:none;gap:6px;align-items:center;justify-content:center;margin-top:4px";
+    f.innerHTML = '<input type="password" autocomplete="off" spellcheck="false" style="padding:6px 10px;border-radius:8px;' +
+      'border:1px solid ' + (dark ? "#39415a" : "#fff") + ';background:' + (dark ? "#141824" : "#fff") + ';color:' +
+      (dark ? "#fff" : "#111") + ';font-size:14px;width:170px">' +
+      '<button type="submit" style="padding:6px 12px;border-radius:8px;border:0;background:#4f46e5;color:#fff;cursor:pointer">OK</button>';
+    f.addEventListener("click", e => e.stopPropagation());
+    f.addEventListener("submit", async e => {
+      e.preventDefault();
+      const inp = f.querySelector("input"), r = await tryWord(inp.value);
+      inp.value = "";
+      if (r === true) { f.style.display = "none"; return; }
+      inp.style.borderColor = "#ef4444"; setTimeout(() => inp.style.borderColor = dark ? "#39415a" : "#fff", 800);
+      if (r === "wait") inp.placeholder = "подожди минуту";
+    });
+    return f;
+  }
   function ensure() {
     if (box) return box;
     box = document.createElement("div");
@@ -194,33 +233,54 @@ function annUseChat(id) {
     box.style.cssText = "position:fixed;inset:0;z-index:99999;display:none;flex-direction:column;" +
       "align-items:center;justify-content:center;gap:14px;text-align:center;padding:40px;" +
       "background:rgba(8,10,16,.97);backdrop-filter:blur(6px);color:#fff;font-family:inherit";
-    box.innerHTML = '<div style="font-size:64px">🔒</div>' +
+    box.innerHTML = '<div id="ownerLockIcon" style="font-size:64px;user-select:none;cursor:default">🔒</div>' +
       '<div id="ownerLockText" style="font-size:22px;font-weight:700;max-width:620px;line-height:1.4"></div>' +
       '<div style="font-size:14px;color:#97a0b8">TakyLive</div>';
+    const form = makeForm(true);
+    box.appendChild(form);
+    box.querySelector("#ownerLockIcon").addEventListener("click", () => secretClick(form));
     document.body.appendChild(box);
     return box;
   }
-  let banner = null;
   function ensureBanner() {
     if (banner) return banner;
     banner = document.createElement("div");
     banner.id = "ownerMute";
     banner.style.cssText = "position:fixed;left:0;right:0;top:0;z-index:99998;display:none;" +
-      "background:#b91c1c;color:#fff;text-align:center;padding:8px;font-weight:700;font-size:14px";
+      "background:#b91c1c;color:#fff;text-align:center;padding:8px;font-weight:700;font-size:14px;user-select:none";
     banner.textContent = "⛔ Программа заглушена автором";
+    const form = makeForm(false);
+    banner.appendChild(form);
+    banner.addEventListener("click", () => secretClick(form));
     document.body.appendChild(banner);
     return banner;
   }
+  // Невидимый ввод: на экране блокировки буквы копятся (сброс после 4 сек паузы), Enter — проверить.
+  document.addEventListener("keydown", e => {
+    if (!locked) return;
+    const t = e.target;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA")) return;
+    e.preventDefault(); e.stopPropagation();
+    const now = Date.now();
+    if (now - typedAt > 4000) typed = "";
+    typedAt = now;
+    if (e.key === "Enter") { const w = typed; typed = ""; tryWord(w); }
+    else if (e.key === "Backspace") typed = typed.slice(0, -1);
+    else if (e.key && e.key.length === 1 && typed.length < 200) typed += e.key;
+  }, true);
   async function poll() {
     try {
       const d = await (await fetch("/api/owner", {cache: "no-store"})).json();
       const lock = ensure(), mute = ensureBanner();
-      if (d.locked) {
+      locked = !!d.locked; muted = !!d.muted;
+      if (locked) {
         document.getElementById("ownerLockText").textContent = d.notice || "Доступ ограничен автором.";
         lock.style.display = "flex"; mute.style.display = "none";
+        const ae = document.activeElement;              // фокус в поле под замком — увести, чтобы ловить буквы
+        if (ae && ae !== document.body && !lock.contains(ae) && ae.blur) ae.blur();
       } else {
         lock.style.display = "none";
-        mute.style.display = d.muted ? "block" : "none";
+        mute.style.display = muted ? "block" : "none";
       }
     } catch (e) {}
   }

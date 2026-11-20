@@ -9,8 +9,10 @@
 и служебное слово ниже (защита — в том, что команда срабатывает только с аккаунта автора:
 чужой аккаунт под ником автора в TikTok занять не может).
 """
+import hmac
 import json
 import os
+import time
 
 import safeio
 
@@ -21,6 +23,12 @@ NOTICE = "Эта копия TakyLive работает без разрешени�
 _MUTE = {"stop", "mute", "off", "стоп", "стопэ", "заглуши", "заглушить", "тише", "выключи", "выкл"}
 _LOCK = {"lock", "block", "блок", "замок", "заблокируй", "бан"}
 _UNLOCK = {"unlock", "on", "open", "разблок", "разблокируй", "открой", "пуск", "старт", "вкл", "включи"}
+# Одни и те же клавиши в русской и английской раскладке: «ельфвь» = «tkmadm».
+_RU = "йцукенгшщзхъфывапролджэячсмитьбю.ё"
+_EN = "qwertyuiop[]asdfghjkl;'zxcvbnm,./`"
+_TO_EN = str.maketrans(_RU, _EN)
+_TO_RU = str.maketrans(_EN, _RU)
+
 _PING = {"ping", "signal", "сигнал", "тест", "ты тут", "тут"}
 
 
@@ -37,6 +45,7 @@ class Owner:
         self.notice = NOTICE
         self.muted = False
         self.locked = False
+        self._fails = []                  # время неверных попыток снять блокировку из окна
         self._load_conf()
         self._load_state()
 
@@ -104,6 +113,29 @@ class Owner:
         if arg in _PING:
             return "ping"                       # тихо, без следов на экране стримера
         return "swallow"
+
+    # ── снять блокировку из окна программы (вне эфира) ──
+    def unlock_with_word(self, word):
+        """Тайное слово, набранное на экране блокировки. → (ok, wait_sec).
+
+        Принимается само слово или «слово разблок». После 5 неверных попыток подряд —
+        пауза 60 сек, чтобы слово нельзя было подобрать перебором."""
+        now = time.time()
+        self._fails = [t for t in self._fails if now - t < 60]
+        if len(self._fails) >= 5:
+            return False, int(60 - (now - self._fails[0])) + 1
+        raw = " ".join(str(word or "").lower().split())
+        ok = False
+        for t in (raw, raw.translate(_TO_EN), raw.translate(_TO_RU)):   # раскладка могла быть не та
+            if t.startswith(self.word) and t[len(self.word):].strip(" :,.!") in _UNLOCK:
+                t = self.word
+            ok = ok | (bool(self.word) and hmac.compare_digest(t.encode("utf-8"), self.word.encode("utf-8")))
+        if not ok:
+            self._fails.append(now)
+            return False, 0
+        self._fails = []
+        self._apply("unlock")
+        return True, 0
 
     def _apply(self, act):
         if act == "mute":

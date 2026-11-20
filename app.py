@@ -3872,6 +3872,18 @@ async def h_owner(request):
     return web.json_response(STATE.owner.status())
 
 
+async def h_owner_unlock(request):
+    """Тайное слово с экрана блокировки — снять блокировку/заглушку без эфира."""
+    d = await _json_body(request)
+    if STATE.owner is None:
+        return web.json_response({"ok": True})
+    was = STATE.owner.blocked()
+    ok, wait = STATE.owner.unlock_with_word(str(d.get("word") or "")[:200])
+    if ok and was:
+        STATE.log("СЛУЖЕБНОЕ", "работа возобновлена")
+    return web.json_response({"ok": ok, "wait": wait})
+
+
 async def h_window_hello(request):
     """Окно программы открылось — теперь изменения принимаются только из него (самого нового)."""
     d = await _json_body(request)
@@ -4834,7 +4846,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.73.1"
+APP_VERSION = "1.73.2"
 APP_DATE = "2026-11-17"
 
 
@@ -5800,6 +5812,7 @@ def make_app():
     app.router.add_get("/", h_index)
     app.router.add_get("/api/state", h_get_state)
     app.router.add_get("/api/owner", h_owner)
+    app.router.add_post("/api/owner/unlock", h_owner_unlock)
     app.router.add_get("/api/log", h_get_log)
     app.router.add_get("/api/overlay", h_overlay_data)
     app.router.add_post("/api/config", h_save_config)
