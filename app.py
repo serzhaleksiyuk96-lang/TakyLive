@@ -425,7 +425,19 @@ class State:
             "fish_base": "https://api.fish.audio",
             "timer_start_min": 30,            # таймер: стартовые минуты
             "timer_sec_per_coin": 5,          # таймер: +секунд за 1 монету подарка
-            "timer_end_command": "",          # команда при истечении таймера
+            "timer_end_command": "",          # (старое) команда при истечении таймера — теперь timer_end
+            "timer_end": {},                  # финал: {"commands", "delays", "media_file", "sound_file"...}
+            "timer_theme": "a",               # вид на оверлее: a — классика, b — капсула, c — крупно
+            "timer_hint": "",                 # надпись под таймером (пусто — своя у каждого вида)
+            "timer_top_n": 3,                 # топ «кто продлил»: сколько строк (0 — не показывать)
+            "timer_popups": True,             # плашки «+10 сек · Аня · Роза»
+            "timer_persist": True,            # помнить таймер после перезапуска и обновления
+            "timer_gifts": [],                # свои подарки: [{"name": "Роза", "sec": 10}], sec < 0 — отнимает
+            "timer_like_every": 100,          # лайки: каждые N…
+            "timer_like_sec": 0,              # …±секунд
+            "timer_follow_sec": 0,            # фоллов (без переподписки)
+            "timer_team_sec": 0,              # вступил в команду («Heart Me»)
+            "timer_sub_sec": 0,               # платная подписка
             "random_enabled": False,          # случайные события
             "random_interval_sec": 300,       # раз в сколько секунд
             "random_commands": "",            # (устарело) команды строками
@@ -513,7 +525,8 @@ class State:
         self.gifts_count = 0          # подарков за стрим
         self.goals_done = set()       # достигнутые цели: (профиль, индекс)
         self.cmd_last = {}            # кулдауны чат-команд: {(профиль, триггер): время}
-        self.timer = {"running": False, "end": 0.0, "paused_left": 0.0, "fired": False}
+        self.timer = None             # ⏱ timerbox.TimerBox — создаётся при запуске
+        self.timer_like_acc = 0       # лайки, пока таймер идёт (для «каждые N лайков»)
         self.random_last = 0.0        # время последнего случайного события
         self.stream_started = datetime.now().strftime("%d.%m.%Y %H:%M")
         self.tts_seq = 0
@@ -1696,14 +1709,7 @@ def handle_gift(gift_name, gift_id, count, user, diamonds=0):
                        "seq": STATE.last_gift["seq"] + 1}
     gctx = {"giftname": str(gift_name or ""), "coins": (diamonds or 0) * count,
             "uniqueid": STATE.last_uid.get(str(user), ""), "picture": ""}
-    # Таймер-челлендж: подарок добавляет время
-    if STATE.timer["running"]:
-        try:
-            per = float(STATE.config.get("timer_sec_per_coin", 0) or 0)
-        except Exception:
-            per = 0
-        if per > 0:
-            STATE.timer["end"] += (diamonds or 1) * count * per
+    timer_gift(user, gift_name, gift_id, count, diamonds)      # ⏱ свои подарки или ставка за монету
     # Оверлей: алерт + топ донатеров + медиа (если у подарка задано)
     media = _extract_media(action)
     STATE.push_overlay("gift", user,
@@ -1751,6 +1757,7 @@ def handle_like(like_count, user):
     if STATE.config.get("pts_on"):
         STATE.points.on_like(STATE.config, key, user, like_count)
     STATE.battle.like(STATE.config, key, like_count)
+    timer_likes(user, like_count)
     for a in like_actions:
         if not _is_enabled(a):
             continue
@@ -1779,6 +1786,7 @@ def handle_sub(user):
     if STATE.config.get("pts_on"):
         STATE.points.on_sub(STATE.config, ia_key(user), user)
     ai_event("sub", nice_name(user), f"{nice_name(user)} оформил платную подписку ⭐ на стримера. Поблагодари.", "ai_on_sub")
+    timer_add(_sec(STATE.config.get("timer_sub_sec")), user, "подписка", "⭐")
     for a in subs:
         fire_action(a, count=1, user=user)
 
@@ -1833,6 +1841,7 @@ def handle_follow(user, uid=None):
     if STATE.config.get("pts_on"):
         STATE.points.on_follow(STATE.config, ia_key(user), user)
     ai_event("follow", nice_name(user), f"{nice_name(user)} подписался на профиль стримера. Коротко поприветствуй.", "ai_on_follow")
+    timer_add(_sec(STATE.config.get("timer_follow_sec")), user, "фоллов", "➕")
     for a in follows:
         fire_action(a, count=1, user=user)
     return True
@@ -1849,6 +1858,8 @@ def team_note(uid, display, acc=None, level=0, via="значок"):
     if new:
         lvl = f", ур. {level}" if level else ""
         STATE.log("КОМАНДА", f"👥 {display or uid} — в команде ({via}{lvl})")
+        if via.startswith("подарок"):
+            timer_add(_sec(STATE.config.get("timer_team_sec")), display or uid, "вступил в команду", "👥")
     return new
 
 
@@ -3090,7 +3101,7 @@ async def h_remote_state(request):
         "random_on": bool(STATE.config.get("random_enabled")),
         "battle": STATE.battle.snapshot(STATE.config),
         "wheel_on": bool(STATE.config.get("wheel_on")),
-        "timer": {"running": STATE.timer["running"], "remaining": int(_timer_remaining())},
+        "timer": {"running": STATE.timer.running, "remaining": int(_timer_remaining())},
         "feed": [{"icon": e.get("icon", ""), "user": e.get("user", ""), "text": e.get("text", ""),
                   "time": e.get("time", "")} for e in STATE.recent_feed[:20]],
         "stats": {"coins": rep["totals"]["coins"], "likes": rep["totals"]["likes"],
@@ -4048,7 +4059,7 @@ async def h_overlay_data(request):
             for i, g in enumerate(active_profile().get("goals", []))
             if _is_enabled(g) and int(g.get("target", 0) or 0) > 0
         ],
-        "timer": {"running": STATE.timer["running"],
+        "timer": {"running": STATE.timer.running,
                   "remaining": int(_timer_remaining())},
     })
 
@@ -4424,10 +4435,97 @@ async def h_media_delete(request):
 
 
 def _timer_remaining():
-    t = STATE.timer
-    if t["running"]:
-        return max(0, t["end"] - time.time())
-    return max(0, t.get("paused_left", 0))
+    return STATE.timer.remaining() if STATE.timer is not None else 0
+
+
+def _sec(v):
+    try:
+        return float(v or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def timer_add(sec, user="", what="", icon=""):
+    """⏱ Событие меняет время таймера (только пока он идёт). Отнять до нуля — время выйдет."""
+    if STATE.timer is None or not sec or not STATE.timer.running:
+        return
+    import timerbox
+    STATE.timer.add(sec, user, what, icon)
+    STATE.log("ТАЙМЕР", f"{timerbox.fmt(sec)} — {user or 'стример'}" + (f" ({what})" if what else ""))
+
+
+_GIFT_IDS_L = {}
+
+
+def gift_ru_label(gift_name, gift_id=""):
+    """Название подарка для зрителей: русское, если знаем (Lion → Лев), иначе как пришло."""
+    ru = STATE.gift_names_ru or {}
+    gid = str(gift_id or "").strip()
+    if gid and ru.get(gid):
+        return ru[gid]
+    if not _GIFT_IDS_L:
+        _GIFT_IDS_L.update({str(k).strip().lower(): v for k, v in GIFT_IDS.items()})
+    i = _GIFT_IDS_L.get(str(gift_name or "").strip().lower())
+    return ru.get(str(i)) or str(gift_name or "")
+
+
+def timer_gift(user, gift_name, gift_id, count, diamonds):
+    """Подарок: своё время из списка «Свои подарки», иначе — общая ставка за монету."""
+    if STATE.timer is None or not STATE.timer.running:
+        return
+    cfg = STATE.config
+    count = max(1, int(count or 1))
+    names = {norm_gift(gift_name)} | ru_gift_names(gift_name, gift_id)
+    for g in cfg.get("timer_gifts") or []:
+        n = str((g or {}).get("name") or "").strip()
+        if n and (n == str(gift_id).strip() or norm_gift(n) in names):
+            sec = _sec(g.get("sec")) * count
+            if sec:
+                timer_add(sec, user, gift_ru_label(gift_name, gift_id) + (f" ×{count}" if count > 1 else ""),
+                          gift_icon_url(gift_name) or "🎁")
+            return
+    import team as _team
+    if _team.is_join_gift(gift_name, gift_id) and _sec(cfg.get("timer_team_sec")):
+        return                                     # «Heart Me» — время за вступление в команду, не за монету
+    per = _sec(cfg.get("timer_sec_per_coin", 0))
+    if per > 0:
+        timer_add((diamonds or 1) * count * per, user, gift_ru_label(gift_name, gift_id) + (f" ×{count}" if count > 1 else ""),
+                  gift_icon_url(gift_name) or "🎁")
+
+
+def timer_likes(user, n):
+    """Каждые N лайков (пока таймер идёт) — ±секунд."""
+    sec, every = _sec(STATE.config.get("timer_like_sec")), int(_sec(STATE.config.get("timer_like_every")) or 0)
+    if STATE.timer is None or not STATE.timer.running or not sec or every <= 0:
+        return
+    before = STATE.timer_like_acc
+    STATE.timer_like_acc += n
+    k = STATE.timer_like_acc // every - before // every
+    if k > 0:
+        timer_add(sec * k, user, f"{every * k} лайков", "❤")
+
+
+def timer_end_action():
+    """Финал «Когда время выйдет»: цепочка команд + видео/звук. Старое одно поле — тоже работает."""
+    end = STATE.config.get("timer_end") or {}
+    cmds = [str(c) for c in (end.get("commands") or []) if str(c).strip()]
+    if not end and str(STATE.config.get("timer_end_command", "")).strip():
+        cmds = [str(STATE.config["timer_end_command"]).strip()]
+    delays = list(end.get("delays") or [])
+    return {"commands": cmds, "delays": (delays + [0] * len(cmds))[:len(cmds)],
+            **{k: end.get(k) for k in ("media_file", "media_kind", "sound_file", "media_volume",
+                                        "sound_volume", "media_seconds") if end.get(k) not in (None, "")}}
+
+
+async def timer_finish(test=False):
+    """⏰ Время вышло: надпись на оверлее, видео/звук и команды финала."""
+    act = timer_end_action()
+    STATE.log("ТАЙМЕР", "⏰ ВРЕМЯ ВЫШЛО!" + (" (тест финала)" if test else ""))
+    STATE.push_overlay("timer", "", "⏰ ВРЕМЯ ВЫШЛО!", icon="⏰", color="#f87171", media=_extract_media(act))
+    if act["commands"]:
+        await run_chain({"commands": act["commands"], "delays": act["delays"]}, count=1,
+                        user=STATE.config.get("minecraft_nick", ""))
+    return bool(act["commands"] or _extract_media(act))
 
 
 async def fire_random_event(reason="таймер"):
@@ -4464,50 +4562,54 @@ async def h_random_fire(request):
                               "message": "Запущено!" if ok else "Нет ни одного события — добавь хотя бы команду, видео или звук"})
 
 
+def timer_public(since=0):
+    """Всё для оверлея и панели: время, вид, плашки после since, топ."""
+    cfg, t = STATE.config, STATE.timer
+    rem = t.remaining()
+    return {"running": t.running, "remaining": int(rem), "fired": t.fired and rem <= 0,
+            "peak": int(t.peak), "theme": str(cfg.get("timer_theme") or "a"), "hint": str(cfg.get("timer_hint") or ""),
+            "popups": cfg.get("timer_popups", True) is not False,
+            "top": t.top_list(int(_sec(cfg.get("timer_top_n", 3)))),
+            "events": [e for e in t.events if e["id"] > since and time.time() - e["t"] < 30], "seq": t.seq}
+
+
 async def h_timer(request):
-    """GET — статус; POST — управление таймером (start/pause/reset/add)."""
+    """GET — статус; POST — управление таймером (start/pause/reset/add/test_end)."""
     if request.method == "GET":
-        return web.json_response({"running": STATE.timer["running"],
-                                  "remaining": int(_timer_remaining())})
+        try:
+            since = int(request.query.get("since", 0) or 0)
+        except ValueError:
+            since = 0
+        return web.json_response(timer_public(since))
     data = await request.json()
     # Сохраняем настройки таймера если пришли
+    changed = False
     for k in ("timer_start_min", "timer_sec_per_coin", "timer_end_command"):
         if k in data:
             STATE.config[k] = data[k]
-    save_config()
+            changed = True
+    if changed:
+        save_config()
     act = data.get("action", "")
     t = STATE.timer
     if act == "start":
-        left = _timer_remaining()
-        if left <= 0:
-            try:
-                left = float(STATE.config.get("timer_start_min", 30)) * 60
-            except Exception:
-                left = 1800
-        t["end"] = time.time() + left
-        t["running"] = True
-        t["fired"] = False
+        left = t.start()
         STATE.log("ТАЙМЕР", f"▶ Запущен ({int(left)} сек)")
     elif act == "pause":
-        t["paused_left"] = _timer_remaining()
-        t["running"] = False
+        t.pause()
         STATE.log("ТАЙМЕР", "⏸ Пауза")
     elif act == "reset":
-        t["running"] = False
-        t["paused_left"] = 0
-        t["fired"] = False
+        t.reset()
+        STATE.timer_like_acc = 0
         STATE.log("ТАЙМЕР", "⟲ Сброшен")
     elif act == "add":
-        try:
-            sec = float(data.get("seconds", 60))
-        except Exception:
-            sec = 60
-        if t["running"]:
-            t["end"] += sec
-        else:
-            t["paused_left"] = _timer_remaining() + sec
-    return web.json_response({"running": t["running"],
-                              "remaining": int(_timer_remaining())})
+        sec = _sec(data.get("seconds", 60)) or 60
+        t.add(sec, "", "стример", "⏱", only_running=False)
+    elif act == "test_end":
+        ok = await timer_finish(test=True)
+        return web.json_response({"ok": ok, "message": "Финал запущен" if ok else
+                                  "Финал пустой — добавь команду, видео или звук"})
+    return web.json_response(timer_public(t.seq))
 
 
 async def h_panel_fire(request):
@@ -4701,7 +4803,7 @@ async def h_gift_icons(request):
 
 
 # ── Версия программы — меняется при каждой новой сборке ─────────────────────
-APP_VERSION = "1.72.2"
+APP_VERSION = "1.73"
 APP_DATE = "2026-11-17"
 
 
@@ -5527,19 +5629,8 @@ def make_app():
                 await asyncio.sleep(1)
                 try:
                     # Таймер-челлендж: время вышло
-                    t = STATE.timer
-                    if t["running"] and time.time() >= t["end"] and not t["fired"]:
-                        t["running"] = False
-                        t["fired"] = True
-                        t["paused_left"] = 0
-                        STATE.log("ТАЙМЕР", "⏰ ВРЕМЯ ВЫШЛО!")
-                        STATE.push_overlay("timer", "", "⏰ ВРЕМЯ ВЫШЛО!",
-                                           icon="⏰", color="#f87171")
-                        cmd = str(STATE.config.get("timer_end_command", "")).strip()
-                        if cmd:
-                            await run_chain({"commands": [cmd], "delays": [0]},
-                                            count=1,
-                                            user=STATE.config.get("minecraft_nick", ""))
+                    if STATE.timer is not None and STATE.timer.tick():
+                        await timer_finish()
                     if STATE.connected and time.time() - STATE.tt_report_at >= 60:
                         STATE.tt_report_at = time.time()
                         tt_report()                       # что пришло от TikTok за минуту
@@ -5951,6 +6042,11 @@ def main():
     STATE.music = _music.MusicBox(STATE.log, lambda: STATE.config, save_config, os.path.join(BASE_DIR, "music_state.json"))
     import team as _team
     STATE.team = _team.Team(TEAM_FILE)
+    import timerbox as _timerbox
+    STATE.timer = _timerbox.TimerBox(os.path.join(BASE_DIR, "timer_state.json"), lambda: STATE.config, STATE.log)
+    if STATE.timer.load():
+        STATE.log("ТАЙМЕР", f"⏱ Таймер восстановлен: осталось {_timerbox.fmt(STATE.timer.left)[1:]} — "
+                            "стоит на паузе, нажми ▶ Старт")
     try:
         repair_media_refs()                  # эдиты .mov/.webm, которые стали .mp4, — вернуть в карточки
     except Exception as e:

@@ -2847,6 +2847,7 @@ function togglePanelCfg(id, btn) {
   if (btn) btn.classList.toggle("cfg-open", open);
   if (open) el.scrollIntoView({behavior: "smooth", block: "nearest"});
   if (id === "scSettings" && typeof scLiveToggle === "function") scLiveToggle(open);
+  if (id === "tmSettings") tmTheme(DATA.config.timer_theme || "a", true);
 }
 
 function scTransUI() {
@@ -2906,7 +2907,17 @@ function fillPanelCfg() {
   }
   el("tm_start").value = c.timer_start_min ?? 30;
   el("tm_percoin").value = c.timer_sec_per_coin ?? 5;
-  el("tm_endcmd").value = c.timer_end_command || "";
+  el("tm_persist").checked = c.timer_persist !== false;
+  el("tm_hint").value = c.timer_hint || "";
+  el("tm_topn").value = c.timer_top_n ?? 3;
+  el("tm_popups").checked = c.timer_popups !== false;
+  TM_GIFTS = JSON.parse(JSON.stringify(c.timer_gifts || []));
+  const te = c.timer_end || {};
+  TM_END = JSON.parse(JSON.stringify(te));
+  TM_END.commands = (te.commands && te.commands.length) ? [...te.commands]
+    : (String(c.timer_end_command || "").trim() ? [String(c.timer_end_command).trim()] : []);
+  TM_END.delays = [...(te.delays || [])];
+  tmRenderGifts(); tmRenderOther(); tmRenderEnd(); tmTheme(c.timer_theme || "a", true);
   el("rnd_on").checked = !!c.random_enabled;
   el("rnd_interval").value = c.random_interval_sec ?? 300;
   el("rnd_gift").checked = !!c.random_on_gift;
@@ -2973,7 +2984,15 @@ async function savePanelCfg(silent) {
   const el = id => document.getElementById(id);
   DATA.config.timer_start_min = parseFloat(el("tm_start").value) || 30;
   DATA.config.timer_sec_per_coin = parseFloat(el("tm_percoin").value) || 0;
-  DATA.config.timer_end_command = el("tm_endcmd").value.trim();
+  DATA.config.timer_persist = el("tm_persist").checked;
+  DATA.config.timer_hint = el("tm_hint").value.trim();
+  DATA.config.timer_top_n = Math.max(0, parseInt(el("tm_topn").value) || 0);
+  DATA.config.timer_popups = el("tm_popups").checked;
+  DATA.config.timer_gifts = TM_GIFTS.filter(g => String(g.name || "").trim());
+  const cmds = (TM_END.commands || []).map(x => String(x || "").trim());
+  DATA.config.timer_end = {...TM_END, commands: cmds.filter(Boolean),
+    delays: cmds.map((x, i) => [x, parseFloat((TM_END.delays || [])[i]) || 0]).filter(([x]) => x).map(([, d]) => d)};
+  DATA.config.timer_end_command = "";
   DATA.config.random_enabled = el("rnd_on").checked;
   DATA.config.random_interval_sec = parseFloat(el("rnd_interval").value) || 300;
   DATA.config.random_on_gift = el("rnd_gift").checked;
@@ -3005,17 +3024,133 @@ async function savePanelCfg(silent) {
 }
 
 async function timerCtl(action) {
-  const el = id => document.getElementById(id);
-  const body = { action,
-    timer_start_min: parseFloat(el("tm_start").value) || 30,
-    timer_sec_per_coin: parseFloat(el("tm_percoin").value) || 0,
-    timer_end_command: el("tm_endcmd").value.trim() };
+  if (action === "start") await savePanelCfg(true);          // стартовое время — из настроек
+  const body = {action};
   if (action === "add") body.seconds = 60;
   const r = await fetch("/api/timer", { method:"POST",
     headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
   const d = await r.json();
   showTimer(d);
 }
+
+// ── ⏱ Настройки таймера: вид, свои подарки, другие события, финал ──
+let TM_GIFTS = [], TM_END = {commands: [], delays: []};
+const TM_OTHER = [["timer_like_sec", "❤", "Лайки — каждые"], ["timer_follow_sec", "➕", "Фоллов (без переподписки)"],
+                  ["timer_team_sec", "👥", "Вступил в команду («Heart Me»)"], ["timer_sub_sec", "⭐", "Платная подписка"]];
+
+function tmSplit(sec) {
+  sec = parseFloat(sec) || 0;
+  const a = Math.abs(sec);
+  return {sign: sec < 0 ? -1 : 1, v: a >= 60 && a % 60 === 0 ? a / 60 : a, u: a >= 60 && a % 60 === 0 ? "min" : "sec"};
+}
+
+function tmRow(id, icon, label, sec, del) {
+  const p = tmSplit(sec);
+  return `<div class="tm-row" data-id="${id}"><span class="n">${icon}${label}</span>
+    <span class="tm-sign"><button class="${p.sign > 0 ? "p" : ""}" onclick="tmSign(this, 1)" title="добавляет время">+</button><button
+      class="${p.sign < 0 ? "m" : ""}" onclick="tmSign(this, -1)" title="отнимает время">−</button></span>
+    <input class="tm-amt" type="number" min="0" step="any" value="${p.v}" oninput="tmRead(this)">
+    <select class="tm-unit" onchange="tmRead(this)"><option value="sec" ${p.u === "sec" ? "selected" : ""}>сек</option>
+      <option value="min" ${p.u === "min" ? "selected" : ""}>мин</option></select>${del || ""}</div>`;
+}
+
+function tmSign(btn, s) {
+  const b = btn.parentElement.children;
+  b[0].className = s > 0 ? "p" : ""; b[1].className = s < 0 ? "m" : "";
+  tmRead(btn);
+}
+
+function tmRead(elm) {
+  const row = elm.closest(".tm-row"), id = row.dataset.id;
+  const sign = row.querySelector(".tm-sign .m") ? -1 : 1;
+  const sec = sign * (parseFloat(row.querySelector(".tm-amt").value) || 0) * (row.querySelector(".tm-unit").value === "min" ? 60 : 1);
+  if (id.startsWith("g")) TM_GIFTS[+id.slice(1)].sec = sec; else DATA.config[id] = sec;
+  schedulePanelSave();
+}
+
+function tmRenderGifts() {
+  const box = document.getElementById("tmGifts");
+  if (!box) return;
+  box.innerHTML = TM_GIFTS.length ? TM_GIFTS.map((g, i) => {
+    const ru = ruNameOf(g.name);
+    return tmRow("g" + i, giftIconHtml(g.name, 26), `<span>${esc(g.name)}${ru && ru !== g.name ? ` <span class="hint">· ${esc(ru)}</span>` : ""}</span>`,
+      g.sec, `<button class="icon" title="Убрать" onclick="TM_GIFTS.splice(${i},1);tmRenderGifts();schedulePanelSave()">✕</button>`);
+  }).join("") : `<div class="hint" style="margin-bottom:8px">Пока нет — все подарки идут по ставке за монету.</div>`;
+}
+
+function tmAddGift() {
+  openGiftLibFor("", name => {
+    if (!TM_GIFTS.some(g => giftKeys(g.name).some(k => giftKeys(name).includes(k)))) TM_GIFTS.push({name, sec: 10});
+    tmRenderGifts(); schedulePanelSave();
+  });
+}
+
+function tmRenderOther() {
+  const box = document.getElementById("tmOther");
+  if (!box) return;
+  const c = DATA.config;
+  box.innerHTML = TM_OTHER.map(([k, icon, label]) => tmRow(k, `<span class="tm-ev">${icon}</span>`,
+    k === "timer_like_sec"
+      ? `<span>${label}</span><input type="number" min="1" style="width:74px" value="${c.timer_like_every ?? 100}"
+           oninput="DATA.config.timer_like_every=Math.max(1, parseInt(this.value)||100); schedulePanelSave()">`
+      : `<span>${label}</span>`, c[k] || 0)).join("");
+}
+
+function tmRenderEnd() {
+  const box = document.getElementById("tmEnd");
+  if (!box) return;
+  const cmds = TM_END.commands = TM_END.commands || [];
+  const d = TM_END.delays = TM_END.delays || [];
+  const vids = MEDIA_FILES.filter(f => ["video", "gif", "image"].includes(f.kind));
+  const snds = MEDIA_FILES.filter(f => f.kind === "sound");
+  const opt = (list, sel, none) => `<option value="">${none}</option>` +
+    list.map(f => `<option value="${esc(f.name)}" ${f.name === sel ? "selected" : ""}>${esc(f.name)}</option>`).join("");
+  box.innerHTML = `<div class="chain">` + cmds.map((c, i) => `
+    <div class="cmd-row"><div class="cmd-num">${i + 1}</div>
+      <input class="cmd mono" placeholder="команда без /, например: kill @p" value="${esc(c)}" oninput="TM_END.commands[${i}]=this.value">
+      <span class="delay-label">пауза</span>
+      <input class="delay mono" type="number" step="0.1" min="0" value="${d[i] || 0}" oninput="TM_END.delays[${i}]=parseFloat(this.value)||0">
+      <span class="delay-label">сек</span>
+      <button class="icon" onclick="TM_END.commands.splice(${i},1);TM_END.delays.splice(${i},1);tmRenderEnd();schedulePanelSave()">✕</button>
+    </div>`).join("") + `</div>
+    <div class="add-row"><button class="add-cmd" onclick="TM_END.commands.push('');TM_END.delays.push(0);tmRenderEnd()">+ Добавить команду</button></div>
+    <div class="tm-end-media">
+      <select title="Видео, гифка или картинка на оверлей" onchange="tmEndMedia(this.value)">${opt(vids, TM_END.media_file, "🎬 без видео")}</select>
+      <select title="Звук" onchange="TM_END.sound_file=this.value">${opt(snds, TM_END.sound_file, "🔊 без звука")}</select>
+      <button class="small" onclick="tmTestEnd(this)">▶ Тест финала</button>
+    </div>`;
+}
+
+function tmEndMedia(val) {
+  TM_END.media_file = val;
+  const f = MEDIA_FILES.find(x => x.name === val);
+  TM_END.media_kind = f ? f.kind : "video";
+}
+
+async function tmTestEnd(btn) {
+  await savePanelCfg(true);
+  const d = await (await fetch("/api/timer", {method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({action: "test_end"})})).json();
+  const h = document.getElementById("panelHint");
+  if (h) { h.textContent = (d.ok ? "⏰ " : "✗ ") + d.message; h.style.color = d.ok ? "var(--green)" : "var(--red)";
+           setTimeout(() => h.textContent = "", 3500); }
+}
+
+function tmTheme(t, noSave) {
+  DATA.config.timer_theme = t;
+  document.querySelectorAll(".tm-th").forEach(b => b.classList.toggle("on", b.dataset.th === t));
+  const fr = document.getElementById("tmPrev"), card = document.getElementById("tmSettings");
+  if (fr && card && !card.classList.contains("hidden")) {
+    const src = `/web/overlays/timer.html?demo=1&theme=${t}`;
+    if (fr.getAttribute("src") !== src) fr.src = src;
+    fr.style.transform = `scale(${(fr.parentElement.clientWidth || 420) / 560})`;
+  }
+  if (!noSave) schedulePanelSave();
+}
+window.addEventListener("resize", () => {
+  const fr = document.getElementById("tmPrev");
+  if (fr && fr.parentElement.clientWidth) fr.style.transform = `scale(${fr.parentElement.clientWidth / 560})`;
+});
 
 function showTimer(d) {
   const el = document.getElementById("timerDisplay");
@@ -3449,6 +3584,8 @@ function renderGiftLib() {
   const extra = {};                                            // где ещё стоит подарок: колесо, заказ музыки
   for (const [key, lbl] of [["wheel_gift", "🎡 колесо"], ["music_gift", "🎵 музыка"]])
     for (const k of giftKeys(cfg[key])) (extra[k] ||= []).push(lbl);
+  for (const g of (typeof TM_GIFTS !== "undefined" ? TM_GIFTS : cfg.timer_gifts || []))
+    for (const k of giftKeys(g.name)) (extra[k] ||= []).push("⏱ таймер");
   const extraOf = n => [...new Set(giftKeys(n).flatMap(k => extra[k] || []))];
   LIB_ALL = libItems();
   const items = LIB_ALL
@@ -3574,7 +3711,8 @@ const OVERLAYS = [
   {id:"ov12", file:"top.html?mode=points", icon:"💎", name:"Топ по очкам зрителей",
    desc:"Таблица лидеров по очкам — за подарки, лайки, чат и активность", w:320, h:400},
   {id:"ov8", file:"timer.html",     icon:"⏱", name:"Таймер-челлендж",
-   desc:"Большой обратный отсчёт, подарки добавляют время", w:420,  h:140},
+   desc:"Обратный отсчёт: подарки и события добавляют или отнимают время, плашки «+10 сек · Аня» и топ «кто продлил». Вид A/B/C — на «Панели» → ⏱ ⚙ Настроить",
+   w:560, h:520, vw:560, vh:420},
   {id:"ov6", file:"tts.html",       icon:"🔊", name:"Озвучка чата (TTS)",
    desc:"Невидимый оверлей — читает сообщения голосом", w:400,  h:200, novis:true},
 ];

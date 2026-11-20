@@ -1197,6 +1197,34 @@
     background: rgba(148,163,184,0.12); color: var(--text-mut);
   }
   .ph-badge.on { background: rgba(52,211,153,0.15); color: var(--green); box-shadow: 0 0 12px rgba(52,211,153,0.25); }
+  .tm-grid { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 1050px) { .tm-grid { grid-template-columns: 1fr; } }
+  .tm-h { font-size: 12.5px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; margin: 14px 0 8px; font-weight: 600; }
+  .tm-h .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
+  .tm-col > .tm-h:first-child { margin-top: 0; }
+  .tm-themes { display: flex; gap: 6px; margin-bottom: 10px; }
+  .tm-th { flex: 1; padding: 8px 6px; border-radius: 9px; font-size: 13px; }
+  .tm-th b { color: var(--cyan); margin-right: 4px; }
+  .tm-th.on { border-color: var(--cyan); background: rgba(34,211,238,.14); color: var(--text); }
+  .tm-prev { width: 100%; aspect-ratio: 560 / 380; border-radius: 10px; overflow: hidden; position: relative;
+             background: linear-gradient(180deg,#5aa0e6 0%,#8cc6f0 40%,#6aa84f 40.5%,#4f8a3a 70%,#6b4f35 70.5%); }
+  .tm-prev iframe { position: absolute; left: 0; top: 0; width: 560px; height: 380px; border: 0; transform-origin: 0 0; background: transparent; }
+  .tm-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 9px; margin-bottom: 6px;
+            background: rgba(255,255,255,.03); border: 1px solid var(--border); }
+  .tm-row .n { flex: 1; display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .tm-row .n span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tm-row .n .gl-ph, .tm-row .n img { margin: 0 !important; }
+  .tm-row input[type=number] { width: 74px; text-align: right; }
+  .tm-row select { width: 74px; }
+  .tm-ev { width: 28px; height: 28px; border-radius: 7px; background: rgba(255,255,255,.07); display: inline-flex;
+           align-items: center; justify-content: center; font-size: 16px; flex: none; }
+  .tm-sign { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; flex: none; }
+  .tm-sign button { border: 0; border-radius: 0; padding: 4px 10px; background: transparent; color: var(--text-mut); font-weight: 700; }
+  .tm-sign button.p { background: rgba(52,211,153,.18); color: var(--green); }
+  .tm-sign button.m { background: rgba(248,113,113,.18); color: var(--red); }
+  .tm-lib { border-color: rgba(167,139,250,.5) !important; color: #c4b5fd !important; }
+  .tm-end-media { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .tm-end-media select { flex: 1; min-width: 140px; }
   .ph-timer-row { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 16px; }
   .ph-digits {
     font-family: "JetBrains Mono", "Consolas", monospace;
@@ -1949,19 +1977,57 @@
     </div>
 
     <div class="card hidden" id="tmSettings">
-      <h3>⏱ Настройки таймера</h3>
-      <div class="settings-grid">
-        <div class="field">
-          <label>Стартовое время (минут)</label>
-          <input type="number" id="tm_start" min="1" value="30">
+      <div class="ph-head">
+        <h3>⏱ Настройки таймера</h3>
+        <span class="ev-saved" data-panelsave>✓ Сохранено</span>
+      </div>
+      <div class="tm-grid">
+        <div class="tm-col">
+          <div class="tm-h">🎨 Вид на стриме</div>
+          <div class="tm-themes">
+            <button class="tm-th" data-th="a" onclick="tmTheme('a')"><b>A</b> Классика</button>
+            <button class="tm-th" data-th="b" onclick="tmTheme('b')"><b>B</b> Капсула</button>
+            <button class="tm-th" data-th="c" onclick="tmTheme('c')"><b>C</b> Крупно</button>
+          </div>
+          <div class="tm-prev"><iframe id="tmPrev" scrolling="no"></iframe></div>
+          <div class="hint" style="margin:6px 0 10px">Оверлей «⏱ Таймер-челлендж» во вкладке «Оверлеи» — вид меняется сразу, OBS трогать не надо.</div>
+          <div class="settings-grid">
+            <div class="field full">
+              <label>Надпись под таймером (пусто — своя у вида)</label>
+              <input id="tm_hint" placeholder="🎁 дари — продлевай стрим!">
+            </div>
+            <div class="field">
+              <label>🏆 Топ «кто продлил»: строк (0 — скрыть)</label>
+              <input type="number" id="tm_topn" min="0" max="10" value="3">
+            </div>
+            <div class="field">
+              <label>Плашки «+10 сек · Аня»</label>
+              <label class="chk"><input type="checkbox" id="tm_popups"> показывать</label>
+            </div>
+          </div>
         </div>
-        <div class="field">
-          <label>+секунд за каждую монету подарка</label>
-          <input type="number" id="tm_percoin" min="0" step="0.5" value="5">
-        </div>
-        <div class="field full">
-          <label>Команда когда время выйдет (без /)</label>
-          <input class="mono" id="tm_endcmd" placeholder="например: kill @p">
+        <div class="tm-col">
+          <div class="settings-grid">
+            <div class="field">
+              <label>Стартовое время (минут)</label>
+              <input type="number" id="tm_start" min="1" value="30">
+            </div>
+            <div class="field">
+              <label>Остальные подарки: +секунд за монету</label>
+              <input type="number" id="tm_percoin" min="0" step="0.5" value="5">
+            </div>
+            <div class="field full">
+              <label class="chk"><input type="checkbox" id="tm_persist"> 💾 Помнить таймер, если программа перезапустится
+                или обновится посреди эфира (вернётся на паузе)</label>
+            </div>
+          </div>
+          <div class="tm-h">🎁 Свои подарки <span class="hint">— своё время вместо ставки за монету; «−» отнимает</span></div>
+          <div id="tmGifts"></div>
+          <button class="small tm-lib" onclick="tmAddGift()">📚 Добавить подарок из библиотеки</button>
+          <div class="tm-h">❤️ Другие события <span class="hint">— 0 — не влияет</span></div>
+          <div id="tmOther"></div>
+          <div class="tm-h">⏰ Когда время выйдет</div>
+          <div id="tmEnd"></div>
         </div>
       </div>
     </div>

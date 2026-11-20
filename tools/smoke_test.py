@@ -47,7 +47,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SKIP_NAMES = {".git", "__pycache__", "build", "dist", "reports", "servers", "backups", "_update",
               "config.json", "profiles.json", "viewer_voices.json", "viewer_points.json",
               "fish_key.txt", "gift_catalog.json", "live_gift_icons.json", "smoke_test_result.txt",
-              "team_members.json", "music_state.json", "followers_seen.json"}
+              "team_members.json", "music_state.json", "followers_seen.json", "timer_state.json"}
 
 RESULTS = []
 
@@ -1120,6 +1120,65 @@ def run_checks(api, copy_dir, report_id, remote_port, with_remote):
           api.get("/api/team").get("count") == 0 and not said("алмаз115"))
     api.cfg(tts_enabled=False, tts_filter_mode="all", tts_filter_list="", tts_user_cooldown=8, tts_max_queue=5)
     api.post("/api/tts/unmute", {"user": "*"})
+
+    print("\n• ⏱ Таймер-челлендж")
+    api.cfg(timer_start_min=10, timer_sec_per_coin=2, timer_theme="c", timer_top_n=3, timer_popups=True,
+            timer_gifts=[{"name": "Rose", "sec": 10}, {"name": "Skull", "sec": -120}],
+            timer_follow_sec=30, timer_sub_sec=300, timer_team_sec=60, timer_like_every=100, timer_like_sec=5,
+            timer_end={"commands": ["say timer-end-mark"], "delays": [0]}, timer_end_command="")
+    api.post("/api/timer", {"action": "reset"})
+    t0 = api.post("/api/timer", {"action": "start"})
+    rem = lambda: api.get("/api/timer")["remaining"]                              # noqa: E731
+    near = lambda a, b: abs(a - b) <= 3                                           # noqa: E731
+    check("старт — 10 минут", near(t0.get("remaining", 0), 600), str(t0))
+    seq0 = api.get("/api/timer")["seq"]
+    api.sim(kind="gift", name="Rose", gift_id="5655", count=3, user="tm_a", diamonds=1)
+    check("свой подарок: Роза ×3 по +10 сек = +30 сек", wait_until(lambda: near(rem(), 630), 5), str(rem()))
+    api.sim(kind="gift", name="Doughnut", gift_id="", count=1, user="tm_b", diamonds=30)
+    check("остальные подарки — по ставке за монету: 30 монет × 2 = +60 сек", wait_until(lambda: near(rem(), 690), 5), str(rem()))
+    api.sim(kind="gift", name="Skull", gift_id="", count=1, user="tm_troll", diamonds=1)
+    check("подарок с «−» отнимает: −2 мин", wait_until(lambda: near(rem(), 570), 5), str(rem()))
+    api.sim(kind="follow", user="tm_c")
+    api.sim(kind="follow", user="tm_c")
+    check("фоллов +30 сек, переподписка — ничего", wait_until(lambda: near(rem(), 600), 5) and (time.sleep(0.6) or near(rem(), 600)),
+          str(rem()))
+    api.sim(kind="sub", user="tm_d")
+    api.sim(kind="like", count=250, user="tm_e")
+    api.sim(kind="gift", name="Heart Me", gift_id="7934", count=1, user="tm_f", diamonds=1)
+    check("подписка +5 мин, 250 лайков (каждые 100 по +5 сек) +10 сек, вступил в команду +1 мин (не по монетам)",
+          wait_until(lambda: near(rem(), 970), 5), str(rem()))
+    d = api.get(f"/api/timer?since={seq0}")
+    texts = [(e["text"], e["user"]) for e in d.get("events", [])]
+    check("плашки для оверлея: «+30 сек · tm_a», «−2 мин · tm_troll», «+1 мин · tm_f»",
+          ("+30 сек", "tm_a") in texts and ("−2 мин", "tm_troll") in texts and ("+1 мин", "tm_f") in texts
+          and any(e["sec"] < 0 for e in d["events"]), str(texts))
+    check("топ «кто продлил»: подписчик первый, минусы в топ не идут, вид — C",
+          [x["user"] for x in d.get("top", [])][:1] == ["tm_d"] and "tm_troll" not in [x["user"] for x in d["top"]]
+          and d.get("theme") == "c" and len(d["top"]) == 3, str(d.get("top")))
+    st = os.path.join(copy_dir, "timer_state.json")
+    saved = json.load(open(st, encoding="utf-8")) if os.path.exists(st) else {}
+    check("таймер записан на диск (переживёт перезапуск и обновление)",
+          near(saved.get("left", 0), rem()) and saved.get("was_running") is True and "tm_d" in saved.get("top", {}), str(saved)[:200])
+    api.post("/api/timer", {"action": "pause"})
+    p1 = rem(); time.sleep(1.5)
+    check("пауза — время стоит, подарки не меняют", rem() == p1 and (api.sim(kind="gift", name="Rose", gift_id="5655", count=1,
+          user="tm_a", diamonds=1) or True) and (time.sleep(0.6) or rem() == p1))
+    api.post("/api/timer", {"action": "add", "seconds": 60})
+    check("+1 мин работает и на паузе", near(rem(), p1 + 60), str(rem()))
+    api.post("/api/timer", {"action": "start"})
+    api.sim(kind="gift", name="Skull", gift_id="", count=20, user="tm_troll", diamonds=1)
+    check("отняли больше, чем осталось — время вышло, финал: команда и «ВРЕМЯ ВЫШЛО» на оверлее",
+          wait_until(lambda: api.get("/api/timer").get("fired"), 5) and wait_until(lambda: api.log_has("КОМАНДА", r"say timer-end-mark"), 5)
+          and api.log_has("ТАЙМЕР", r"ВРЕМЯ ВЫШЛО") and not api.get("/api/timer")["running"])
+    r = api.post("/api/timer", {"action": "test_end"})
+    api.cfg(timer_end={}, timer_end_command="")
+    r2 = api.post("/api/timer", {"action": "test_end"})
+    api.cfg(timer_end_command="kill @p")
+    r3 = api.post("/api/timer", {"action": "test_end"})
+    check("«▶ Тест финала»: с командой — запускает, пустой — подсказка, старое поле «команда» тоже работает",
+          r.get("ok") and not r2.get("ok") and "пустой" in r2.get("message", "") and r3.get("ok"), f"{r} {r2} {r3}")
+    api.post("/api/timer", {"action": "reset"})
+    api.cfg(timer_end_command="", timer_gifts=[], timer_follow_sec=0, timer_sub_sec=0, timer_team_sec=0, timer_like_sec=0)
 
     print("\n• 🎙 ИИ-голос (поддельная голосовая программа)")
     st = api.get("/api/vc/status")
