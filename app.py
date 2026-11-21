@@ -744,6 +744,7 @@ class _RconClient:
         self.key = None
         self.req = 0
         self.lock = None
+        self.fail = None                         # (key, время, ошибка) последнего неудачного подключения
 
     async def _close(self):
         if self.writer is not None:
@@ -796,11 +797,22 @@ class _RconClient:
             pw = str(cfg.get("rcon_password") or "")
         key = (host, port, pw)
         async with self.lock:
+            # Windows ждёт ~2 с на каждый отказ — пока сервер недоступен, не копим очередь из команд
+            if self.writer is None and self.fail and self.fail[0] == key and time.time() - self.fail[1] < 3:
+                raise ConnectionError(self.fail[2])
             for attempt in (1, 2):
                 try:
                     if self.writer is None or self.key != key:
                         await self._close()
-                        await self._open(host, port, pw)
+                        try:
+                            await self._open(host, port, pw)
+                        except PermissionError:
+                            raise
+                        except Exception as e:
+                            if attempt == 2:
+                                self.fail = (key, time.time(), str(e) or type(e).__name__)
+                            raise
+                        self.fail = None
                         self.key = key
                     rid = await self._send(self.EXEC, cmd)
                     for _ in range(30):          # пропускаем хвосты старых ответов
